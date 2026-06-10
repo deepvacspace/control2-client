@@ -30,7 +30,7 @@ PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{"�
     } else {
       ConfDialog *confDialog
         = new ConfDialog(tr("Подтверждение"),
-                         tr("Вы действительно хотите выключить компьютер?\nРаботы камеры будет остановлена."),
+                         tr("The chamber will be turned off and the program will be closed.\n\nThe Windows computer will stay on.\n\nDo you want to continue?"),
                          tr("Да"),
                          tr("Нет"),
                          this);
@@ -38,7 +38,7 @@ PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{"�
         if (1 == result) {
           resHolder->tcpGate->sendTextCmd("shutdown");
           emit prepareToCloseApp();
-          system("c:\\windows\\system32\\shutdown /s /t 1");
+          // system("c:\\windows\\system32\\shutdown /s /t 1");
         }
       });
       confDialog->show();

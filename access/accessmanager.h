@@ -19,11 +19,11 @@ class AccessManager
   Q_OBJECT
   inline static QString const LAST_USER_FILE{"last_user.txt"};
   inline static QString const SECRET_KEY{"SuperSecretKey123"};
-  inline static QString const ADMIN_USER_NAME{QObject::tr("Системный инженер")};
+  inline static QString const ADMIN_USER_NAME{QObject::tr("System Engineer")}; //Системный инженер
   inline static QString const ADMIN_DEFAULT_PASS{"8520"};
 
 public:
-  inline static QString const SPECTATOR_USER_NAME{QObject::tr("Наблюдатель")};
+  inline static QString const SPECTATOR_USER_NAME{QObject::tr("Observer")}; // Наблюдатель
 
   enum AccessLevel {
     SPECTATOR_0 = 0,

@@ -51,7 +51,7 @@ void CycleWidget::updateGui() {
                       .arg(m_params.value("end").toInt()+1)
                       .arg(cycles_number_string));
   } else {
-    m_text->setText("нет\n");
+    m_text->setText("None\n");
   }
   emit paramsChanged(m_params);
 }

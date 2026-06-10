@@ -38,6 +38,7 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   connect(m_plot, &QCustomPlot::mousePress, this, &DataViewer::mouseEventHeadler);
   connect(m_plot, &QCustomPlot::mouseRelease, this, &DataViewer::mouseEventHeadler);
   connect(m_plot, &QCustomPlot::mouseMove, this, &DataViewer::mouseEventHeadler);
+  connect(m_plot, &QCustomPlot::mouseWheel, this, &DataViewer::wheelEventHandler);
   connect(m_plot->selectionRect(), &QCPSelectionRect::accepted, this, [this](QRect const &rect, QMouseEvent *event) {
     // update internal variable
     (void)event;
@@ -228,13 +229,14 @@ void DataViewer::moveView(double addX, double addY) {
 
 void DataViewer::zoomView(double mulX, double mulY) {
   QPointF const center{m_currentView.center()};
-  QSizeF const  halfSize{m_currentView.size() * 0.5};
+  double const  halfWidth{qAbs(m_currentView.width()) * 0.5};
+  double const  halfHeight{qAbs(m_currentView.height()) * 0.5};
 
-  m_currentView.setLeft(center.x() - halfSize.width() * mulX);
-  m_currentView.setRight(center.x() + halfSize.width() * mulX);
+  m_currentView.setLeft(center.x() - halfWidth * mulX);
+  m_currentView.setRight(center.x() + halfWidth * mulX);
 
-  m_currentView.setTop(center.y() + halfSize.height() * mulY);
-  m_currentView.setBottom(center.y() - halfSize.height() * mulY);
+  m_currentView.setTop(center.y() + halfHeight * mulY);
+  m_currentView.setBottom(center.y() - halfHeight * mulY);
 
   if (DataViewer::ControlMode::LEAD_FULL == m_controlMode) {
     setControlMode(DataViewer::ControlMode::ZOOM);
@@ -443,6 +445,24 @@ void DataViewer::mouseEventHeadler(QMouseEvent *event) {
   }
 }
 
+void DataViewer::wheelEventHandler(QWheelEvent *event) {
+  if (nullptr == event) {
+    return;
+  }
+
+  int delta = event->angleDelta().y();
+  if (0 == delta) {
+    delta = event->pixelDelta().y();
+  }
+  if (0 == delta) {
+    return;
+  }
+
+  double const zoomFactor{delta > 0 ? 0.8 : 1.25};
+  zoomViewAt(event->position(), zoomFactor, zoomFactor);
+  event->accept();
+}
+
 QRectF DataViewer::mouseToCoord(QRectF const &rect) const {
   // top-left
   QPointF const tl(m_plot->xAxis->pixelToCoord(rect.topLeft().x()), m_plot->yAxis->pixelToCoord(rect.topLeft().y()));
@@ -463,6 +483,27 @@ QRectF DataViewer::getRange() const {
 void DataViewer::setPlotRange(QRectF const &rect) {
   m_plot->xAxis->setRange(rect.left(), rect.right());
   m_plot->yAxis->setRange(rect.bottom(), rect.top());
+}
+
+void DataViewer::zoomViewAt(QPointF const &pixelPos, double mulX, double mulY) {
+  double const xAnchor{m_plot->xAxis->pixelToCoord(pixelPos.x())};
+  double const yAnchor{m_plot->yAxis->pixelToCoord(pixelPos.y())};
+
+  QCPRange const xRange{m_plot->xAxis->range()};
+  QCPRange const yRange{m_plot->yAxis->range()};
+
+  m_currentView.setLeft(xAnchor - (xAnchor - xRange.lower) * mulX);
+  m_currentView.setRight(xAnchor + (xRange.upper - xAnchor) * mulX);
+  m_currentView.setTop(yAnchor + (yRange.upper - yAnchor) * mulY);
+  m_currentView.setBottom(yAnchor - (yAnchor - yRange.lower) * mulY);
+
+  if (DataViewer::ControlMode::LEAD_FULL == m_controlMode) {
+    setControlMode(DataViewer::ControlMode::ZOOM);
+  }
+
+  setPlotRange(m_currentView);
+  updateRange();
+  m_plot->replot();
 }
 
 void DataViewer::setIndexesForLogAxis(QVector<int> const &indexes) {

@@ -21,7 +21,7 @@ AccessLevelWidget::AccessLevelWidget(QWidget *parent) {
 
   m_btns = new QButtonGroup(this);
 
-  m_labels = {tr("Наблюдатель"), tr("Уровень 1"), tr("Уровень 2"), tr("Сервисный инженер")};
+  m_labels = {tr("Observer"), tr("Уровень 1"), tr("Уровень 2"), tr("System Engineer")};
   for (int i{0U}; i < m_labels.size(); ++i) {
     auto *btn = new QRadioButton(m_labels.at(i), this);
     btn->setStyleSheet(utils::readStyleFromFile(":/styles/radioBtnBig.qss")

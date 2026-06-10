@@ -22,6 +22,7 @@ public:
 signals:
   void prepareToCloseApp();
   void switchAppMaximizedClicked();
+  void appearanceChanged();
 };
 
 class SystemWidget : public QWidget {

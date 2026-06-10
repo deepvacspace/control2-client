@@ -67,8 +67,8 @@ App::~App() {
     delete m_mainWindow;
   }
   stopOpc();
-  m_actions.addAction(ActionManager::ActionType::APP, tr("Закрытие приложения"));
-  m_logger.log(Logger::Level::INFO, "bye-bye");
+  m_actions.addAction(ActionManager::ActionType::APP, tr("Application closed")); //Закрытие приложения
+  m_logger.log(Logger::Level::INFO, "Goodbye");
 }
 
 void App::start() {
@@ -132,10 +132,7 @@ void App::runtimeSetups() {
   // Init UI window
   m_mainWindow = new MainWindow(&m_resHolder, m_windowMode);
   connect(m_mainWindow, &MainWindow::aboutClosed, this, &App::stopOpc);
-  m_mainWindow->show();
-  if (!m_windowMode) {
-    m_mainWindow->showFullScreen();
-  }
+  m_mainWindow->showMaximized();
   m_hardStatus.requestStatusEmit(); // to update window
 
   // Create Alarm dialog

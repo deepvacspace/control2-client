@@ -55,6 +55,7 @@ int main(int argc, char *argv[]) {
 
   // Style and sizes
   a.setStyle(QStyleFactory::create("fusion"));
+  a.setPalette(control2::utils::lightPalette());
 
   if (!windowedMode) {
     auto        *screen = a.primaryScreen();

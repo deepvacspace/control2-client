@@ -102,8 +102,8 @@ void MainWindow::initGui() {
 
   connect(systemWidget, &SystemWidget::switchAppMaximizedClicked, this, [this, powerBtn] {
     if (isFullScreen()) {
-      showNormal();
-      powerBtn->setVisible(false);
+      showMaximized();
+      powerBtn->setVisible(!m_windowMode);
     } else {
       showFullScreen();
       powerBtn->setVisible(true);

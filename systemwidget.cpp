@@ -50,6 +50,7 @@ QString systemTabStyleSheet() {
 void prepareSystemTabPage(QWidget *widget) {
   widget->setObjectName(SYSTEM_TAB_PAGE_OBJECT_NAME);
 }
+
 } // namespace
 
 SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
@@ -113,16 +114,26 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   windowBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
   windowBtn->setFixedSize(340 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
 
+  auto *themeBtn = new QPushButton(this);
+  themeBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
+  themeBtn->setFixedSize(340 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+  auto updateThemeBtnText = [themeBtn]() {
+    themeBtn->setText(utils::isDarkMode() ? QStringLiteral("Switch to Light mode") : QStringLiteral("Switch to Dark mode"));
+  };
+  updateThemeBtnText();
+
   {
     auto font = exitBtn->font();
     font.setPointSize(font.pointSize() * 1.5);
     font.setBold(true);
     exitBtn->setFont(font);
     windowBtn->setFont(font);
+    themeBtn->setFont(font);
   }
 
   mainLay->addWidget(exitBtn);
   mainLay->addWidget(windowBtn);
+  mainLay->addWidget(themeBtn);
   mainLay->addStretch();
 
   connect(exitBtn, &QPushButton::clicked, this, [this, resHolder] {
@@ -140,6 +151,12 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   });
 
   connect(windowBtn, &QPushButton::clicked, this, &SysOsWidget::switchAppMaximizedClicked);
+
+  connect(themeBtn, &QPushButton::clicked, this, [this, updateThemeBtnText] {
+    utils::applyDarkMode(!utils::isDarkMode());
+    updateThemeBtnText();
+    emit appearanceChanged();
+  });
 };
 
 SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
@@ -194,6 +211,9 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
 
   connect(osWidget, &SysOsWidget::switchAppMaximizedClicked, this, &SystemWidget::switchAppMaximizedClicked);
   connect(osWidget, &SysOsWidget::prepareToCloseApp, this, &SystemWidget::prepareToCloseApp);
+  connect(osWidget, &SysOsWidget::appearanceChanged, this, [this] {
+    m_tabWidget->setStyleSheet(systemTabStyleSheet());
+  });
 }
 
 void SystemWidget::handleAccessChange(QString const &, AccessManager::AccessLevel newLevel) {

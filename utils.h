@@ -2,6 +2,7 @@
 #define UTILS_H
 #include <QByteArray>
 #include <QJsonDocument>
+#include <QPalette>
 #include <QStringList>
 #include <limits>
 
@@ -24,6 +25,10 @@ QString     timeFromSec(long sec, bool withDay = false);
 QVariantMap parseJsonToVariant(QByteArray const &jsonRawData, QString const &hint);
 double      limitValue(double const min, double const val, double const max);
 QString     readStyleFromFile(QString const &filepath);
+QPalette    lightPalette();
+QPalette    darkPalette();
+bool        isDarkMode();
+void        applyDarkMode(bool enabled);
 int         nLampToLux(int i);
 QByteArray  makePascalString(QString const &str);
 QString     fromPascalString(QByteArray &pstr);

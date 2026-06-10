@@ -1,6 +1,8 @@
 #include "utils.h"
 
 #include <QAbstractButton>
+#include <QApplication>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -101,6 +103,54 @@ QString readStyleFromFile(QString const &filepath) {
     file.close();
   }
   return (text);
+}
+
+QPalette lightPalette() {
+  QPalette palette;
+  palette.setColor(QPalette::Window, QColor(240, 240, 240));
+  palette.setColor(QPalette::WindowText, Qt::black);
+  palette.setColor(QPalette::Base, Qt::white);
+  palette.setColor(QPalette::AlternateBase, QColor(233, 233, 233));
+  palette.setColor(QPalette::ToolTipBase, Qt::white);
+  palette.setColor(QPalette::ToolTipText, Qt::black);
+  palette.setColor(QPalette::Text, Qt::black);
+  palette.setColor(QPalette::Button, QColor(240, 240, 240));
+  palette.setColor(QPalette::ButtonText, Qt::black);
+  palette.setColor(QPalette::BrightText, Qt::white);
+  palette.setColor(QPalette::Link, QColor(0, 0, 255));
+  palette.setColor(QPalette::Highlight, QColor(0, 120, 215));
+  palette.setColor(QPalette::HighlightedText, Qt::white);
+  palette.setColor(QPalette::Disabled, QPalette::Text, QColor(120, 120, 120));
+  palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(120, 120, 120));
+  return palette;
+}
+
+QPalette darkPalette() {
+  QPalette palette;
+  palette.setColor(QPalette::Window, QColor(45, 45, 45));
+  palette.setColor(QPalette::WindowText, Qt::white);
+  palette.setColor(QPalette::Base, QColor(30, 30, 30));
+  palette.setColor(QPalette::AlternateBase, QColor(45, 45, 45));
+  palette.setColor(QPalette::ToolTipBase, Qt::white);
+  palette.setColor(QPalette::ToolTipText, Qt::white);
+  palette.setColor(QPalette::Text, Qt::white);
+  palette.setColor(QPalette::Button, QColor(53, 53, 53));
+  palette.setColor(QPalette::ButtonText, Qt::white);
+  palette.setColor(QPalette::BrightText, Qt::red);
+  palette.setColor(QPalette::Link, QColor(42, 130, 218));
+  palette.setColor(QPalette::Highlight, QColor(42, 130, 218));
+  palette.setColor(QPalette::HighlightedText, Qt::black);
+  palette.setColor(QPalette::Disabled, QPalette::Text, QColor(127, 127, 127));
+  palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(127, 127, 127));
+  return palette;
+}
+
+bool isDarkMode() {
+  return QApplication::palette().color(QPalette::Window).lightness() < 128;
+}
+
+void applyDarkMode(bool enabled) {
+  QApplication::setPalette(enabled ? darkPalette() : lightPalette());
 }
 
 int nLampToLux(int i) {

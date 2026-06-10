@@ -71,6 +71,7 @@ private:
   void updateLegend();
   void initGraphs(uint16_t graphCount);
   void mouseEventHeadler(QMouseEvent *event);
+  void wheelEventHandler(QWheelEvent *event);
 
   void onDataChanged(); // cheap
   void onRenderTick();  // throttled update
@@ -86,6 +87,7 @@ private:
   [[nodiscard]] QRectF getRange() const;
 
   void setPlotRange(QRectF const &rect);
+  void zoomViewAt(QPointF const &pixelPos, double mulX, double mulY);
 
   QCustomPlot                      *m_plot{nullptr};
   std::shared_ptr<DataHolder const> m_data;
