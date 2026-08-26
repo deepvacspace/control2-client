@@ -17,7 +17,7 @@ inline QString const           ACTIONS_FILE("data/event/actions.dat");
 inline QString const           USER_FILE{"users.dat"};
 constexpr inline quint32 const INTERVAL_DURATION{24 * 60 * 60};
 constexpr inline quint32 const UI_BTN_HEIGHT{40};
-constexpr inline quint32 const UI_MENU_BTN_HEIGHT{60};
+constexpr inline quint32 const UI_MENU_BTN_HEIGHT{46};
 
 inline static QStringList const APP_STATE_LIST{
   "IDLE", "CONNECTING", "CONNECTED", "ONLINE", "OFFLINE", "DUMMY", "WAIT_IN_DEBUG", "UNKNOWN=ERROR"};

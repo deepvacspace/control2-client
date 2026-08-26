@@ -49,6 +49,7 @@ void MainWindow::initGui() {
   m_programWidget    = new ProgramWidget(m_resHolder, this);
   m_settingsWidget   = new SettingsWidget(m_resHolder, this);
   m_graphWidget      = new GraphWidget(m_resHolder, this);
+  m_aiWidget         = new AiWidget(m_resHolder, this);
   auto *userWidget   = new UserWidget(m_resHolder->logger, m_resHolder->users, this);
   auto *systemWidget = new SystemWidget(m_resHolder, this);
 
@@ -63,6 +64,7 @@ void MainWindow::initGui() {
   addWidgetToStacked(m_manual, tr("Ручное\nуправление"));
   addWidgetToStacked(m_programWidget, tr("Программное\nуправление"));
   addWidgetToStacked(m_graphWidget, tr("График"));
+  addWidgetToStacked(m_aiWidget, tr("AI"));
   addWidgetToStacked(m_settingsWidget, tr("Настройки"));
   addWidgetToStacked(userWidget, tr("Пользователи"));
   addWidgetToStacked(systemWidget, tr("Система"));
@@ -140,6 +142,7 @@ void MainWindow::handleAccessChange(QString const &, AccessManager::AccessLevel 
   // "Ручное\nуправление"
   // "Программное\nуправление"
   // "График"
+  // "AI"
   // "Настройки"
   // "Пользователи"
   // "Система"
@@ -148,14 +151,14 @@ void MainWindow::handleAccessChange(QString const &, AccessManager::AccessLevel 
   switch (newLevel) {
     case AccessManager::AccessLevel::USER_START_1:
     case AccessManager::AccessLevel::USER_EDIT_2:
-      m_menu->setElementsEnable({1, 1, 1, 1, 0, 1, 1});
+      m_menu->setElementsEnable({1, 1, 1, 1, 1, 0, 1, 1});
       break;
     case AccessManager::AccessLevel::USER_ADMIN_3:
       m_menu->setElementsEnableAll();
       break;
     case AccessManager::AccessLevel::SPECTATOR_0:
     default:
-      m_menu->setElementsEnable({1, 0, 0, 1, 0, 1, 1});
+      m_menu->setElementsEnable({1, 0, 0, 1, 1, 0, 1, 1});
       break;
   }
 }

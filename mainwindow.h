@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 
+#include "aiwidget.h"
 #include "flasher.h"
 #include "graphwidget.h"
 #include "head.h"
@@ -37,6 +38,7 @@ private:
   ProgramWidget  *m_programWidget;
   SettingsWidget *m_settingsWidget;
   GraphWidget    *m_graphWidget;
+  AiWidget       *m_aiWidget;
   Flasher        *m_flasher;
   bool            m_windowMode;
 
