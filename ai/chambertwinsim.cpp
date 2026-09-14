@@ -13,6 +13,50 @@ double limitValue(double low, double x, double high) {
 }
 } // namespace
 
+QVector<float> buildTwinFeatureRow(QStringList const &featureNames, double temp, double tempRef,
+                                    double previousTemp, double dtS, double u, double uP, double uI, double uD,
+                                    double kp, double ki, double kd) {
+  double const error  = tempRef - temp;
+  double const dtSafe = std::max(dtS, 1e-9);
+
+  QVector<float> row(featureNames.size(), 0.0f);
+  for (int i{0}; i < featureNames.size(); ++i) {
+    QString const &name = featureNames.at(i);
+    double          value{0.0};
+    if ("temp" == name) {
+      value = temp;
+    } else if ("temp_ref" == name) {
+      value = tempRef;
+    } else if ("error" == name) {
+      value = error;
+    } else if ("temp_u" == name) {
+      value = u;
+    } else if ("temp_u_p" == name) {
+      value = uP;
+    } else if ("temp_u_i" == name) {
+      value = uI;
+    } else if ("temp_u_d" == name) {
+      value = uD;
+    } else if ("kp" == name) {
+      value = kp;
+    } else if ("ki" == name) {
+      value = ki;
+    } else if ("kd" == name) {
+      value = kd;
+    } else if ("abs_error" == name) {
+      value = std::abs(error);
+    } else if ("dt_s" == name) {
+      value = dtS;
+    } else if ("temp_velocity" == name) {
+      value = (temp - previousTemp) / dtSafe;
+    } else if ("error_velocity" == name) {
+      value = -(temp - previousTemp) / dtSafe;
+    }
+    row[i] = static_cast<float>(value);
+  }
+  return row;
+}
+
 double CodesysDiff::update(double value) {
   double const diffValue = value - prevValue;
   double const filterIn  = limitValue(-5.0, diffValue, 5.0);
@@ -69,50 +113,6 @@ std::array<double, 4> ChamberPid::step(
 
 ChamberTwinSim::ChamberTwinSim(GruOnnxModel *model) : m_model{model} {}
 
-QVector<float> ChamberTwinSim::buildFeatureRow(double temp, double tempRef, double previousTemp, double dtS,
-                                                double u, double uP, double uI, double uD, double kp, double ki,
-                                                double kd) const {
-  double const error   = tempRef - temp;
-  double const dtSafe  = std::max(dtS, 1e-9);
-
-  QVector<float> row(m_nFeatures, 0.0f);
-  for (int i{0}; i < m_featureNames.size() && i < m_nFeatures; ++i) {
-    QString const &name = m_featureNames.at(i);
-    double          value{0.0};
-    if ("temp" == name) {
-      value = temp;
-    } else if ("temp_ref" == name) {
-      value = tempRef;
-    } else if ("error" == name) {
-      value = error;
-    } else if ("temp_u" == name) {
-      value = u;
-    } else if ("temp_u_p" == name) {
-      value = uP;
-    } else if ("temp_u_i" == name) {
-      value = uI;
-    } else if ("temp_u_d" == name) {
-      value = uD;
-    } else if ("kp" == name) {
-      value = kp;
-    } else if ("ki" == name) {
-      value = ki;
-    } else if ("kd" == name) {
-      value = kd;
-    } else if ("abs_error" == name) {
-      value = std::abs(error);
-    } else if ("dt_s" == name) {
-      value = dtS;
-    } else if ("temp_velocity" == name) {
-      value = (temp - previousTemp) / dtSafe;
-    } else if ("error_velocity" == name) {
-      value = -(temp - previousTemp) / dtSafe;
-    }
-    row[i] = static_cast<float>(value);
-  }
-  return row;
-}
-
 bool ChamberTwinSim::begin(SimParams const &params, QString *errorOut) {
   if (nullptr == m_model || !m_model->isLoaded()) {
     if (errorOut) {
@@ -141,8 +141,8 @@ bool ChamberTwinSim::begin(SimParams const &params, QString *errorOut) {
   m_featureWindow.clear();
   m_featureWindow.reserve(m_windowSteps * m_nFeatures);
   for (int i{0}; i < m_windowSteps; ++i) {
-    m_featureWindow += buildFeatureRow(params.startTemp, params.startTemp, params.startTemp, params.dtS, 0.0, 0.0,
-                                        0.0, 0.0, params.kp, params.ki, params.kd);
+    m_featureWindow += buildTwinFeatureRow(m_featureNames, params.startTemp, params.startTemp, params.startTemp,
+                                            params.dtS, 0.0, 0.0, 0.0, 0.0, params.kp, params.ki, params.kd);
   }
 
   m_currentTemp   = params.startTemp;
@@ -184,9 +184,9 @@ bool ChamberTwinSim::stepOnce(TrajectoryPoint &pointOut, QString *errorOut) {
   // predict_next(): patch the last window row with this step's live terms,
   // then run the plant model on the patched window.
   QVector<float>      predictWindow = m_featureWindow;
-  QVector<float> const lastRow      = buildFeatureRow(m_currentTemp, m_params.targetTemp, m_previousTemp,
-                                                        m_params.dtS, u, uP, uI, uD, m_params.kp, m_params.ki,
-                                                        m_params.kd);
+  QVector<float> const lastRow      = buildTwinFeatureRow(m_featureNames, m_currentTemp, m_params.targetTemp,
+                                                            m_previousTemp, m_params.dtS, u, uP, uI, uD, m_params.kp,
+                                                            m_params.ki, m_params.kd);
   std::copy(lastRow.begin(), lastRow.end(), predictWindow.end() - m_nFeatures);
 
   float predDelta{0.0f};
@@ -214,8 +214,8 @@ bool ChamberTwinSim::stepOnce(TrajectoryPoint &pointOut, QString *errorOut) {
   // Roll the window forward: drop the oldest row, append the realized
   // next-step row (matches np.roll(pred_window, -1) then overwriting [-1]).
   QVector<float> const nextRow =
-    buildFeatureRow(nextTemp, m_params.targetTemp, m_currentTemp, m_params.dtS, u, uP, uI, uD, m_params.kp,
-                     m_params.ki, m_params.kd);
+    buildTwinFeatureRow(m_featureNames, nextTemp, m_params.targetTemp, m_currentTemp, m_params.dtS, u, uP, uI, uD,
+                         m_params.kp, m_params.ki, m_params.kd);
   m_featureWindow = predictWindow.mid(m_nFeatures) + nextRow;
 
   pointOut.elapsedS  = (m_step + 1) * m_params.dtS;

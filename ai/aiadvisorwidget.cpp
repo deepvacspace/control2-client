@@ -14,10 +14,12 @@
 #include <cmath>
 #include <limits>
 
+#include "actionmanager.h"
 #include "confdialog.h"
 #include "constants.h"
 #include "gatetcp.h"
 #include "lineeditnum.h"
+#include "programmodel.h"
 #include "qcustomplot.h"
 #include "settingsmanager.h"
 #include "settingstransformer.h"
@@ -126,28 +128,29 @@ QWidget *AiAdvisorWidget::buildFormCard() {
     return edit;
   };
 
-  m_durationEdit = addField(0, tr("Duration, s"), 1, 100000, 0, ai::DEFAULT_DURATION_S);
-  m_dtEdit       = addField(1, tr("Step, s (for comparison)"), 0.1, 60, 2, ai::DEFAULT_DT_S);
+  m_durationEdit   = addField(0, tr("Duration, s"), 1, 100000, 0, ai::DEFAULT_DURATION_S);
+  m_dtEdit         = addField(1, tr("Step, s (for comparison)"), 0.1, 60, 2, ai::DEFAULT_DT_S);
+  m_targetTempEdit = addField(2, tr("Target temp, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, ai::DEFAULT_TARGET_TEMP);
 
   m_runBtn = new QPushButton(tr("Run experiment"), frame);
   m_runBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
-  lay->addWidget(m_runBtn, 1, 2);
+  lay->addWidget(m_runBtn, 1, 3);
 
   m_stopBtn = new QPushButton(tr("Stop"), frame);
   m_stopBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
   m_stopBtn->setStyleSheet("QPushButton { background-color: #c0392b; color: white; }");
   m_stopBtn->setVisible(false);
-  lay->addWidget(m_stopBtn, 1, 3);
+  lay->addWidget(m_stopBtn, 1, 4);
 
   m_statusLabel = new QLabel(frame);
   m_statusLabel->setWordWrap(true);
-  lay->addWidget(m_statusLabel, 1, 4);
+  lay->addWidget(m_statusLabel, 1, 5);
 
   m_progressBar = new QProgressBar(frame);
   m_progressBar->setVisible(false);
-  lay->addWidget(m_progressBar, 2, 0, 1, 5);
+  lay->addWidget(m_progressBar, 2, 0, 1, 6);
 
-  lay->setColumnStretch(4, 1);
+  lay->setColumnStretch(5, 1);
 
   connect(m_runBtn, &QPushButton::clicked, this, &AiAdvisorWidget::runExperiment);
   connect(m_stopBtn, &QPushButton::clicked, this, [this] {
@@ -312,12 +315,21 @@ bool AiAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd) {
     return false;
   }
 
+  int           activeIdx{-1};
   SystemValue *idxVal = m_resHolder->states->getSysValue("temp_pid_idx");
-  if (!idxVal) {
-    return false;
+  if (idxVal && std::isfinite(idxVal->getValue())) {
+    activeIdx = static_cast<int>(std::lround(idxVal->getValue()));
+  } else {
+    // temp_pid_idx isn't populated until the chamber is actually running
+    // (e.g. this is the pre-run write, before startChamberJob()) -- derive
+    // which band the starting temperature falls into from the same
+    // min/max/points the PLC itself uses, instead of a stale or NaN index.
+    double const bandMin = pidMap.value("min").toDouble();
+    double const bandMax = pidMap.value("max").toDouble();
+    double const range   = std::max(bandMax - bandMin, 1e-9);
+    activeIdx             = static_cast<int>(std::floor((m_startTemp - bandMin) / range * points));
   }
-  int activeIdx = static_cast<int>(std::lround(idxVal->getValue()));
-  activeIdx     = std::clamp(activeIdx, 0, static_cast<int>(points) - 1);
+  activeIdx = std::clamp(activeIdx, 0, static_cast<int>(points) - 1);
 
   pList[activeIdx] = kp;
   iList[activeIdx] = ki;
@@ -337,8 +349,64 @@ bool AiAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd) {
   newPlcSettings["pids"]     = newPidsList;
   m_resHolder->settings->setPlcSettings(newPlcSettings);
 
+  // The chamber echoes back its settings after any write; suppress the
+  // "already identical" flag so that expected echo doesn't pop the
+  // Settings-page's "Settings match" confirmation dialog mid-experiment.
+  if (m_resHolder->status) {
+    m_resHolder->status->setSettingsListIdentical(false);
+  }
   m_resHolder->tcpGate->sendSettingMap(flatMap);
   return true;
+}
+
+bool AiAdvisorWidget::startChamberJob(double targetTemp) {
+  constexpr quint32 LONG_TIME{100 * 3600 - 1}; // matches Manual::sendProgram(); comfortably exceeds any AI run duration
+
+  QVariantList const controlParamsList = m_resHolder->settings->settingsMap().value("control_params").toList();
+  if (controlParamsList.isEmpty()) {
+    return false;
+  }
+
+  ProgramModel model(controlParamsList, ProgramModel::ProgType::SETPOINT);
+  QStringList const paramOrder = model.getParamListOrder();
+  int const         tempIdx    = paramOrder.indexOf("temp");
+  if (tempIdx < 0) {
+    return false;
+  }
+
+  QList<QStandardItem *> column;
+  for (int i{0}; i < paramOrder.size(); ++i) {
+    column.append(new QStandardItem());
+  }
+  model.getStandardModel()->insertColumn(0, column);
+
+  quint32 const flags = 1u << static_cast<quint32>(tempIdx);
+
+  for (QString const &name : paramOrder) {
+    if ("duration" == name) {
+      model.setParamValue(0, name, LONG_TIME);
+    } else if ("flags" == name) {
+      model.setParamValue(0, name, flags);
+    } else if ("temp" == name) {
+      model.setParamValue(0, name, targetTemp);
+    } else {
+      SystemValue *live = m_resHolder->states->getSysValue(name);
+      model.setParamValue(0, name, live ? live->getValue() : 0.0);
+    }
+  }
+
+  m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, model.makeSendData());
+  if (m_resHolder->actions) {
+    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("AI Advisor started the chamber"));
+  }
+  return true;
+}
+
+void AiAdvisorWidget::stopChamberJob() {
+  m_resHolder->tcpGate->sendTextCmd("stop");
+  if (m_resHolder->actions) {
+    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("AI Advisor stopped the chamber"));
+  }
 }
 
 void AiAdvisorWidget::captureManualPid() {
@@ -363,12 +431,21 @@ bool AiAdvisorWidget::lookupManualPidForActiveBand(double &kp, double &ki, doubl
     return false;
   }
 
+  int           activeIdx{-1};
   SystemValue *idxVal = m_resHolder->states->getSysValue("temp_pid_idx");
-  if (!idxVal) {
-    return false;
+  if (idxVal && std::isfinite(idxVal->getValue())) {
+    activeIdx = static_cast<int>(std::lround(idxVal->getValue()));
+  } else {
+    SystemValue *tempVal = m_resHolder->states->getSysValue("temp");
+    QVariantMap const pidMap =
+      m_resHolder->settings->settingsMap().value("plc_settings").toMap().value("pids").toList().value(0).toMap();
+    double const bandMin = pidMap.value("min").toDouble();
+    double const bandMax = pidMap.value("max").toDouble();
+    double const range   = std::max(bandMax - bandMin, 1e-9);
+    double const liveTemp = (tempVal && std::isfinite(tempVal->getValue())) ? tempVal->getValue() : m_startTemp;
+    activeIdx              = static_cast<int>(std::floor((liveTemp - bandMin) / range * points));
   }
-  int activeIdx = static_cast<int>(std::lround(idxVal->getValue()));
-  activeIdx     = std::clamp(activeIdx, 0, points - 1);
+  activeIdx = std::clamp(activeIdx, 0, points - 1);
 
   bool okP{false}, okI{false}, okD{false};
   kp = m_manualPList.at(activeIdx).toDouble(&okP);
@@ -405,9 +482,8 @@ void AiAdvisorWidget::checkOvershootAndOscillation(ai::TrajectoryPoint const &po
     return;
   }
 
-  // Same direction convention as computeActualMetrics(): overshoot is
-  // deviation past the setpoint on the wrong side, inferred from whether
-  // the run started above or below the live target.
+  // Overshoot is deviation past the setpoint on the wrong side, inferred
+  // from whether the run started above or below the live target.
   double overshoot{0.0};
   if (point.tempRef <= m_startTemp) {
     overshoot = std::max(point.tempRef - point.temp, 0.0);
@@ -498,7 +574,7 @@ void AiAdvisorWidget::onTwinCheckTick() {
 
   double const temp    = tempVal->getValue();
   double const tempRef = tempRefVal->getValue();
-  double const dtS     = m_currentParams.dtS; // matches the twin-check timer's fixed cadence
+  double const dtS     = m_currentParams.dtS; // fixed for the run, independent of the live input field
 
   int const windowSteps = m_model.windowSteps();
   int const nFeatures   = m_model.featureNames().size();
@@ -576,15 +652,23 @@ void AiAdvisorWidget::runExperiment() {
     return;
   }
 
-  SystemValue *tempVal    = m_resHolder->states->getSysValue("temp");
-  SystemValue *tempRefVal = m_resHolder->states->getSysValue("temp_ref");
-  if (!tempVal || !tempRefVal) {
+  SystemValue *tempVal = m_resHolder->states->getSysValue("temp");
+  if (!tempVal) {
     setStatusText(tr("Required chamber telemetry not available"), true);
     return;
   }
 
-  m_startTemp       = tempVal->getValue();
-  m_targetTemp       = tempRefVal->getValue();
+  m_startTemp = tempVal->getValue();
+  m_targetTemp = m_targetTempEdit->text().toDouble();
+  if (!std::isfinite(m_startTemp) || !std::isfinite(m_targetTemp)) {
+    setStatusText(tr("Chamber temperature reading is invalid - cannot run"), true);
+    return;
+  }
+
+  if (!startChamberJob(m_targetTemp)) {
+    setStatusText(tr("Failed to start the chamber"), true);
+    return;
+  }
   m_targetDurationS = durationS;
 
   m_currentParams             = ai::SimParams{};
@@ -754,6 +838,7 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   m_progressTimer.stop();
   m_shadowPidTimer.stop();
   m_twinCheckTimer.stop();
+  stopChamberJob();
 
   m_runBtn->setEnabled(true);
   m_stopBtn->setVisible(false);

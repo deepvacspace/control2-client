@@ -9,10 +9,11 @@ class QTabWidget;
 
 namespace control2 {
 
-// "AI" page. A tabbed container, matching the tabbing pattern used
-// elsewhere in the app (see SystemWidget): "Simulator" (default) hosts the
-// GRU digital-twin closed-loop simulator (AiSimulatorWidget), "Advisor" is
-// a placeholder for the future PID advisor (AiAdvisorWidget).
+// "AI" page. A tabbed container: "Simulator" (default) hosts the GRU
+// digital-twin closed-loop simulator (AiSimulatorWidget), "Advisor" runs
+// the online PPO advisor against the real chamber (AiAdvisorWidget), and
+// "Offline advisor" pre-tunes a fixed PID via CEM search before each real
+// run (OfflineAdvisorWidget).
 class AiWidget : public QWidget {
   Q_OBJECT
 public:
