@@ -36,6 +36,15 @@ QString formatPid(double kp, double ki, double kd) {
   return QStringLiteral("Kp=%1  Ki=%2  Kd=%3")
     .arg(formatNumber(kp, 1), formatNumber(ki, 1), formatNumber(kd, 1));
 }
+
+constexpr double SAFETY_MAX_OVERSHOOT_C{1.0};
+constexpr int    SAFETY_MAX_SETPOINT_CROSSINGS{3};
+constexpr double SAFETY_CROSSING_DEADBAND_C{0.2};
+// ~4x the GRU's held-out one-step RMSE (foresight validation_rollout_2026-09-02:
+// test_one_step.rmse_delta_t1 = 0.056 degC on unseen PID configs).
+constexpr double SAFETY_PREDICTION_DRIFT_C{0.2};
+constexpr int    SAFETY_PREDICTION_DRIFT_MIN_SAMPLES{3};
+constexpr int    SAFETY_PREDICTION_DRIFT_WINDOW{5};
 } // namespace
 
 AiAdvisorWidget::AiAdvisorWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
@@ -45,6 +54,7 @@ AiAdvisorWidget::AiAdvisorWidget(ResHolder *resHolder, QWidget *parent) : QWidge
   connect(&m_decisionTimer, &QTimer::timeout, this, &AiAdvisorWidget::onDecisionTimerTick);
   connect(&m_progressTimer, &QTimer::timeout, this, &AiAdvisorWidget::onProgressTick);
   connect(&m_shadowPidTimer, &QTimer::timeout, this, &AiAdvisorWidget::onShadowPidTick);
+  connect(&m_twinCheckTimer, &QTimer::timeout, this, &AiAdvisorWidget::onTwinCheckTick);
   connect(m_resHolder->states, &SystemValueList::ValuesUpdated, this, &AiAdvisorWidget::onTelemetryUpdated);
   connect(m_resHolder->status, &StatusManager::appStateChanged, this, &AiAdvisorWidget::onAppStateChanged);
   connect(m_resHolder->tcpGate, &GateTcp::disconnected, this, &AiAdvisorWidget::onGateDisconnected);
@@ -58,6 +68,7 @@ AiAdvisorWidget::~AiAdvisorWidget() {
     m_decisionTimer.stop();
     m_progressTimer.stop();
     m_shadowPidTimer.stop();
+    m_twinCheckTimer.stop();
   }
   if (m_comparisonWorker) {
     m_comparisonWorker->wait();
@@ -330,6 +341,221 @@ bool AiAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd) {
   return true;
 }
 
+void AiAdvisorWidget::captureManualPid() {
+  QVariantMap const plcSettings = m_resHolder->settings->settingsMap().value("plc_settings").toMap();
+  QVariantList const pidsList   = plcSettings.value("pids").toList();
+  if (pidsList.isEmpty()) {
+    m_manualPList.clear();
+    m_manualIList.clear();
+    m_manualDList.clear();
+    return;
+  }
+
+  QVariantMap const pidMap = pidsList.first().toMap();
+  m_manualPList            = pidMap.value("p").toList();
+  m_manualIList            = pidMap.value("i").toList();
+  m_manualDList            = pidMap.value("d").toList();
+}
+
+bool AiAdvisorWidget::lookupManualPidForActiveBand(double &kp, double &ki, double &kd) const {
+  int const points = m_manualPList.size();
+  if ((0 == points) || (m_manualIList.size() != points) || (m_manualDList.size() != points)) {
+    return false;
+  }
+
+  SystemValue *idxVal = m_resHolder->states->getSysValue("temp_pid_idx");
+  if (!idxVal) {
+    return false;
+  }
+  int activeIdx = static_cast<int>(std::lround(idxVal->getValue()));
+  activeIdx     = std::clamp(activeIdx, 0, points - 1);
+
+  bool okP{false}, okI{false}, okD{false};
+  kp = m_manualPList.at(activeIdx).toDouble(&okP);
+  ki = m_manualIList.at(activeIdx).toDouble(&okI);
+  kd = m_manualDList.at(activeIdx).toDouble(&okD);
+  return okP && okI && okD;
+}
+
+void AiAdvisorWidget::revertToManualPid(QString const &reason) {
+  if (m_safetyTripped) {
+    return;
+  }
+
+  double kp{0.0}, ki{0.0}, kd{0.0};
+  if (!lookupManualPidForActiveBand(kp, ki, kd) || !writePidToActiveBand(kp, ki, kd)) {
+    stopExperiment(
+      true, tr("Safety interlock triggered (%1) but manual PID could not be restored - experiment aborted").arg(reason));
+    return;
+  }
+
+  m_safetyTripped = true;
+  m_safetyReason  = reason;
+
+  m_decisionTimer.stop();
+  m_shadowPidTimer.stop();
+  m_twinCheckTimer.stop();
+
+  m_decisions.push_back({m_runClock.elapsed() / 1000.0, kp, ki, kd});
+  m_pidLabel->setText(tr("Safety interlock: reverted to manual PID %1").arg(formatPid(kp, ki, kd)));
+}
+
+void AiAdvisorWidget::checkOvershootAndOscillation(ai::TrajectoryPoint const &point) {
+  if (m_safetyTripped) {
+    return;
+  }
+
+  // Same direction convention as computeActualMetrics(): overshoot is
+  // deviation past the setpoint on the wrong side, inferred from whether
+  // the run started above or below the live target.
+  double overshoot{0.0};
+  if (point.tempRef <= m_startTemp) {
+    overshoot = std::max(point.tempRef - point.temp, 0.0);
+  } else {
+    overshoot = std::max(point.temp - point.tempRef, 0.0);
+  }
+  if (overshoot > SAFETY_MAX_OVERSHOOT_C) {
+    revertToManualPid(tr("overshoot of %1 degC exceeds the %2 degC limit")
+                         .arg(formatNumber(overshoot, 2), formatNumber(SAFETY_MAX_OVERSHOOT_C, 1)));
+    return;
+  }
+
+  if (std::abs(point.error) > SAFETY_CROSSING_DEADBAND_C) {
+    int const sign = (point.error > 0.0) ? 1 : -1;
+    if ((0 != m_lastErrorSign) && (sign != m_lastErrorSign)) {
+      ++m_setpointCrossings;
+      if (m_setpointCrossings >= SAFETY_MAX_SETPOINT_CROSSINGS) {
+        revertToManualPid(tr("setpoint crossed %1 times (oscillating)").arg(m_setpointCrossings));
+        return;
+      }
+    }
+    m_lastErrorSign = sign;
+  }
+}
+
+QVector<float> AiAdvisorWidget::buildLiveFeatureRow(double temp, double tempRef, double previousTemp, double dtS,
+                                                     double u, double uP, double uI, double uD, double kp, double ki,
+                                                     double kd) const {
+  QStringList const &names  = m_model.featureNames();
+  double const       error  = tempRef - temp;
+  double const       dtSafe = std::max(dtS, 1e-9);
+
+  QVector<float> row(names.size(), 0.0f);
+  for (int i{0}; i < names.size(); ++i) {
+    QString const &name = names.at(i);
+    double          value{0.0};
+    if ("temp" == name) {
+      value = temp;
+    } else if ("temp_ref" == name) {
+      value = tempRef;
+    } else if ("error" == name) {
+      value = error;
+    } else if ("temp_u" == name) {
+      value = u;
+    } else if ("temp_u_p" == name) {
+      value = uP;
+    } else if ("temp_u_i" == name) {
+      value = uI;
+    } else if ("temp_u_d" == name) {
+      value = uD;
+    } else if ("kp" == name) {
+      value = kp;
+    } else if ("ki" == name) {
+      value = ki;
+    } else if ("kd" == name) {
+      value = kd;
+    } else if ("abs_error" == name) {
+      value = std::abs(error);
+    } else if ("dt_s" == name) {
+      value = dtS;
+    } else if ("temp_velocity" == name) {
+      value = (temp - previousTemp) / dtSafe;
+    } else if ("error_velocity" == name) {
+      value = -(temp - previousTemp) / dtSafe;
+    }
+    row[i] = static_cast<float>(value);
+  }
+  return row;
+}
+
+void AiAdvisorWidget::onTwinCheckTick() {
+  if (!m_running || m_safetyTripped || !m_model.isLoaded()) {
+    return;
+  }
+
+  SystemValue *tempVal    = m_resHolder->states->getSysValue("temp");
+  SystemValue *tempRefVal = m_resHolder->states->getSysValue("temp_ref");
+  SystemValue *kpVal      = m_resHolder->states->getSysValue("temp_kp");
+  SystemValue *kiVal      = m_resHolder->states->getSysValue("temp_ki");
+  SystemValue *kdVal      = m_resHolder->states->getSysValue("temp_kd");
+  SystemValue *uVal       = m_resHolder->states->getSysValue("temp_u");
+  SystemValue *uPVal      = m_resHolder->states->getSysValue("temp_u_p");
+  SystemValue *uIVal      = m_resHolder->states->getSysValue("temp_u_i");
+  SystemValue *uDVal      = m_resHolder->states->getSysValue("temp_u_d");
+  if (!tempVal || !tempRefVal || !kpVal || !kiVal || !kdVal) {
+    return;
+  }
+
+  double const temp    = tempVal->getValue();
+  double const tempRef = tempRefVal->getValue();
+  double const dtS     = m_currentParams.dtS; // matches the twin-check timer's fixed cadence
+
+  int const windowSteps = m_model.windowSteps();
+  int const nFeatures   = m_model.featureNames().size();
+  if ((windowSteps <= 0) || (nFeatures <= 0)) {
+    return;
+  }
+
+  // Score the prediction made on the previous tick (for "now") against
+  // what actually happened, before folding this tick's real row in.
+  if (m_liveWindowReady && m_hasPendingPrediction) {
+    double const predictionError = std::abs(temp - m_pendingPredictedTemp);
+    m_recentPredictionErrors.push_back(predictionError);
+    while (m_recentPredictionErrors.size() > SAFETY_PREDICTION_DRIFT_WINDOW) {
+      m_recentPredictionErrors.removeFirst();
+    }
+    if (m_recentPredictionErrors.size() >= SAFETY_PREDICTION_DRIFT_MIN_SAMPLES) {
+      double sum{0.0};
+      for (double const e : m_recentPredictionErrors) {
+        sum += e;
+      }
+      double const rollingMae = sum / m_recentPredictionErrors.size();
+      if (rollingMae > SAFETY_PREDICTION_DRIFT_C) {
+        revertToManualPid(tr("digital twin prediction drifted %1 degC from reality (limit %2 degC)")
+                             .arg(formatNumber(rollingMae, 2), formatNumber(SAFETY_PREDICTION_DRIFT_C, 2)));
+        return;
+      }
+    }
+  }
+
+  QVector<float> const row =
+    buildLiveFeatureRow(temp, tempRef, m_liveWindowReady ? m_liveWindowPreviousTemp : temp, dtS,
+                         uVal ? uVal->getValue() : 0.0, uPVal ? uPVal->getValue() : 0.0,
+                         uIVal ? uIVal->getValue() : 0.0, uDVal ? uDVal->getValue() : 0.0, kpVal->getValue(),
+                         kiVal->getValue(), kdVal->getValue());
+
+  if (!m_liveWindowReady) {
+    m_liveFeatureWindow.clear();
+    m_liveFeatureWindow.reserve(windowSteps * nFeatures);
+    for (int i{0}; i < windowSteps; ++i) {
+      m_liveFeatureWindow += row;
+    }
+    m_liveWindowReady = true;
+  } else {
+    m_liveFeatureWindow = m_liveFeatureWindow.mid(nFeatures) + row;
+  }
+
+  float predDelta{0.0f};
+  if (m_model.predictDeltaT1(m_liveFeatureWindow, predDelta)) {
+    m_pendingPredictedTemp = temp + static_cast<double>(predDelta);
+    m_hasPendingPrediction = true;
+  } else {
+    m_hasPendingPrediction = false;
+  }
+
+  m_liveWindowPreviousTemp = temp;
+}
+
 void AiAdvisorWidget::runExperiment() {
   if (m_running) {
     return;
@@ -392,6 +618,17 @@ void AiAdvisorWidget::runExperiment() {
   m_tempAtLastDecision         = m_startTemp;
   m_realSecondsAtLastDecision = 0.0;
 
+  m_safetyTripped = false;
+  m_safetyReason.clear();
+  m_setpointCrossings = 0;
+  m_lastErrorSign      = 0;
+  m_liveFeatureWindow.clear();
+  m_liveWindowReady      = false;
+  m_hasPendingPrediction = false;
+  m_pendingPredictedTemp = 0.0;
+  m_recentPredictionErrors.clear();
+  captureManualPid();
+
   m_running = true;
   m_runClock.start();
 
@@ -407,6 +644,7 @@ void AiAdvisorWidget::runExperiment() {
   m_decisionTimer.start(static_cast<int>(holdS * 1000.0));
   m_progressTimer.start(1000);
   m_shadowPidTimer.start(static_cast<int>(ai::PID_PERIOD_S * 1000.0));
+  m_twinCheckTimer.start(static_cast<int>(std::max(dtS, 0.1) * 1000.0));
 }
 
 void AiAdvisorWidget::onDecisionTimerTick() {
@@ -442,9 +680,17 @@ void AiAdvisorWidget::onProgressTick() {
   }
 
   m_progressBar->setValue(static_cast<int>(elapsedS));
-  setStatusText(
-    tr("Running real experiment: %1 / %2 s elapsed").arg(static_cast<int>(elapsedS)).arg(static_cast<int>(m_targetDurationS)),
-    false);
+  if (m_safetyTripped) {
+    setStatusText(tr("SAFETY INTERLOCK: %1 - AI suspended, continuing on manual PID (%2 / %3 s elapsed)")
+                    .arg(m_safetyReason)
+                    .arg(static_cast<int>(elapsedS))
+                    .arg(static_cast<int>(m_targetDurationS)),
+                  true);
+  } else {
+    setStatusText(
+      tr("Running real experiment: %1 / %2 s elapsed").arg(static_cast<int>(elapsedS)).arg(static_cast<int>(m_targetDurationS)),
+      false);
+  }
 }
 
 void AiAdvisorWidget::onTelemetryUpdated() {
@@ -475,6 +721,7 @@ void AiAdvisorWidget::onTelemetryUpdated() {
 
   m_actualTrajectory.push_back(point);
   redrawActualChart();
+  checkOvershootAndOscillation(point);
 }
 
 void AiAdvisorWidget::onAppStateChanged(StatusManager::AppState state) {
@@ -506,6 +753,7 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   m_decisionTimer.stop();
   m_progressTimer.stop();
   m_shadowPidTimer.stop();
+  m_twinCheckTimer.stop();
 
   m_runBtn->setEnabled(true);
   m_stopBtn->setVisible(false);
@@ -521,7 +769,11 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   }
 
   setMetricsColumn(1, computeActualMetrics());
-  setStatusText(tr("Actual run finished"), false);
+  if (m_safetyTripped) {
+    setStatusText(tr("Actual run finished - safety interlock was triggered: %1").arg(m_safetyReason), true);
+  } else {
+    setStatusText(tr("Actual run finished"), false);
+  }
   promptForComparison();
 }
 

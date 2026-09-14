@@ -4,6 +4,8 @@
 #include <QElapsedTimer>
 #include <QLabel>
 #include <QTimer>
+#include <QVariant>
+#include <QVector>
 #include <QWidget>
 #include <array>
 
@@ -43,6 +45,14 @@ class LineEditNum;
 // advise_pid.py --mode suggest). See advisorexperiment.h for that part,
 // which is unchanged -- still simulation-only, now compared against the
 // real run instead of a simulated one.
+//
+// A safety interlock runs alongside the advisor for the whole run: it
+// watches live telemetry for excess overshoot, setpoint oscillation, and a
+// live one-step-ahead digital-twin prediction that has drifted too far from
+// reality. The first condition to trip reverts the active gain-scheduled
+// band to its pre-experiment ("manual") PID, raises a persistent warning,
+// and stops trusting further advisor decisions -- the run itself keeps
+// going to completion on that fixed PID.
 class AiAdvisorWidget : public QWidget {
   Q_OBJECT
 public:
@@ -64,6 +74,13 @@ private:
   void onAlarmReceived(quint32 alarmCode);
   bool writePidToActiveBand(double kp, double ki, double kd);
   std::array<double, 8> buildObservation(int decisionIdx) const;
+  void captureManualPid();
+  bool lookupManualPidForActiveBand(double &kp, double &ki, double &kd) const;
+  void revertToManualPid(QString const &reason);
+  void checkOvershootAndOscillation(ai::TrajectoryPoint const &point);
+  void onTwinCheckTick();
+  QVector<float> buildLiveFeatureRow(double temp, double tempRef, double previousTemp, double dtS, double u,
+                                      double uP, double uI, double uD, double kp, double ki, double kd) const;
   void promptForComparison();
   void runComparison();
   void onComparisonProgress(int done, int total);
@@ -98,7 +115,28 @@ private:
   QTimer        m_decisionTimer;  // real wall-clock, fires every mpc_hold_s
   QTimer        m_progressTimer;  // ~1s UI refresh / duration-elapsed check
   QTimer        m_shadowPidTimer; // real wall-clock, fires every pid_period_s
+  QTimer        m_twinCheckTimer; // real wall-clock, fires every dt_s -- live prediction-drift check
   QElapsedTimer m_runClock;
+
+  // Safety interlock: reverts to the manual PID for the active band and
+  // stops trusting the advisor for the rest of the run on the first
+  // trigger. See the class comment above.
+  bool         m_safetyTripped{false};
+  QString      m_safetyReason;
+  QVariantList m_manualPList; // pre-experiment plc_settings.pids[0].p/i/d,
+  QVariantList m_manualIList; // captured once in captureManualPid() before
+  QVariantList m_manualDList; // the advisor writes anything.
+
+  int m_setpointCrossings{0};
+  int m_lastErrorSign{0}; // sign of the last error outside the deadband, 0 = none yet
+
+  QVector<float> m_liveFeatureWindow; // rolling GRU input window built from live telemetry
+  bool           m_liveWindowReady{false};
+  double         m_liveWindowPreviousTemp{0.0};
+
+  bool            m_hasPendingPrediction{false};
+  double          m_pendingPredictedTemp{0.0};
+  QVector<double> m_recentPredictionErrors; // rolling one-step |predicted - actual|
 
   // Parallel shadow simulation of the real CODESYS ChamberPID/CodesysDiff
   // blocks, stepped forward with the chamber's own real measured
