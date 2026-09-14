@@ -7,6 +7,7 @@
 
 #include "aiadvisorwidget.h"
 #include "aisimulatorwidget.h"
+#include "offlineadvisorwidget.h"
 #include "utils.h"
 
 namespace control2 {
@@ -58,6 +59,10 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   auto *advisorWidget = new AiAdvisorWidget(resHolder, this);
   prepareAiTabPage(advisorWidget);
   m_tabWidget->addTab(advisorWidget, tr("Advisor"));
+
+  auto *offlineAdvisorWidget = new OfflineAdvisorWidget(resHolder, this);
+  prepareAiTabPage(offlineAdvisorWidget);
+  m_tabWidget->addTab(offlineAdvisorWidget, tr("Offline advisor"));
 }
 
 } // namespace control2

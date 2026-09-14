@@ -2,12 +2,19 @@
 #define CHAMBERTWINSIM_H
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <array>
 
 #include "gruonnxmodel.h"
 
 namespace control2::ai {
+
+// Maps the GRU plant model's named input features to their live/simulated
+// values for one timestep row.
+QVector<float> buildTwinFeatureRow(QStringList const &featureNames, double temp, double tempRef,
+                                    double previousTemp, double dtS, double u, double uP, double uI, double uD,
+                                    double kp, double ki, double kd);
 
 constexpr double U_MIN{-1.0};
 constexpr double U_MAX{1.0};
@@ -140,9 +147,6 @@ public:
   QVector<TrajectoryPoint> const &trajectory() const;
 
 private:
-  QVector<float> buildFeatureRow(double temp, double tempRef, double previousTemp, double dtS, double u, double uP,
-                                  double uI, double uD, double kp, double ki, double kd) const;
-
   GruOnnxModel  *m_model;
   SimParams      m_params;
   ChamberPid     m_pid;

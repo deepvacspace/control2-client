@@ -26,7 +26,11 @@ class LineEditNum;
 
 // Advisor tab of the AI page.
 //
-// Run experiment drives the REAL chamber: the trained PPO advisor
+// Run experiment starts the chamber itself (a single-interval SETPOINT
+// job targeting the user-entered temperature, the same JOB message
+// Manual/Program control's Start button sends) and stops it (the same
+// "stop" command their Stop button sends) when the run ends, is stopped,
+// or aborts. Once started, the trained PPO advisor
 // re-decides the PID triplet every mpc_hold_s of real wall-clock time from
 // live telemetry (ResHolder::states), and writes it to the currently-active
 // band of the chamber's gain-scheduled PID table only (settings.json's
@@ -73,6 +77,8 @@ private:
   void onGateDisconnected();
   void onAlarmReceived(quint32 alarmCode);
   bool writePidToActiveBand(double kp, double ki, double kd);
+  bool startChamberJob(double targetTemp);
+  void stopChamberJob();
   std::array<double, 8> buildObservation(int decisionIdx) const;
   void captureManualPid();
   bool lookupManualPidForActiveBand(double &kp, double &ki, double &kd) const;
@@ -101,6 +107,7 @@ private:
 
   LineEditNum *m_durationEdit{nullptr};
   LineEditNum *m_dtEdit{nullptr};
+  LineEditNum *m_targetTempEdit{nullptr};
 
   QPushButton  *m_runBtn{nullptr};
   QPushButton  *m_stopBtn{nullptr};
@@ -118,14 +125,11 @@ private:
   QTimer        m_twinCheckTimer; // real wall-clock, fires every dt_s -- live prediction-drift check
   QElapsedTimer m_runClock;
 
-  // Safety interlock: reverts to the manual PID for the active band and
-  // stops trusting the advisor for the rest of the run on the first
-  // trigger. See the class comment above.
   bool         m_safetyTripped{false};
   QString      m_safetyReason;
-  QVariantList m_manualPList; // pre-experiment plc_settings.pids[0].p/i/d,
-  QVariantList m_manualIList; // captured once in captureManualPid() before
-  QVariantList m_manualDList; // the advisor writes anything.
+  QVariantList m_manualPList; // pre-experiment plc_settings.pids[0].p/i/d
+  QVariantList m_manualIList; // captured before the advisor writes anything
+  QVariantList m_manualDList;
 
   int m_setpointCrossings{0};
   int m_lastErrorSign{0}; // sign of the last error outside the deadband, 0 = none yet
@@ -146,7 +150,7 @@ private:
   ai::ChamberPid  m_shadowPid;
   ai::CodesysDiff m_shadowDiff;
   double        m_targetDurationS{0.0};
-  double        m_targetTemp{0.0}; // live temp_ref captured at run start
+  double        m_targetTemp{0.0}; // user-entered setpoint, used to start the chamber job (temp_ref reads NaN while idle)
   double        m_startTemp{0.0};  // live temp captured at run start
   double        m_tempAtLastDecision{0.0};
   double        m_realSecondsAtLastDecision{0.0};

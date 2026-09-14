@@ -1,5 +1,7 @@
 #include "gruonnxmodel.h"
 
+#include <algorithm>
+
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -136,6 +138,48 @@ bool GruOnnxModel::predictDeltaT1(QVector<float> const &windowFlat, float &delta
 #else
   Q_UNUSED(windowFlat);
   deltaOut = 0.0f;
+  m_status = QObject::tr("ONNX Runtime was not linked at build time");
+  return false;
+#endif
+}
+
+bool GruOnnxModel::predictDeltaT1Batch(QVector<float> const &windowsFlat, int batchSize, QVector<float> &deltaOut) {
+#ifdef CONTROL2_HAVE_ONNXRUNTIME
+  if (!m_loaded || !m_impl->session) {
+    m_status = QObject::tr("Model not loaded");
+    return false;
+  }
+
+  int64_t const nFeatures = m_featureNames.size();
+  int64_t const shape[3]{batchSize, m_windowSteps, nFeatures};
+
+  if (windowsFlat.size() != static_cast<qsizetype>(batchSize) * m_windowSteps * nFeatures) {
+    m_status = QObject::tr("Invalid feature window size for batched prediction");
+    return false;
+  }
+
+  try {
+    Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
+      m_impl->memoryInfo, const_cast<float *>(windowsFlat.constData()), windowsFlat.size(), shape, 3);
+
+    char const *inputNames[]{"feature_window"};
+    char const *outputNames[]{"temp_delta_t1"};
+
+    auto outputTensors =
+      m_impl->session->Run(Ort::RunOptions{nullptr}, inputNames, &inputTensor, 1, outputNames, 1);
+
+    float const *outData = outputTensors.front().GetTensorMutableData<float>();
+    deltaOut.resize(batchSize);
+    std::copy(outData, outData + batchSize, deltaOut.begin());
+    return true;
+  } catch (Ort::Exception const &ex) {
+    m_status = QObject::tr("ONNX batched prediction error: %1").arg(ex.what());
+    return false;
+  }
+#else
+  Q_UNUSED(windowsFlat);
+  Q_UNUSED(batchSize);
+  deltaOut.clear();
   m_status = QObject::tr("ONNX Runtime was not linked at build time");
   return false;
 #endif
