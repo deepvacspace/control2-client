@@ -6,7 +6,7 @@
 #include "labelplus.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 CalibrationEditWidget::CalibrationEditWidget(
   CalibrationModel *model, SystemValue *current, SystemValue *raw, QWidget *parent)
     : QWidget{parent}, m_model{model}, m_currentValue{current}, m_rawValue{raw} {
@@ -140,4 +140,4 @@ void CalibrationEditWidget::handleSizeChanged(int newSize) {
   m_delBtn->setEnabled(0 != newSize);
   m_addBtn->setEnabled(newSize < m_model->getPoints());
 }
-} // namespace control2
+} // namespace deepvaccontrol

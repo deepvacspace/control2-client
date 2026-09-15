@@ -8,7 +8,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 GraphStyleSingleWidget::GraphStyleSingleWidget(int index, QVariantMap const &stateMap, QWidget *parent)
     : QWidget{parent}, m_index{index}, m_stateMap{stateMap} {
@@ -117,4 +117,4 @@ void GraphStyleSingleWidget::setEnabled(bool value) {
   m_colorPicker->setStyleSheet("QPushButton {color :" + (value ? m_stateMap["color"].toString() : grey.name()) + ";}");
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

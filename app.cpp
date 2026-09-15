@@ -11,7 +11,7 @@
 #include "programmodel.h"
 #include "settingsdiff.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 App::App(bool windowMode, bool debugMode, QObject *parent)
     : QObject{parent}
@@ -114,7 +114,7 @@ void App::runtimeSetups() {
   m_states.addWithVariantList(settingMapVariant["states"].toList());
 
   // Data manager
-  m_dataManager           = new DataManager(&m_resHolder, m_states.size(), control2::INTERVAL_DURATION, this);
+  m_dataManager           = new DataManager(&m_resHolder, m_states.size(), deepvaccontrol::INTERVAL_DURATION, this);
   m_resHolder.dataManager = m_dataManager;
 
   // Make default program, todo: add settings checks
@@ -380,4 +380,4 @@ void App::requestSettingList() {
   m_gateTcp->sendTextCmd("get_settings");
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

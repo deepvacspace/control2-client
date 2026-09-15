@@ -9,7 +9,7 @@
 #include "chambertwinsim.h"
 #include "gruonnxmodel.h"
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 // Cost weights mirrored from foresight's advisor/advise_pid.py::add_cost_args
 // (horizon_cost(), used by --mode suggest) -- distinct from the Simulator
@@ -87,6 +87,6 @@ private:
   GruOnnxModel *m_model;
 };
 
-} // namespace control2::ai
+} // namespace deepvaccontrol::ai
 
 #endif // ADVISORCEM_H

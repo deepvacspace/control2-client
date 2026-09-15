@@ -11,7 +11,7 @@
 #include "intervaleditdialog.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}
     , m_resHolder{resHolder}
@@ -42,7 +42,7 @@ ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
 
   connect(m_saveBtn, &QPushButton::clicked, this, [this]() {
     if (m_model) {
-      auto sourceList = QStringList{control2::PROGS_DIR};
+      auto sourceList = QStringList{deepvaccontrol::PROGS_DIR};
       sourceList.append(m_resHolder->usb->getAvailableDrives());
       auto *savePathProvider = new FileSaveDialogPathProvider(sourceList, m_resHolder->logger, this);
       if (m_model) {
@@ -52,7 +52,7 @@ ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
   });
 
   connect(m_loadBtn, &QPushButton::clicked, this, [this]() {
-    auto sourceList = QStringList{control2::PROGS_DIR};
+    auto sourceList = QStringList{deepvaccontrol::PROGS_DIR};
     sourceList.append(m_resHolder->usb->getAvailableDrives());
     auto *loadPath = new FileLoadDialogPathProvider(sourceList, m_resHolder->logger, this);
     if (m_model) {
@@ -231,4 +231,4 @@ void ProgramWidget::sendProgram() {
     QString(tr("Запуск работы по программе. %1 интервал(а,ов).")).arg(m_model->getStandardModel()->columnCount())};
   m_resHolder->actions->addAction(ActionManager::ActionType::PLC, actionMsg);
 }
-} // namespace control2
+} // namespace deepvaccontrol

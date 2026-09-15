@@ -4,7 +4,7 @@
 #include <QPainter>
 #include <QTimer>
 
-namespace control2 {
+namespace deepvaccontrol {
 class Flasher : public QLabel {
   Q_OBJECT
 public:
@@ -24,6 +24,6 @@ private:
   QTimer m_timer;
   int    m_elapsedTime{0}; // Время с момента старта анимации
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FLASHER_H

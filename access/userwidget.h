@@ -8,7 +8,7 @@
 #include "accessmanager.h"
 #include "logger.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class UserWidget : public QWidget {
   Q_OBJECT
 public:
@@ -31,6 +31,6 @@ private:
   QPushButton *m_addUserBtn;
   QPushButton *m_delUserBtn;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // USERWIDGET_H

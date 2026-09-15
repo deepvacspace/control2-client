@@ -5,7 +5,7 @@
 #include <QStringList>
 
 #include "qtypes.h"
-namespace control2 {
+namespace deepvaccontrol {
 
 constexpr inline quint8 const  AWAIT_BIT{8U}; // Flag in manual/program job
 constexpr inline quint8 const  RAMP_BIT{9U};  // Flag in manual/program job
@@ -38,5 +38,5 @@ static QList<QPair<QString, QString>> statusBarStatesList() {
   };
 } // <state name, display text>
 
-} // namespace control2
+} // namespace deepvaccontrol
 #endif // CONSTANTS_H

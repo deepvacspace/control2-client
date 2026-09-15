@@ -5,7 +5,7 @@
 #include "logger.h"
 #include "pathprovider.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 /**
  * @brief Async path provider with dialog.
  */
@@ -30,6 +30,6 @@ public:
     dialog->open();
   };
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FILELOADDIALOGPATHPROVIDER_H

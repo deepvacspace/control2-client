@@ -5,7 +5,7 @@
 
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class AlarmListWidget : public QWidget {
   Q_OBJECT
 public:
@@ -13,5 +13,5 @@ public:
   ~AlarmListWidget() override = default;
 
 };
-} // namespace control2
+} // namespace deepvaccontrol
 #endif // ALARMLISTWIDGET_H

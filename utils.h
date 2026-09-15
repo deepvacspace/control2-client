@@ -8,7 +8,7 @@
 
 class QWidget;
 
-namespace control2::utils {
+namespace deepvaccontrol::utils {
 
 constexpr inline float const floatNan{std::numeric_limits<float>::quiet_NaN()};
 
@@ -71,5 +71,5 @@ template<typename CharSized> quint16 crc16(CharSized const *data, size_t length)
   return crc;
 }
 
-} // namespace control2::utils
+} // namespace deepvaccontrol::utils
 #endif // UTILS_H

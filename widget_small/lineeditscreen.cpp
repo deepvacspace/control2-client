@@ -1,6 +1,6 @@
 #include "lineeditscreen.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 LineEditScreen::LineEditScreen(QWidget *parent, VirtualKeyboard::Language lang) : QLineEdit{parent}, m_lang{lang} {
 }
 
@@ -16,4 +16,4 @@ void LineEditScreen::mousePressEvent(QMouseEvent *event) {
   });
   virtualBoard->open();
 }
-} // namespace control2
+} // namespace deepvaccontrol

@@ -7,7 +7,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, float> const &plc, QWidget *parent)
     : QDialog{parent}, m_local{local}, m_plc{plc} {
   // table / btnLay
@@ -109,4 +109,4 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
   setWindowTitle(tr("Отличающиеся настройки"));
   setMinimumSize(410, 450);
 }
-} // namespace control2
+} // namespace deepvaccontrol

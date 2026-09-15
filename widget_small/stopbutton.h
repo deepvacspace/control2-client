@@ -3,7 +3,7 @@
 
 #include <QPushButton>
 
-namespace control2 {
+namespace deepvaccontrol {
 class StopButton : public QPushButton {
   Q_OBJECT
 public:
@@ -13,6 +13,6 @@ public:
 signals:
   void confirmPressed();
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // STOPBUTTON_H

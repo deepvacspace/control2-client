@@ -5,7 +5,7 @@
 #include "indicatorbool.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 SysListWidget::SysListWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_states{resHolder->states} {
   // states list / indicators
@@ -86,4 +86,4 @@ void SysListWidget::updateList() {
     }
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

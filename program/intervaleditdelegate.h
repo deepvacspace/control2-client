@@ -3,7 +3,7 @@
 
 #include <QItemDelegate>
 
-namespace control2{
+namespace deepvaccontrol{
 class IntervalEditDelegate : public QItemDelegate {
 public:
   explicit IntervalEditDelegate(QObject *parent = nullptr);

@@ -13,12 +13,12 @@
 #include "userwidget.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 MainWindow::MainWindow(ResHolder *resHolder, bool windowMode, QWidget *parent)
     : QMainWindow(parent)
     , m_resHolder{resHolder}
     , m_windowMode{windowMode}
-    , m_menu{new Menu(control2::UI_MENU_BTN_HEIGHT)} {
+    , m_menu{new Menu(deepvaccontrol::UI_MENU_BTN_HEIGHT)} {
   initGui();
 
   connect(m_resHolder->tcpGate, &GateTcp::userMsgReceived, this, &MainWindow::displayMsgFromGate);
@@ -133,7 +133,10 @@ void MainWindow::initGui() {
   if (plc_settings_map.contains("name")) {
     eq_name = plc_settings_map["name"].toString();
   }
-  QString title = eq_name.isEmpty() ? tcp_server_address : QString("%1 (%2)").arg(eq_name).arg(tcp_server_address);
+  QString const connectionTitle =
+    eq_name.isEmpty() ? tcp_server_address : QString("%1 (%2)").arg(eq_name).arg(tcp_server_address);
+  QString const title = connectionTitle.isEmpty() ? QStringLiteral("Deepvac Control")
+                                                  : QStringLiteral("Deepvac Control - %1").arg(connectionTitle);
   setWindowTitle(title);
 }
 
@@ -190,4 +193,4 @@ void MainWindow::closeEvent(QCloseEvent *event) {
   event->accept();
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

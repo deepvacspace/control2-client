@@ -5,7 +5,7 @@
 #include "messagedialog.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 FileSaveDialog::FileSaveDialog(QList<QString> pathList, QWidget *parent) : QDialog{parent} {
   m_drivePathSelect = new DrivePathSelect(pathList, this);
 
@@ -50,4 +50,4 @@ FileSaveDialog::FileSaveDialog(QList<QString> pathList, QWidget *parent) : QDial
   setAttribute(Qt::WA_DeleteOnClose);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

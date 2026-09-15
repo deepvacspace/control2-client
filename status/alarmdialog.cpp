@@ -8,7 +8,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 AlarmDialog::AlarmDialog(QWidget *parent) : QDialog{parent} {
   auto *mainLay = new QVBoxLayout(this);
 
@@ -74,4 +74,4 @@ void AlarmDialog::closeEvent(QCloseEvent *event) {
   // Proceed with the regular close event
   event->accept();
 }
-} // namespace control2
+} // namespace deepvaccontrol

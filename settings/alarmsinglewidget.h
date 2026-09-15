@@ -7,7 +7,7 @@
 
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class AlarmSingleWidget : public QWidget {
   Q_OBJECT
 public:
@@ -51,6 +51,6 @@ inline bool AlarmSingleWidget::getPosition() const {
 inline bool AlarmSingleWidget::getActive() const {
   return off ? !off->isChecked() : false;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // ALARMSINGLEWIDGET_H

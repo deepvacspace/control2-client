@@ -6,7 +6,7 @@
 #include <QWidget>
 #include <QCheckBox>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class GraphStyleSingleWidget : public QWidget {
   Q_OBJECT
@@ -36,5 +36,5 @@ private:
 inline QVariantMap GraphStyleSingleWidget::getStateMapVariant() const {
   return m_stateMap;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 #endif // GRAPHSTYLESINGLEWIDGET_H

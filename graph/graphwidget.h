@@ -8,7 +8,7 @@
 #include "graphstyleeditor.h"
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class GraphWidget : public QWidget {
   Q_OBJECT
 public:
@@ -26,6 +26,6 @@ private:
   QPushButton      *m_exportToBtn;
   QPushButton      *m_styleBtn;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // GRAPHWIDGET_H

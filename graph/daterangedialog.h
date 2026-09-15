@@ -4,7 +4,7 @@
 #include <QDateTime>
 #include <QDialog>
 
-namespace control2 {
+namespace deepvaccontrol {
 class DateRangeDialog : public QDialog {
   Q_OBJECT
 public:
@@ -12,6 +12,6 @@ public:
 signals:
   void dateSelected(QDateTime, QDateTime);
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // DATERANGEDIALOG_H

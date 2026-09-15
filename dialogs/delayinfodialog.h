@@ -6,7 +6,7 @@
 #include <QLabel>
 #include <QTimer>
 
-namespace control2 {
+namespace deepvaccontrol {
 class DelayInfoDialog : public QDialog {
   Q_OBJECT
 public:
@@ -19,6 +19,6 @@ private:
 
   QLabel *m_timeLabelCurrent;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // DELAYINFODIALOG_H

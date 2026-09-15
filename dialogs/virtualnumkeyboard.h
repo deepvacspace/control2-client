@@ -4,7 +4,7 @@
 #include <QDialog>
 #include <QPushButton>
 
-namespace control2{
+namespace deepvaccontrol{
 class LineEditNum;
 
 class VirtualNumKeyboard : public QDialog {

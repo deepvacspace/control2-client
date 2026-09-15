@@ -4,7 +4,7 @@
 #include "resholder.h"
 #include "scrollwidget.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class SettingsListWidget : public ScrollWidget {
   Q_OBJECT
 public:
@@ -14,6 +14,6 @@ public:
 private:
   ResHolder *m_resHolder;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SETTINGSLISTWIDGET_H

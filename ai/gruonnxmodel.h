@@ -6,7 +6,7 @@
 #include <QVector>
 #include <memory>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 
 class GruOnnxModel {

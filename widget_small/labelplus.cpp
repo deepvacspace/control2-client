@@ -3,7 +3,7 @@
 #include <bitset>
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 QString defaultFormat(float value, int prec) {
   if ((std::isnan(value)) || (value < -10e9) || (value > 10e9)) {
     return QString("--");
@@ -72,4 +72,4 @@ void LabelPlus::updateValue() {
     setText(m_dispFnc(floatValue, m_prec));
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

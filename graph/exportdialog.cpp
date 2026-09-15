@@ -15,7 +15,7 @@
 #include "filesavedialogpathprovider.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ExportDialog::ExportDialog(ResHolder *resHolder, std::shared_ptr<DataHolder> interval, QWidget *parent)
     : QDialog{parent}, m_resHolder{resHolder}, m_interval{interval} {
   // boxes / btns
@@ -131,7 +131,7 @@ ExportDialog::ExportDialog(ResHolder *resHolder, std::shared_ptr<DataHolder> int
     if (selectableRangeRadioBtn->isChecked()) {
       compileCustomInterval();
     }
-    auto sourceList = QStringList{control2::EXPORT_DIR};
+    auto sourceList = QStringList{deepvaccontrol::EXPORT_DIR};
     sourceList.append(m_resHolder->usb->getAvailableDrives());
     auto *pathProvider = new FileSaveDialogPathProvider(sourceList, m_resHolder->logger, this);
     pathProvider->getPathAsync(this, QString{}, [this](QString const &filePath) {
@@ -195,4 +195,4 @@ void ExportDialog::compileCustomInterval() {
     filesList.removeFirst();
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

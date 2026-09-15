@@ -3,7 +3,7 @@
 #include "constants.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ProgramGraph::ProgramGraph(QWidget *parent) : QFrame{parent} {
   setFrameStyle(QFrame::Box | QFrame::Plain);
   setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
@@ -130,7 +130,7 @@ void ProgramGraph::calculateChartData() {
   for (int colonIndex{0U}; colonIndex < m_model->getStandardModel()->columnCount(); ++colonIndex) {
     quint32 const intervalFlags{
       m_model->getStandardModel()->item(m_flagsParamIndexInModel, colonIndex)->data(m_flagsParamType).toUInt()};
-    bool const intervalTempRamp{utils::getBitOfDword(intervalFlags, control2::RAMP_BIT)};
+    bool const intervalTempRamp{utils::getBitOfDword(intervalFlags, deepvaccontrol::RAMP_BIT)};
 
     for (int i{0U}; i < m_paramOrder.size(); ++i) {
       int const    itemDataType{m_paramTypes[i]};
@@ -173,7 +173,7 @@ void ProgramGraph::calculateChartData() {
         }
       }
     }
-  } // namespace control2
+  } // namespace deepvaccontrol
 }
 
 int ProgramGraph::getIntervalIndexOnPlot(QPoint onScreenPosition) {
@@ -213,4 +213,4 @@ void ProgramGraph::reDraw() {
   selectInterval(m_model->getSelectedInterval());
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

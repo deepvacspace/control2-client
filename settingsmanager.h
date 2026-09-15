@@ -10,7 +10,7 @@
 #include "systemvaluelist.h"
 #include "uilanguage.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 /**
  * @brief All manipulations with user settings occure through this class.
@@ -81,6 +81,6 @@ inline SystemValueList &SettingsManager::plcSettingsSystemValueList() {
 inline QMap<quint32, QString> const &SettingsManager::getAlarmsMap() const {
   return m_alarmsMap;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SETTINGSMANAGER_H

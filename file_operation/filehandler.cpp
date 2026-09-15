@@ -4,7 +4,7 @@
 #include <QDir>
 #include <QFileInfo>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 bool FileHandler::saveToFile(PathProvider *pathProvider, QWidget *parent, QString const &filter) {
   QString path{pathProvider->getPath(parent, filter)};
@@ -95,4 +95,4 @@ bool FileHandler::loadFromFileImpl(QString const &filePath, Logger *logger) {
   return true;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

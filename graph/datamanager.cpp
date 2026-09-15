@@ -8,7 +8,7 @@
 #include "resholder.h"
 #include "stringpathprovider.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 DataManager::DataManager(ResHolder *resHolder, quint16 numberOfStates, quint32 intervalDuration, QObject *parent)
     : QObject{parent}, m_numberOfStates{numberOfStates}, m_intervalDuration{intervalDuration}, m_resHolder{resHolder} {
 }
@@ -16,7 +16,7 @@ DataManager::DataManager(ResHolder *resHolder, quint16 numberOfStates, quint32 i
 DataManager::~DataManager() {
   if (m_intervalToAdd && m_intervalToAdd->isDirty()) {
     m_intervalToAdd->addNaN();
-    StringPathProvider path(control2::INTERVALS_DIR + utils::calculateFileName(m_intervalToAdd->getIntervalKey()),
+    StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(m_intervalToAdd->getIntervalKey()),
                             m_resHolder->logger);
     m_intervalToAdd->saveToFile(&path);
   }
@@ -32,7 +32,7 @@ bool DataManager::addPoint(double epochSecTime, QVector<double> const &pointVect
       m_resHolder->logger->stream(Logger::Level::INFO) << "Data from another interval, lets create/open it";
 
       // commit holder data
-      StringPathProvider path(control2::INTERVALS_DIR + utils::calculateFileName(m_intervalToAdd->getIntervalKey()),
+      StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(m_intervalToAdd->getIntervalKey()),
                               m_resHolder->logger);
       m_intervalToAdd->saveToFile(&path);
 
@@ -51,7 +51,7 @@ bool DataManager::addPoint(double epochSecTime, QVector<double> const &pointVect
 
     // try to load interval from file
     m_resHolder->logger->stream(Logger::Level::DEB) << "Trying to load data holder from file...";
-    StringPathProvider path(control2::INTERVALS_DIR + utils::calculateFileName(key), m_resHolder->logger);
+    StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(key), m_resHolder->logger);
     m_intervalToAdd->loadFromFile(&path);
 
     emit intervalToAddRecreated(key);
@@ -71,8 +71,8 @@ bool DataManager::prepareIntervalToDisplay(double epochSecTime) {
   m_intervalToDisplay = std::make_shared<DataHolder>(m_numberOfStates, m_resHolder->logger, key);
 
   // try to load interval from file
-  StringPathProvider path(control2::INTERVALS_DIR + utils::calculateFileName(key), m_resHolder->logger);
+  StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(key), m_resHolder->logger);
   return m_intervalToDisplay->loadFromFile(&path);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

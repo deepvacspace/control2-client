@@ -1,7 +1,7 @@
 #include "dataviewerlegend.h"
 
 #include "utils.h"
-namespace control2 {
+namespace deepvaccontrol {
 CustomLegendItem::CustomLegendItem(QCPLegend *parent, QString const &label, QPen const &iconPen)
     : QCPPlottableLegendItem(parent, nullptr)
     , m_label{label}
@@ -239,4 +239,4 @@ void DataViewerLegend::updateTimePosition() {
 
   m_timeValue->setMargins(QMargins(36 * utils::ssf(), 2, 0, 2));
 }
-} // namespace control2
+} // namespace deepvaccontrol

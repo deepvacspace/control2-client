@@ -2,7 +2,7 @@
 
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 HardwareStatus::HardwareStatus(ResHolder *resHolder, QObject *parent)
     : QObject{parent}
     , m_resHolder{resHolder}
@@ -97,4 +97,4 @@ void HardwareStatus::onSystemValueChanged(float value) {
 // Status::WorkStatus Status::getWorkStatus() const {
 //   return m_workStatus;
 // }
-} // namespace control2
+} // namespace deepvaccontrol

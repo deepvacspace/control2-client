@@ -4,7 +4,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 IndicatorBool::IndicatorBool(SystemValue *sysVal, quint8 bitIndex, QWidget *parent, QString textOn, QString textOff)
     : QFrame{parent}
     , m_sysVal{sysVal}
@@ -39,4 +39,4 @@ void IndicatorBool::updateGui() {
   setStyleSheet(boolState ? "background-color: #ffde21;" : "background-color: #cecece;");
   m_label->setText(boolState ? m_textOn : m_textOff);
 }
-} // namespace control2
+} // namespace deepvaccontrol

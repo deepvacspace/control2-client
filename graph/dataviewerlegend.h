@@ -3,7 +3,7 @@
 
 #include "qcustomplot.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 /**
  * @brief Custom element for legend with value textbox
  */
@@ -65,6 +65,6 @@ public:
   void setValueVisible(bool visible);
   void updateTimePosition();
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif /* DATAVIEWERLEGEND_H */

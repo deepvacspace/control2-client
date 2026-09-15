@@ -9,7 +9,7 @@
 #include "filehandler.h"
 #include "logger.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class ResHolder;
 
@@ -101,6 +101,6 @@ inline QString AccessManager::getCurrentUserName() const {
 inline QStringList AccessManager::getUserNamesList() const {
   return m_users.keys();
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // ACCESSMANAGER_H

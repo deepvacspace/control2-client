@@ -9,7 +9,7 @@
 #include "utils.h"
 #include "virtualkeyboard.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 UserWidget::UserWidget(Logger *logger, AccessManager *accessManager, QWidget *parent)
     : QWidget{parent}, m_logger{logger}, m_accessManager{accessManager} {
   initGui();
@@ -62,9 +62,9 @@ void UserWidget::initGui() {
   m_delUserBtn    = new QPushButton(tr("Удалить пользователя"), this);
 
   m_selectUserBtn->setFixedHeight(150 * utils::ssf());
-  m_editUserBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
-  m_addUserBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
-  m_delUserBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
+  m_editUserBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  m_addUserBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  m_delUserBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
 
   btnsLay->addWidget(m_selectUserBtn);
   btnsLay->addWidget(m_editUserBtn);
@@ -168,4 +168,4 @@ void UserWidget::switchUser() {
     }
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

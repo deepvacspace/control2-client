@@ -8,7 +8,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 IntervalEditDelegate::IntervalEditDelegate(QObject *parent) : QItemDelegate(parent) {
 }
 
@@ -46,4 +46,4 @@ void IntervalEditDelegate::setModelData(QWidget *editor, QAbstractItemModel *mod
   }
   QItemDelegate::setModelData(editor, model, index);
 }
-} // namespace control2
+} // namespace deepvaccontrol

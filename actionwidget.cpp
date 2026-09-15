@@ -6,7 +6,7 @@
 #include "constants.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ActionWidget::ActionWidget(ActionManager *actionManager, QWidget *parent)
     : QWidget{parent}, m_actionManager{actionManager} {
   auto *mainLay = new QVBoxLayout(this);
@@ -20,7 +20,7 @@ ActionWidget::ActionWidget(ActionManager *actionManager, QWidget *parent)
   mainLay->addLayout(btnLay);
 
   auto *moreBtn = new QPushButton(tr("Показать больше"), this);
-  moreBtn->setFixedSize(120 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+  moreBtn->setFixedSize(120 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
   btnLay->addStretch();
   btnLay->addWidget(moreBtn);
 
@@ -72,4 +72,4 @@ void ActionWidget::addElements(QVariantList const &newElements, bool addToBottom
     }
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

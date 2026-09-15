@@ -5,7 +5,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-namespace control2 {
+namespace deepvaccontrol {
 class Menu : public QWidget {
   Q_OBJECT
 public:
@@ -27,6 +27,6 @@ private:
   int                    m_prevSelected;
   int                    m_buttonHeight;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // MENU_H

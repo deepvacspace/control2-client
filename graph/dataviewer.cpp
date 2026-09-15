@@ -3,7 +3,7 @@
 #include <QHBoxLayout>
 
 #include "utils.h"
-namespace control2 {
+namespace deepvaccontrol {
 
 static QString const textLayerName{"text_layer"};
 
@@ -532,4 +532,4 @@ DataViewerDialog::DataViewerDialog(
   setAttribute(Qt::WA_DeleteOnClose);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

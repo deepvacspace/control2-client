@@ -1,7 +1,7 @@
 #include "systemvaluelist.h"
 
 #include <QDebug>
-namespace control2 {
+namespace deepvaccontrol {
 SystemValueList::SystemValueList(Logger *logger, QObject *parent) : QObject{parent}, m_logger{logger} {
 }
 
@@ -87,4 +87,4 @@ SystemValue *SystemValueList::getSysValue(QString const &name) const {
     return nullptr;
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

@@ -6,7 +6,7 @@
 #include "constants.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ConnectionDialog::ConnectionDialog(QString const &serverId, QWidget *parent) : QDialog{parent}, m_serverId{serverId} {
   initGui();
 
@@ -55,9 +55,9 @@ void ConnectionDialog::initGui() {
   // m_workOfflineBtn->setFont(f);
   // m_cancelBtn->setFont(f);
 
-  m_hideBtn->setFixedHeight(1.5 * control2::UI_BTN_HEIGHT * utils::ssf());
-  // m_workOfflineBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
-  // m_cancelBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
+  m_hideBtn->setFixedHeight(1.5 * deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  // m_workOfflineBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  // m_cancelBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
 
   setWindowTitle(m_titleLabel->text());
   setWindowFlag(Qt::WindowStaysOnTopHint);
@@ -115,4 +115,4 @@ void ConnectionDialog::reset() {
 void ConnectionDialog::closeEvent(QCloseEvent *) {
   emit finished(0); // QDialog::Rejected == close dialog
 }
-} // namespace control2
+} // namespace deepvaccontrol

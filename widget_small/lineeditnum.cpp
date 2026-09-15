@@ -5,7 +5,7 @@
 #include "utils.h"
 #include "virtualnumkeyboard.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 LineEditNum::LineEditNum(double min, double max, int prec, bool weakCkeck, QWidget *parent)
     : QLineEdit(parent), m_sysValue(nullptr), m_weakCheck(weakCkeck) {
   installEventFilter(this); // LineEditNum::callVirtualKBoard()
@@ -132,4 +132,4 @@ void LineEditNum::updateVarByText() {
   m_sysValue->setValue(text().toDouble());
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

@@ -4,7 +4,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 AlarmSingleWidget::AlarmSingleWidget(QString const &label,
                                      SystemValue   *statusValue,
                                      SystemValue   *enableValue,
@@ -103,4 +103,4 @@ void AlarmSingleWidget::updateConfigValue() {
   m_conditionValue->notify();
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

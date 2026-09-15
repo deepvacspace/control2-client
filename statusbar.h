@@ -8,7 +8,7 @@
 
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class StatusBar : public QWidget {
   Q_OBJECT
 public:
@@ -38,6 +38,6 @@ private:
 public:
   bool eventFilter(QObject *watched, QEvent *event) override;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // STATUSBAR_H

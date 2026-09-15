@@ -7,7 +7,7 @@
 #include "pidwidget.h"
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class SettingsWidget : public QWidget {
   Q_OBJECT
 public:
@@ -34,6 +34,6 @@ private:
   QList<PidWidget *>         m_pidWidgets;
   QList<CalibrationWidget *> m_calibWidgets;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SETTINGSWIDGET_H

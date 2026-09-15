@@ -7,7 +7,7 @@
 #include "scrollwidget.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDialog{parent}, m_resHolder{resHolder} {
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(5 * utils::ssf(), 5 * utils::ssf(), 5 * utils::ssf(), 5 * utils::ssf());
@@ -41,7 +41,7 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDia
   auto *selectAllBtn  = new QPushButton(tr("Все"), this);
   auto *selectNoneBtn = new QPushButton(tr("Ни одного"), this);
   for (QPushButton *item : {closeBtn, selectAllBtn, selectNoneBtn}) {
-    item->setFixedSize(90 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+    item->setFixedSize(90 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
   }
 
   auto *btnLay = new QHBoxLayout();
@@ -97,4 +97,4 @@ void GraphStyleEditor::hideEvent(QHideEvent *event) {
   // Call the base class implementation
   QDialog::hideEvent(event);
 }
-} // namespace control2
+} // namespace deepvaccontrol

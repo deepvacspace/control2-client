@@ -5,7 +5,7 @@
 
 #include "lineeditnum.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class PidWidget : public QWidget {
   Q_OBJECT
 public:
@@ -27,6 +27,6 @@ private:
   // all p-gains, then i-times, then d-times
   QList<LineEditNum *> m_fields;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PIDWIDGET_H

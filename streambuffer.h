@@ -6,7 +6,7 @@
 #include "logger.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class StreamBuffer : public QObject {
   Q_OBJECT
 
@@ -48,6 +48,6 @@ inline QByteArray StreamBuffer::makePackage(QByteArray const &data) {
 
   return packet;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // STREAMBUFFER_H

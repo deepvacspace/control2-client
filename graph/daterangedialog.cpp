@@ -7,7 +7,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 DateRangeDialog::DateRangeDialog(QDateTime date1, QDateTime date2, QWidget *parent) : QDialog{parent} {
   auto *acceptBtn = new QPushButton(tr("Установить"), this);
   auto *cancelBtn = new QPushButton(tr("Отмена"), this);
@@ -61,4 +61,4 @@ DateRangeDialog::DateRangeDialog(QDateTime date1, QDateTime date2, QWidget *pare
 
   connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 }
-} // namespace control2
+} // namespace deepvaccontrol

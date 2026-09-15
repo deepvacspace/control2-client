@@ -8,7 +8,7 @@
 #include "systemvalue.h"
 #include "virtualnumkeyboard.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class MyIntValidator : public QIntValidator {
 public:
@@ -64,6 +64,6 @@ private:
   quint64      m_max;
   bool         m_secEnable;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // LINEEDITTIME_H

@@ -21,7 +21,7 @@ class QProgressBar;
 class QPushButton;
 class QTableWidget;
 
-namespace control2 {
+namespace deepvaccontrol {
 class LineEditNum;
 
 // Advisor tab of the AI page.
@@ -163,6 +163,6 @@ private:
 
   ai::ComparisonWorker *m_comparisonWorker{nullptr};
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // AIADVISORWIDGET_H

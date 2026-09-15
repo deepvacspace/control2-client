@@ -4,7 +4,7 @@
 #include <QEvent>
 #include <QWidget>
 
-namespace control2 {
+namespace deepvaccontrol {
 Flasher::Flasher(QWidget *parent) : QLabel{parent}, m_flashingEnable{false} {
   setAttribute(Qt::WA_TransparentForMouseEvents); // Игнорирует клики, передавая их подлежащим элементам
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -58,4 +58,4 @@ bool Flasher::eventFilter(QObject *watched, QEvent *event) {
   }
   return QLabel::eventFilter(watched, event);
 }
-} // namespace control2
+} // namespace deepvaccontrol

@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QVariant>
 
-namespace control2 {
+namespace deepvaccontrol {
 /**
  * @brief Object class for storing a value that can be synchronously used in all elements of the system.
  * Could be:
@@ -109,6 +109,6 @@ private:
   quint32 m_userData;
   bool    m_isSciNotation;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SYSTEMVALUE_H

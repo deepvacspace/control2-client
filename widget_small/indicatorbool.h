@@ -6,7 +6,7 @@
 
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class IndicatorBool : public QFrame {
   Q_OBJECT
 public:
@@ -26,6 +26,6 @@ private:
   QString      m_textOff;
   QLabel      *m_label;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // INDICATORBOOL_H

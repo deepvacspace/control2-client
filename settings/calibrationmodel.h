@@ -3,7 +3,7 @@
 
 #include <QStandardItemModel>
 
-namespace control2 {
+namespace deepvaccontrol {
 class CalibrationModel : public QStandardItemModel {
   Q_OBJECT
 public:
@@ -72,6 +72,6 @@ inline float CalibrationModel::getMax() const {
 inline quint32 CalibrationModel::getPoints() const {
   return m_points;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CALIBRATIONMODEL_H

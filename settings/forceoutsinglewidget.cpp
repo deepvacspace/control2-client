@@ -5,7 +5,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ForceOutSingleWidget::ForceOutSingleWidget(
   int index, QString const &stateLabel, SystemValue *sysValue, ForceType type, QWidget *parent)
     : QWidget{parent}, m_index{index} {
@@ -134,4 +134,4 @@ QByteArray ForceOutSingleWidget::getRawData() const {
   }
   return result;
 }
-} // namespace control2
+} // namespace deepvaccontrol

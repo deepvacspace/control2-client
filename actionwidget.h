@@ -6,7 +6,7 @@
 
 #include "actionmanager.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ActionWidget : public QWidget {
   Q_OBJECT
 public:
@@ -17,6 +17,6 @@ private:
   ActionManager *m_actionManager;
   QListWidget   *m_listWidget;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // ACTIONWIDGET_H

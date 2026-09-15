@@ -5,7 +5,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 MessageDialog::MessageDialog(QString const &title, QString const &message, QWidget *parent) : QDialog{parent} {
   auto *mainLay = new QVBoxLayout(this);
 
@@ -58,9 +58,9 @@ MessageDialog::MessageDialog(QString const &title, QString const &message, QWidg
 void MessageDialog::closeEvent(QCloseEvent *) {
   emit finished(0); // QDialog::Rejected == close dialog
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
-void control2::MessageDialog::open(int visDurationMs) {
+void deepvaccontrol::MessageDialog::open(int visDurationMs) {
   QDialog::open();
 
   if (0 != visDurationMs) {

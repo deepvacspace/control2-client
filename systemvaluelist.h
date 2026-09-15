@@ -8,7 +8,7 @@
 #include "logger.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 /**
  * @brief Represent group of SystemValue:
  * - all system states;
@@ -49,6 +49,6 @@ inline int SystemValueList::size() const {
 inline QStringList SystemValueList::getNames() const {
   return m_nameOrderList;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SYSTEMVALUELIST_H

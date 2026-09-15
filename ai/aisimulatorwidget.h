@@ -14,7 +14,7 @@ class QCustomPlot;
 class QGridLayout;
 class QPushButton;
 
-namespace control2 {
+namespace deepvaccontrol {
 class LineEditNum;
 
 // Simulator tab of the AI page: a closed-loop chamber simulator driven by
@@ -71,6 +71,6 @@ private:
   QTimer       m_animTimer;
   int          m_stepsPerTick{1};
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // AISIMULATORWIDGET_H

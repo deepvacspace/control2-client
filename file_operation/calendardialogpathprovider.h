@@ -7,7 +7,7 @@
 #include "logger.h"
 #include "pathprovider.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 /**
  * @brief Async path provider with calendar dialog.
  */
@@ -33,6 +33,6 @@ public:
     dialog->open();
   }
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CALENDARDIALOGPATHPROVIDER_H

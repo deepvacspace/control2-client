@@ -6,7 +6,7 @@
 #include "dataholder.h"
 #include "filehandler.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class DataExporter
     : public QObject
     , public FileHandler {
@@ -32,6 +32,6 @@ protected:
 inline bool DataExporter::readData(QFile &file) {
   return true;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // DATAEXPORTER_H

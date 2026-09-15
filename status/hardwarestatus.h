@@ -6,7 +6,7 @@
 #include "logger.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class ResHolder;
 
@@ -53,6 +53,6 @@ private:
 inline HardwareStatus::HardwareStatusEnum HardwareStatus::getHardwareStatus() const {
   return m_status;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // HARDWARESTATUS_H

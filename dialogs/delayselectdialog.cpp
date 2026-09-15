@@ -8,7 +8,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 DelaySelectDialog::DelaySelectDialog(QWidget *parent) : QDialog{parent} {
   auto *timer1 = new QTimer(this);
 
@@ -88,4 +88,4 @@ void DelaySelectDialog::checkMinToMinDateTime() {
     startTimeEdit->setMinimumDateTime(startTimeEdit->dateTime());
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

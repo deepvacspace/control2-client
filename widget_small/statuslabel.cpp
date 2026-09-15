@@ -4,7 +4,7 @@
 #include "hardwarestatus.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent} {
   setFixedWidth(200 * utils::ssf());
 
@@ -19,7 +19,7 @@ StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent}
           &HardwareStatus::statusChanged,
           this,
           [this](HardwareStatus::HardwareStatusEnum const &newStatus, HardwareStatus::HardwareStatusEnum const &) {
-            m_statusStr = control2::hardwareStatusList()[static_cast<quint32>(newStatus)];
+            m_statusStr = deepvaccontrol::hardwareStatusList()[static_cast<quint32>(newStatus)];
             updateString();
           });
 
@@ -38,4 +38,4 @@ StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent}
 void StatusLabel::updateString() {
   setText(m_statusStr + " " + m_typeStr);
 }
-} // namespace control2
+} // namespace deepvaccontrol

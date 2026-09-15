@@ -8,7 +8,7 @@
 #include "messagedialog.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 AccessLevelWidget::AccessLevelWidget(QWidget *parent) {
   auto *mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
@@ -160,4 +160,4 @@ QString UserEditDialog::generateNewName() {
   return QString(tr("Пользователь %1")).arg(i);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

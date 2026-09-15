@@ -8,7 +8,7 @@
 #include "lineeditnum.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 VirtualNumKeyboard::VirtualNumKeyboard(QWidget *parent) : QDialog{parent}, host{nullptr}, notEdited{true} {
   host = qobject_cast<LineEditNum *>(parent);
   if (nullptr == host) {
@@ -210,4 +210,4 @@ LineEditNum *VirtualNumKeyboard::getLineEditNumOwner() const {
 void VirtualNumKeyboard::setLineEditNum(LineEditNum *value) {
   host = value;
 }
-} // namespace control2
+} // namespace deepvaccontrol

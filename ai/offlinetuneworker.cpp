@@ -4,7 +4,7 @@
 
 #include "advisorcem.h"
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 OfflineTuneWorker::OfflineTuneWorker(GruOnnxModel *model, SimParams const &params, QObject *parent)
     : QThread{parent}, m_model{model}, m_params{params} {}
@@ -48,4 +48,4 @@ void OfflineTuneWorker::run() {
   m_result.ok = true;
 }
 
-} // namespace control2::ai
+} // namespace deepvaccontrol::ai

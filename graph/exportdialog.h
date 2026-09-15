@@ -8,7 +8,7 @@
 #include "qcustomplot.h"
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ExportDialog : public QDialog {
   Q_OBJECT
 public:
@@ -47,6 +47,6 @@ inline QString ExportDialog::selectedFilePath() const {
 inline int ExportDialog::selectedType() const {
   return m_selectedType;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // EXPORTDIALOG_H

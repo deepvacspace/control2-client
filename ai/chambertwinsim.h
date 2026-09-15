@@ -8,7 +8,7 @@
 
 #include "gruonnxmodel.h"
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 // Maps the GRU plant model's named input features to their live/simulated
 // values for one timestep row.

@@ -6,7 +6,7 @@
 #include "lineeditnum.h"
 #include "lineedittime.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 SettingsListWidget::SettingsListWidget(ResHolder *resHolder, QWidget *parent)
     : ScrollWidget{true, parent}, m_resHolder{resHolder} {
   auto *mainLay = new QGridLayout();
@@ -40,4 +40,4 @@ SettingsListWidget::SettingsListWidget(ResHolder *resHolder, QWidget *parent)
   }
   mainLay->setRowStretch(i, 1);
 }
-} // namespace control2
+} // namespace deepvaccontrol

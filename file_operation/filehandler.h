@@ -6,7 +6,7 @@
 #include "pathprovider.h"
 #include "logger.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class FileHandler {
 public:
   virtual ~FileHandler() = default;
@@ -33,6 +33,6 @@ protected:
   // Абстрактный класс чтения данных класса из файла.
   virtual bool readData(QFile &file)  = 0;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FILEHANDLER_H

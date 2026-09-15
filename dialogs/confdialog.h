@@ -5,7 +5,7 @@
 
 #include "messagedialog.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ConfDialog : public MessageDialog {
   Q_OBJECT
 public:
@@ -17,6 +17,6 @@ public:
   ~ConfDialog() {
   }
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CONFDIALOG_H

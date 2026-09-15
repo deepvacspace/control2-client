@@ -7,7 +7,7 @@
 #include "settingstransformer.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 SettingsManager::SettingsManager(Logger *logger, QString const &filePath, QObject *parent)
     : QObject{parent}, m_logger{logger}, FileHandler{}, m_filePath{filePath} {
 }
@@ -154,4 +154,4 @@ void SettingsManager::applySettingsFromPairs(QMap<QString, float> const &plcPair
   pullSystemValues(); // reinit system values
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

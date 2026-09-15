@@ -18,7 +18,7 @@ class QProgressDialog;
 class QPushButton;
 class QTableWidget;
 
-namespace control2 {
+namespace deepvaccontrol {
 class LineEditNum;
 
 // "Offline advisor" tab of the AI page, backed by the GRU checkpoint at
@@ -97,6 +97,6 @@ private:
   QProgressDialog       *m_tuneDialog{nullptr};
   ai::OfflineTuneResult  m_tuneResult;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // OFFLINEADVISORWIDGET_H

@@ -8,7 +8,7 @@
 #include "lineeditnum.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class CalibrationEditWidget : public QWidget {
   Q_OBJECT
 public:
@@ -35,6 +35,6 @@ private:
   QPushButton *m_addBtn;
   QPushButton *m_delBtn;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CALIBRATIONEDITWIDGET_H

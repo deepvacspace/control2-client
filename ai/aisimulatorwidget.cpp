@@ -16,7 +16,7 @@
 #include "qcustomplot.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 namespace {
 constexpr int    ANIM_INTERVAL_MS{16};
@@ -86,7 +86,7 @@ QWidget *AiSimulatorWidget::buildFormCard() {
   m_initialDEdit   = addField(9, tr("Initial D"), INITIAL_TERM_MIN, INITIAL_TERM_MAX, 3, 0.0f);
 
   m_runBtn = new QPushButton(tr("Run simulation"), frame);
-  m_runBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
+  m_runBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
   lay->addWidget(m_runBtn, 2, 0, 1, 5);
 
   m_statusLabel = new QLabel(frame);
@@ -309,4 +309,4 @@ void AiSimulatorWidget::updateStatTiles(ai::SimMetrics const &metrics) {
   m_settleTile->setText(formatNumber(metrics.timeToSettleS, 0));
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

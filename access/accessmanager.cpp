@@ -7,7 +7,7 @@
 #include "resholder.h"
 #include "stringpathprovider.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 AccessManager::AccessManager(ResHolder *resHolder, Logger *logger, QObject *parent)
     : QObject(parent), FileHandler{}, m_resHolder{resHolder}, m_logger{logger} {
   loadUsers();
@@ -144,12 +144,12 @@ bool AccessManager::verifySignature(QString const &username, QString const &sign
 }
 
 void AccessManager::loadUsers() {
-  StringPathProvider path(control2::USER_FILE, m_logger, this);
+  StringPathProvider path(deepvaccontrol::USER_FILE, m_logger, this);
   FileHandler::loadFromFile(&path);
 }
 
 void AccessManager::saveUsers() {
-  StringPathProvider path(control2::USER_FILE, m_logger, this);
+  StringPathProvider path(deepvaccontrol::USER_FILE, m_logger, this);
   FileHandler::saveToFile(&path);
 }
 
@@ -208,4 +208,4 @@ QJsonObject AccessManager::User::toJson() const {
   return json;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

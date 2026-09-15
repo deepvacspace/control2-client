@@ -6,7 +6,7 @@
 
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 /**
  * @brief List of states + output indicators
  */
@@ -22,6 +22,6 @@ private:
   SystemValueList *m_states;
   QList<QLabel *>  m_values;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SYSLISTWIDGET_H

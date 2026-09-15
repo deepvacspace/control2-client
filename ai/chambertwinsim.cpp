@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 namespace {
 double limitValue(double low, double x, double high) {
@@ -396,4 +396,4 @@ SimMetrics ChamberTwinSim::metrics() const {
   return metrics;
 }
 
-} // namespace control2::ai
+} // namespace deepvaccontrol::ai

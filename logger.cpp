@@ -4,7 +4,7 @@
 #include <QTimer>
 #include <filesystem>
 
-namespace control2 {
+namespace deepvaccontrol {
 Logger::Logger(QString const &logFilePath, quint32 flushInterval, QObject *parent)
     : QObject{parent}
     , m_currentLevel{Level::INFO}
@@ -85,9 +85,9 @@ QString Logger::formatMessage(Level level, QString const &message, std::source_l
   QString const timeStr{QDateTime::currentDateTime().toString("HH:mm:ss")}; // yyyy-MM-dd
   QString const fileName{QString::fromStdString(std::filesystem::path(location.file_name()).filename().string())};
   QString       functionName{location.function_name()};
-  functionName.replace("control2::", "");
+  functionName.replace("deepvaccontrol::", "");
   QString const locationInfo{QString("[%1:%2] [%3]").arg(fileName).arg(location.line()).arg(functionName)};
 
   return QString("[%1] [%2] %3 %4").arg(timeStr, levelStr, locationInfo, message);
 }
-} // namespace control2
+} // namespace deepvaccontrol

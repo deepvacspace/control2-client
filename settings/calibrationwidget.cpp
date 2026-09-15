@@ -7,7 +7,7 @@
 #include "calibrationeditwidget.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 CalibrationWidget::CalibrationWidget(
   QVariantMap const &calibrationVariantMap, SystemValue *curSysValue, SystemValue *curRawSysValue, QWidget *parent)
     : QWidget{parent}, m_calibModel{calibrationVariantMap} {
@@ -48,4 +48,4 @@ CalibrationWidget::CalibrationWidget(
     m_calibModel.selectIndex(0, /*force*/ true);
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

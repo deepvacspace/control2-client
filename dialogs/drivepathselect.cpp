@@ -7,7 +7,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 DrivePathSelect::DrivePathSelect(QList<QString> pathList, QWidget *parent) : QWidget{parent} {
   m_selectedPath = pathList.last();
 
@@ -48,4 +48,4 @@ DrivePathSelect::DrivePathSelect(QList<QString> pathList, QWidget *parent) : QWi
   setStyleSheet(utils::readStyleFromFile(":/styles/fileSelect.qss"));
   mainLay->addWidget(box);
 }
-} // namespace control2
+} // namespace deepvaccontrol

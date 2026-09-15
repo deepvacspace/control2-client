@@ -9,7 +9,7 @@
 #include "qscreen.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 CalendarCustomWidget::CalendarCustomWidget(QList<QDate> const &dateList, QWidget *parent)
     : QCalendarWidget(parent), m_datelist{dateList} {
   setStyleSheet(utils::readStyleFromFile(":/styles/calendarWidget.qss"));
@@ -152,4 +152,4 @@ void CalendarDialog::shiftMonth(int sh) {
   m_currentMonthLabel->setText(m_monthNameList[m - 1]);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

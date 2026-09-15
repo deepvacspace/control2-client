@@ -3,7 +3,7 @@
 
 #include <QObject>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class ResHolder;
 
@@ -84,6 +84,6 @@ inline bool StatusManager::getStatesIdentical() const {
 inline bool StatusManager::getSettingsListIdentical() const {
   return m_settingsListIdentical;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // STATUSMANAGER_H

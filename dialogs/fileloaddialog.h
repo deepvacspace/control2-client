@@ -6,7 +6,7 @@
 #include <QListView>
 #include <QSortFilterProxyModel>
 
-namespace control2 {
+namespace deepvaccontrol {
 class FileLoadDialog : public QDialog {
   Q_OBJECT
 public:
@@ -29,6 +29,6 @@ private:
 inline QString FileLoadDialog::getFilePath() const {
   return m_resultFilePath;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FILELOADDIALOG_H

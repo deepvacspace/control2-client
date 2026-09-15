@@ -5,7 +5,7 @@
 
 #include "math.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ActionManager::ActionManager(Logger *logger, QString const &fileStoragePath, QObject *parent)
     : QObject{parent}, m_logger{logger}, m_fileStoragePath{fileStoragePath}, m_displayCount{0U} {
   loadFromDisk();
@@ -55,4 +55,4 @@ bool ActionManager::readData(QFile &file) {
   }
   return false;
 }
-} // namespace control2
+} // namespace deepvaccontrol

@@ -3,12 +3,12 @@
 #include "constants.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 LightButton::LightButton(GateTcp *gate, SystemValue *sysVal, QWidget *parent)
     : QPushButton{parent}, m_gate{gate}, m_sysVal{sysVal} {
   setText(tr("Свет"));
   setFocusPolicy(Qt::NoFocus);
-  setFixedHeight(control2::UI_MENU_BTN_HEIGHT * utils::ssf());
+  setFixedHeight(deepvaccontrol::UI_MENU_BTN_HEIGHT * utils::ssf());
   setIconSize(QSize(30 * utils::ssf(), 30 * utils::ssf()));
   setIcon(QIcon(":/imgs/light_off.png"));
 
@@ -33,4 +33,4 @@ LightButton::LightButton(GateTcp *gate, SystemValue *sysVal, QWidget *parent)
     setIcon(QIcon(m_enabled ? ":/imgs/light_on.png" : ":/imgs/light_off.png"));
   });
 }
-} // namespace control2
+} // namespace deepvaccontrol

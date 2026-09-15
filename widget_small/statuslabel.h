@@ -5,7 +5,7 @@
 
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class StatusLabel : public QLabel {
   Q_OBJECT
 public:
@@ -20,6 +20,6 @@ private:
   QString    m_statusStr;
   QString    m_typeStr;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // STATUSLABEL_H

@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 namespace {
 double limit(double low, double x, double high) {
@@ -177,4 +177,4 @@ std::array<double, 3> PpoAdvisorModel::decide(std::array<double, 8> const &obs) 
   return pid;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

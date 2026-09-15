@@ -11,7 +11,7 @@
 #include <QMessageBox>
 #include <QProcess>
 
-namespace control2::utils {
+namespace deepvaccontrol::utils {
 
 inline double g_ssf{1.0};
 
@@ -342,4 +342,4 @@ QString formatScientificRef(float v, int frac) {
   return QString("(%1)").arg(formatScientific(v, frac, true));
 }
 
-} // namespace control2::utils
+} // namespace deepvaccontrol::utils

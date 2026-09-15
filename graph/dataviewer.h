@@ -9,7 +9,7 @@
 #include "logger.h"
 #include "qcustomplot.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class DataViewerSettings {
 public:
 };
@@ -138,6 +138,6 @@ public:
     Logger *logger, std::shared_ptr<DataHolder const> interval, QVariantList style, QWidget *parent = nullptr);
 };
 
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif /* DATAVIEWER_H */

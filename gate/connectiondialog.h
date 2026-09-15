@@ -6,7 +6,7 @@
 #include <QPushButton>
 #include <QTimer>
 
-namespace control2 {
+namespace deepvaccontrol {
 class ConnectionDialog : public QDialog {
   Q_OBJECT
 public:
@@ -31,6 +31,6 @@ private:
 protected:
   void closeEvent(QCloseEvent *);
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CONNECTIONDIALOG_H

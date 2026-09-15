@@ -5,7 +5,7 @@
 #include <array>
 #include <vector>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 // The trained PPO "advisor" policy: a small MLP (foresight's
 // advisor/train_policy_ppo.py::ActorCritic actor network) that picks a PID
@@ -75,6 +75,6 @@ private:
   QString            m_status;
 };
 
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PPOADVISORMODEL_H

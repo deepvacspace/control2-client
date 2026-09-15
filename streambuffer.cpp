@@ -2,7 +2,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 StreamBuffer::StreamBuffer(Logger *logger, QObject *parent) : QObject{parent}, m_logger{logger} {
 }
 
@@ -33,4 +33,4 @@ QByteArray StreamBuffer::getPackage() {
   }
   return {};
 }
-} // namespace control2
+} // namespace deepvaccontrol

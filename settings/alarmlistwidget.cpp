@@ -8,7 +8,7 @@
 #include "systemvalue.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 AlarmListWidget::AlarmListWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   auto *mainLay = new QVBoxLayout(this);
   auto *label0  = new QLabel(tr("Условие срабатывания"), this);
@@ -71,4 +71,4 @@ AlarmListWidget::AlarmListWidget(ResHolder *resHolder, QWidget *parent) : QWidge
 
   mainLay->addStretch(0);
 }
-} // namespace control2
+} // namespace deepvaccontrol

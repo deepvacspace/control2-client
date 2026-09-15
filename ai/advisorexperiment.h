@@ -9,7 +9,7 @@
 #include "chambertwinsim.h"
 #include "gruonnxmodel.h"
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 // One PID decision the advisor made during the live "Actual" run, and the
 // sim time (elapsedS) at which it took effect. The whole log is recorded
@@ -68,6 +68,6 @@ private:
   ComparisonResult         m_result;
 };
 
-} // namespace control2::ai
+} // namespace deepvaccontrol::ai
 
 #endif // ADVISOREXPERIMENT_H

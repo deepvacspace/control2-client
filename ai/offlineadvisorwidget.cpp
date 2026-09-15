@@ -28,7 +28,7 @@
 #include "systemvaluelist.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 namespace {
 QString formatNumber(double value, int prec = 2) {
@@ -109,11 +109,11 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   m_targetTempEdit = addField(1, tr("Target temp, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, ai::DEFAULT_TARGET_TEMP);
 
   m_runBtn = new QPushButton(tr("Run experiment"), frame);
-  m_runBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
+  m_runBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
   lay->addWidget(m_runBtn, 1, 2);
 
   m_stopBtn = new QPushButton(tr("Stop"), frame);
-  m_stopBtn->setFixedHeight(control2::UI_BTN_HEIGHT * utils::ssf());
+  m_stopBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
   m_stopBtn->setStyleSheet("QPushButton { background-color: #c0392b; color: white; }");
   m_stopBtn->setVisible(false);
   lay->addWidget(m_stopBtn, 1, 3);
@@ -726,4 +726,4 @@ void OfflineAdvisorWidget::clearMetricsTable() {
   m_pidLabel->clear();
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

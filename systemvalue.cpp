@@ -2,7 +2,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 SystemValue::SystemValue(QString const &name, float float_value, QObject *parent)
     : QObject{parent}
     , m_name{name}
@@ -79,7 +79,7 @@ void SystemValue::setBitOfFloat(quint8 position, bool bit_value, bool shadow) {
   setValue(tmp, shadow);
 }
 
-bool control2::SystemValue::getBitOfFloat(quint8 position) const {
+bool deepvaccontrol::SystemValue::getBitOfFloat(quint8 position) const {
   return utils::getBitOfFloat(m_value, position);
 }
 
@@ -109,4 +109,4 @@ QVariantMap SystemValue::toVariant() const {
   return ret;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

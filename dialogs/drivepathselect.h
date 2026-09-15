@@ -3,7 +3,7 @@
 
 #include <QWidget>
 
-namespace control2 {
+namespace deepvaccontrol {
 class DrivePathSelect : public QWidget {
   Q_OBJECT
 public:
@@ -20,6 +20,6 @@ private:
 inline QString DrivePathSelect::getSelectedPath() const {
   return m_selectedPath;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // DRIVEPATHSELECT_H

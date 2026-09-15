@@ -5,13 +5,13 @@
 
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class StateVis : public QWidget {
   Q_OBJECT
 public:
   explicit StateVis(
     QString const &name, SystemValue *x, SystemValue *r, SystemValue *u, double sf = 3, QWidget *parent = nullptr);
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // STATEVIS_H

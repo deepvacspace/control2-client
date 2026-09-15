@@ -3,7 +3,7 @@
 #include "confdialog.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 StopButton::StopButton(QWidget *parent) : QPushButton{parent} {
   setText(tr("Стоп"));
   setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
@@ -21,4 +21,4 @@ StopButton::StopButton(QWidget *parent) : QPushButton{parent} {
     confDialog->open();
   });
 }
-} // namespace control2
+} // namespace deepvaccontrol
