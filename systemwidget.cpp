@@ -14,7 +14,7 @@
 #include "constants.h"
 #include "forceoutlistwidget.h"
 #include "syslistwidget.h"
-namespace control2 {
+namespace deepvaccontrol {
 namespace {
 char const SYSTEM_TAB_PAGE_OBJECT_NAME[]{"systemTabPage"};
 
@@ -62,7 +62,7 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   auto *cmdLine = new QLineEdit("finish", this);
   cmdLine->setFixedWidth(200 * utils::ssf());
   auto *sendCmd = new QPushButton(tr("Отправить"), this);
-  sendCmd->setFixedSize(100 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+  sendCmd->setFixedSize(100 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
 
   lineBtnLay->addWidget(cmdLine);
   lineBtnLay->addWidget(sendCmd);
@@ -73,7 +73,7 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
 
   auto addBtn = [cmdLine, cmdBtnsLay, this](QString const &cmd) {
     auto *cmdBtn = new QPushButton(cmd, this);
-    cmdBtn->setFixedSize(80 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+    cmdBtn->setFixedSize(80 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
     cmdBtnsLay->addWidget(cmdBtn);
 
     connect(cmdBtn, &QPushButton::clicked, this, [cmd, cmdLine]() {
@@ -103,20 +103,20 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   auto *exitBtn = new QPushButton(tr("Выйти в ОС"), this);
   exitBtn->setIcon(QIcon(":/imgs/os.png"));
   exitBtn->setIconSize(
-    QSize((control2::UI_BTN_HEIGHT - 5) * utils::ssf(), (control2::UI_BTN_HEIGHT - 5) * utils::ssf()));
+    QSize((deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf(), (deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf()));
   exitBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
-  exitBtn->setFixedSize(340 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+  exitBtn->setFixedSize(340 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
 
   auto *windowBtn = new QPushButton(tr("На весь экран / окно"), this);
   windowBtn->setIcon(QIcon(":/imgs/fullscreen.png"));
   windowBtn->setIconSize(
-    QSize((control2::UI_BTN_HEIGHT - 5) * utils::ssf(), (control2::UI_BTN_HEIGHT - 5) * utils::ssf()));
+    QSize((deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf(), (deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf()));
   windowBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
-  windowBtn->setFixedSize(340 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+  windowBtn->setFixedSize(340 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
 
   auto *themeBtn = new QPushButton(this);
   themeBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
-  themeBtn->setFixedSize(340 * utils::ssf(), control2::UI_BTN_HEIGHT * utils::ssf());
+  themeBtn->setFixedSize(340 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
   auto updateThemeBtnText = [themeBtn]() {
     themeBtn->setText(utils::isDarkMode() ? QStringLiteral("Switch to Light mode") : QStringLiteral("Switch to Dark mode"));
   };
@@ -224,4 +224,4 @@ void SystemWidget::handleAccessChange(QString const &, AccessManager::AccessLeve
   m_tabWidget->setTabVisible(3, enableTabAll);
   m_tabWidget->setTabVisible(4, enableTabAll);
 }
-} // namespace control2
+} // namespace deepvaccontrol

@@ -8,7 +8,7 @@
 #include "settingslistwidget.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 SettingsWidget::SettingsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
   initGui();
 
@@ -113,8 +113,8 @@ void SettingsWidget::initGui() {
 
   auto *sendBtn = new QPushButton(tr("Загрузить настройки в ПЛК"), this);
   auto *getBtn  = new QPushButton(tr("Получить настройки из ПЛК"), this);
-  sendBtn->setFixedHeight(control2::UI_BTN_HEIGHT);
-  getBtn->setFixedHeight(control2::UI_BTN_HEIGHT);
+  sendBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT);
+  getBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT);
 
   btnsLay->addWidget(sendBtn);
   btnsLay->addWidget(getBtn);
@@ -155,4 +155,4 @@ void SettingsWidget::commitSettings() {
     m_resHolder->tcpGate->sendSettingMap(pairs);
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

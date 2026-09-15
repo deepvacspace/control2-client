@@ -6,7 +6,7 @@
 #include "constants.h"
 #include "labelplus.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 QString setValueFormat(float value, int prec) {
   auto out = QString::number(value, 'f', prec);
@@ -26,12 +26,12 @@ StatusBar::StatusBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   stateLay->setSpacing(0);
 
   m_hardStatus
-    = new QLabel(control2::hardwareStatusList()[static_cast<int>(m_resHolder->hard_status->getHardwareStatus())], this);
+    = new QLabel(deepvaccontrol::hardwareStatusList()[static_cast<int>(m_resHolder->hard_status->getHardwareStatus())], this);
   mainLay->addWidget(m_hardStatus);
   mainLay->addWidget(makeSeparator());
 
   mainLay->addLayout(stateLay);
-  for (auto const &[name, label] : control2::statusBarStatesList()) {
+  for (auto const &[name, label] : deepvaccontrol::statusBarStatesList()) {
     if (m_resHolder->states->contains(name)) {
       auto *stateLabel      = new QLabel(QString("%1: ").arg(label), this);
       auto *stateValueLabel = new LabelPlus(m_resHolder->states->getSysValue(name), this);
@@ -64,7 +64,7 @@ StatusBar::StatusBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   mainLay->addWidget(makeSeparator());
   mainLay->addWidget(userLabel);
 
-  m_appState = new QLabel(control2::APP_STATE_LIST[static_cast<quint32>(resHolder->status->getAppState())], this);
+  m_appState = new QLabel(deepvaccontrol::APP_STATE_LIST[static_cast<quint32>(resHolder->status->getAppState())], this);
   mainLay->addWidget(makeSeparator());
   mainLay->addWidget(m_appState);
 
@@ -128,12 +128,12 @@ QFrame *StatusBar::makeSeparator() {
 }
 
 void StatusBar::handleAppStateCahnged(StatusManager::AppState newState) {
-  m_appState->setText(control2::APP_STATE_LIST[static_cast<quint32>(newState)]);
+  m_appState->setText(deepvaccontrol::APP_STATE_LIST[static_cast<quint32>(newState)]);
 }
 
 void StatusBar::handleHardStatusCahnged(HardwareStatus::HardwareStatusEnum const &newStatus,
                                         HardwareStatus::HardwareStatusEnum const &) {
-  m_hardStatus->setText(control2::hardwareStatusList()[static_cast<quint32>(newStatus)]);
+  m_hardStatus->setText(deepvaccontrol::hardwareStatusList()[static_cast<quint32>(newStatus)]);
 }
 
 void StatusBar::handleOpcStateCahnged(int newState) {
@@ -168,4 +168,4 @@ bool StatusBar::eventFilter(QObject *watched, QEvent *event) {
   }
   return QObject::eventFilter(watched, event);
 }
-} // namespace control2
+} // namespace deepvaccontrol

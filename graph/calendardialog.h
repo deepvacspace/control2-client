@@ -6,7 +6,7 @@
 #include <QLabel>
 #include <QList>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 constexpr inline int const CALENDAR_BTN_IMG_SIZE{50};
 constexpr inline int const CALENDAR_BTN_SIZE{60};
@@ -45,6 +45,6 @@ private:
   QString               m_dirPath;
 };
 
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CALENDARDIALOG_H

@@ -21,7 +21,7 @@
 #include "testa_opc_server.h"
 #include "usbmanager.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class App : public QObject {
   Q_OBJECT
 public:
@@ -87,6 +87,6 @@ private:
   bool m_windowMode;
   bool m_debugMode;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // APP_H

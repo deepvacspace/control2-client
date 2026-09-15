@@ -5,7 +5,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime, QWidget *parent)
     : QDialog{parent}, m_startTime{startTime} {
   auto *mainLay = new QVBoxLayout(this);
@@ -82,4 +82,4 @@ void DelayInfoDialog::checkTime() {
     accept();
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

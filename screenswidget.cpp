@@ -1,6 +1,6 @@
 #include "screenswidget.h"
 
-namespace control2{
+namespace deepvaccontrol{
 ScreensWidget::ScreensWidget(QWidget *parent) : QWidget{parent} {
 }
 

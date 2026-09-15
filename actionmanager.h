@@ -8,7 +8,7 @@
 #include "stringpathprovider.h"
 #include <QVariantList>
 
-namespace control2 {
+namespace deepvaccontrol {
 class ActionManager
     : public QObject
     , public FileHandler {
@@ -50,6 +50,6 @@ inline void ActionManager::saveToDisk() {
   StringPathProvider path(m_fileStoragePath, m_logger);
   FileHandler::saveToFile(&path);
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // ACTIONMANAGER_H

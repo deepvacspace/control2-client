@@ -1,12 +1,12 @@
 #ifndef UILANGUAGE_H
 #define UILANGUAGE_H
 
-namespace control2 {
+namespace deepvaccontrol {
 
 enum class UiLanguage {
   Russian,
   English
 };
 
-} // namespace control2
+} // namespace deepvaccontrol
 #endif // UILANGUAGE_H

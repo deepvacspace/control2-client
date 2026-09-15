@@ -7,7 +7,7 @@
 
 class QTabWidget;
 
-namespace control2 {
+namespace deepvaccontrol {
 
 // "AI" page. A tabbed container: "Simulator" (default) hosts the GRU
 // digital-twin closed-loop simulator (AiSimulatorWidget), "Advisor" runs
@@ -22,6 +22,6 @@ public:
 private:
   QTabWidget *m_tabWidget;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // AIWIDGET_H

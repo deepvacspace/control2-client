@@ -9,7 +9,7 @@
 #include "accessmanager.h"
 #include "lineeditscreen.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class AccessLevelWidget : public QWidget {
   Q_OBJECT
@@ -42,6 +42,6 @@ private:
   AccessLevelWidget *m_levelEdit;
   QPushButton       *m_saveBtn;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // USEREDITDIALOG_H

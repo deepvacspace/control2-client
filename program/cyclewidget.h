@@ -4,7 +4,7 @@
 #include <QLabel>
 #include <QWidget>
 
-namespace control2 {
+namespace deepvaccontrol {
 class CycleWidget : public QWidget {
   Q_OBJECT
 public:
@@ -29,6 +29,6 @@ private:
 inline QVariantMap CycleWidget::getParams() const {
   return m_params;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CYCLEWIDGET_H

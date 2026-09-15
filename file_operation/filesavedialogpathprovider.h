@@ -5,7 +5,7 @@
 #include "logger.h"
 #include "pathprovider.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class FileSaveDialogPathProvider : public PathProvider {
 public:
   FileSaveDialogPathProvider(QStringList pathList, Logger *logger, QObject *parent = nullptr)
@@ -26,6 +26,6 @@ public:
     dialog->open();
   }
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FILESAVEDIALOGPATHPROVIDER_H

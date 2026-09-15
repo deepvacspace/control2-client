@@ -6,7 +6,7 @@
 #include "programmodel.h"
 #include "qcustomplot.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ProgramGraph : public QFrame {
   Q_OBJECT
 public:
@@ -42,6 +42,6 @@ private:
 
   // bool m_redrawEnabled;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PROGRAMGRAPH_H

@@ -5,7 +5,7 @@
 
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class PowerButton : public QPushButton {
   Q_OBJECT
 public:
@@ -14,6 +14,6 @@ public:
 signals:
   void prepareToCloseApp();
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // POWERBUTTON_H

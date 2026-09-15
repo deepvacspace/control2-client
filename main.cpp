@@ -8,9 +8,9 @@
 #include "uilanguage.h"
 #include "utils.h"
 
-static void setupLanguage(QApplication &app, control2::UiLanguage lang, QTranslator &translator) {
+static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QTranslator &translator) {
   switch (lang) {
-    case control2::UiLanguage::Russian: {
+    case deepvaccontrol::UiLanguage::Russian: {
       qDebug() << "Set UiLanguage::Russian";
       // if (translator.load(":/language_ru.qm")) {
       //   app.installTranslator(&translator);
@@ -19,7 +19,7 @@ static void setupLanguage(QApplication &app, control2::UiLanguage lang, QTransla
       QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
       break;
     }
-    case control2::UiLanguage::English:
+    case deepvaccontrol::UiLanguage::English:
     default: {
       qDebug() << "Set UiLanguage::English";
       if (translator.load(":/language_en.qm")) {
@@ -33,10 +33,13 @@ static void setupLanguage(QApplication &app, control2::UiLanguage lang, QTransla
 
 int main(int argc, char *argv[]) {
   QApplication a(argc, argv);
+  QApplication::setApplicationName(QStringLiteral("Deepvac Control"));
+  QApplication::setApplicationDisplayName(QStringLiteral("Deepvac Control"));
+  QApplication::setOrganizationName(QStringLiteral("Deepvac"));
 
   // Options parser
   QCommandLineParser parser;
-  parser.setApplicationDescription("TestaApp2");
+  parser.setApplicationDescription(QStringLiteral("Deepvac Control"));
   parser.addHelpOption();
 
   QCommandLineOption windowModeOption("w", "Enable windowed mode");
@@ -55,13 +58,13 @@ int main(int argc, char *argv[]) {
 
   // Style and sizes
   a.setStyle(QStyleFactory::create("fusion"));
-  a.setPalette(control2::utils::lightPalette());
+  a.setPalette(deepvaccontrol::utils::lightPalette());
 
   if (!windowedMode) {
     auto        *screen = a.primaryScreen();
     double const ssf{qMax(1.0, static_cast<double>(screen->size().width()) / 1024.0)};
 
-    control2::utils::setSsf(ssf);
+    deepvaccontrol::utils::setSsf(ssf);
 
     auto font     = a.font();
     auto fontSize = font.pointSize();
@@ -71,7 +74,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Control application
-  control2::App m_app(windowedMode, debugMode);
+  deepvaccontrol::App m_app(windowedMode, debugMode);
 
   // Translator must live until the end of the application
   QTranslator translator;

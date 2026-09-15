@@ -3,7 +3,7 @@
 
 #include <QWidget>
 
-namespace control2 {
+namespace deepvaccontrol {
 class ScrollWidget : public QWidget {
   Q_OBJECT
 public:
@@ -14,6 +14,6 @@ public:
 private:
   QWidget *m_marginWidget;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SCROLLWIDGET_H

@@ -8,7 +8,7 @@
 #include <random>
 #include <vector>
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 namespace {
 double limitValue(double low, double x, double high) {
@@ -432,4 +432,4 @@ CemResult CemOptimizer::run(SimParams const &params, std::function<void(int, int
   return result;
 }
 
-} // namespace control2::ai
+} // namespace deepvaccontrol::ai

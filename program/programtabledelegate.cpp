@@ -4,7 +4,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ProgramTableDelegate::ProgramTableDelegate(ProgramModel *model, QObject *parent)
     : QStyledItemDelegate{parent}, m_model{model}, m_paramOrder{model->getParamListOrder()} {
 }
@@ -61,4 +61,4 @@ void ProgramTableDelegate::paint(
 
   QStyledItemDelegate::paint(painter, option, index);
 }
-} // namespace control2
+} // namespace deepvaccontrol

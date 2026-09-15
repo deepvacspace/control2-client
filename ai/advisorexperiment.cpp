@@ -2,7 +2,7 @@
 
 #include <QObject>
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 ComparisonWorker::ComparisonWorker(GruOnnxModel *model, SimParams const &params,
                                     QVector<AdvisorDecision> const &decisions, QObject *parent)
@@ -70,4 +70,4 @@ void ComparisonWorker::run() {
   m_result.ok = true;
 }
 
-} // namespace control2::ai
+} // namespace deepvaccontrol::ai

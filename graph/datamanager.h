@@ -7,7 +7,7 @@
 
 #include "dataholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class ResHolder;
 
@@ -55,6 +55,6 @@ private:
 inline std::shared_ptr<DataHolder> DataManager::getIntervalToDisplay() const {
   return m_intervalToDisplay;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif

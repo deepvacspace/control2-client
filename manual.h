@@ -10,7 +10,7 @@
 #include "resholder.h"
 #include "stopbutton.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class Manual : public QWidget {
   Q_OBJECT
 public:
@@ -69,6 +69,6 @@ private:
   SystemValueList *m_modelSysValuesList;
   SystemValue     *m_currentVal;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // MANUAL_H

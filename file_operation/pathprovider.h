@@ -4,7 +4,7 @@
 
 #include "logger.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class PathProvider : public QObject {
   Q_OBJECT
 public:
@@ -27,6 +27,6 @@ private:
   Logger *m_logger;
 };
 
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PATHPROVIDER_H

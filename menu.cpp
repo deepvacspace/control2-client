@@ -2,7 +2,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 Menu::Menu(int buttonHeight, QWidget *parent)
     : QWidget{parent}
     , m_listLay{new QVBoxLayout()}
@@ -90,4 +90,4 @@ void Menu::addWidget(QWidget *widget) {
   m_listLay->addWidget(widget);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

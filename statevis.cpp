@@ -7,7 +7,7 @@
 #include "labelplus.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 StateVis::StateVis(QString const &name, SystemValue *x, SystemValue *r, SystemValue *u, double sf, QWidget *parent)
     : QWidget{parent} {
   if (sf < 1) {
@@ -38,4 +38,4 @@ StateVis::StateVis(QString const &name, SystemValue *x, SystemValue *r, SystemVa
   setMinimumWidth((x->isSciNotation() ? 270 : 180) * (1 + (sf - 1) * 0.25) * utils::ssf());
   setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 }
-} // namespace control2
+} // namespace deepvaccontrol

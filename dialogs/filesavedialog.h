@@ -6,7 +6,7 @@
 #include "drivepathselect.h"
 #include "lineeditscreen.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class FileSaveDialog : public QDialog {
   Q_OBJECT
 public:
@@ -26,6 +26,6 @@ private:
 inline QString FileSaveDialog::getFilePath() const {
   return m_resultFilePath;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FILESAVEDIALOG_H

@@ -10,7 +10,7 @@
 #include <source_location>
 // #include <sstream>
 
-namespace control2 {
+namespace deepvaccontrol {
 class Logger : public QObject {
   Q_OBJECT
 public:
@@ -74,6 +74,6 @@ inline void Logger::setLogLevel(Level newLevel)
 {
   m_currentLevel = newLevel;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // LOGGER_H

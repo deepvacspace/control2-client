@@ -11,7 +11,7 @@
 
 #include "programmodel.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class IntervalHelpImageLabel : public QLabel {
   Q_OBJECT
@@ -86,6 +86,6 @@ private:
   QPushButton           *closeButton;
   QVector<QPushButton *> buttons;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // INTERVALEDITDIALOG_H

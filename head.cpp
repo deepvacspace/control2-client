@@ -6,7 +6,7 @@
 #include "statuslabel.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 Head::Head(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_accessLevel{resHolder->users->getCurrentAccessLevel()} {
   initBaseGui();
@@ -190,4 +190,4 @@ void Head::updateGui() {
     m_nextIntervalBtn->setVisible(false);
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

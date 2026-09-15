@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ProgramModel::ProgramModel(QVariantList const &paramListVariant, ProgType progType, QObject *parent)
     : QObject{parent}
     , FileHandler{}
@@ -148,8 +148,8 @@ void ProgramModel::printToDebug() const {
         displayValue = utils::timeFromSec(m_standardModel.item(i, col)->data(Qt::UserRole).toUInt());
       } else if ((Qt::UserRole + 1) == m_paramListTypes[i]) {
         quint32 const flagsValue = m_standardModel.item(i, col)->data(Qt::UserRole + 1).toUInt();
-        displayValue += (utils::getBitOfDword(flagsValue, control2::AWAIT_BIT) ? "A+" : "");
-        displayValue += (utils::getBitOfDword(flagsValue, control2::RAMP_BIT) ? "R+" : "");
+        displayValue += (utils::getBitOfDword(flagsValue, deepvaccontrol::AWAIT_BIT) ? "A+" : "");
+        displayValue += (utils::getBitOfDword(flagsValue, deepvaccontrol::RAMP_BIT) ? "R+" : "");
         displayValue
           += utils::binaryString(static_cast<char const *>(static_cast<void const *>(&flagsValue)), 1, false);
         // displayValue += QString::number(flagsValue);
@@ -296,4 +296,4 @@ bool ProgramModel::readData(QFile &file) {
 
   return result;
 }
-} // namespace control2
+} // namespace deepvaccontrol

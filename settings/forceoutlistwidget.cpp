@@ -4,7 +4,7 @@
 
 #include "scrollwidget.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ForceOutListWidget::ForceOutListWidget(
   ResHolder *resHolder, SystemValue *outsSystVal, QVariantList const &forceOutVariantList, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_outsSystVal{outsSystVal} {
@@ -86,4 +86,4 @@ void ForceOutListWidget::sendForceOutMsg(int count, QByteArray data) {
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::FORCE_OUT, data);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

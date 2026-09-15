@@ -4,7 +4,7 @@
 #include <QWidget>
 #include <QStackedWidget>
 
-namespace control2{
+namespace deepvaccontrol{
 /**
  * @brief Switches different widgets/'screens' in same space.
  * Based on QStackedWidget widget.

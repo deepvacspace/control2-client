@@ -2,7 +2,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ConfDialog::ConfDialog(
   QString const &title, QString const &message, QString const &btn1Name, QString const &btn2Name, QWidget *parent)
     : MessageDialog{title, message, parent} {
@@ -28,4 +28,4 @@ ConfDialog::ConfDialog(
 
   setAttribute(Qt::WA_DeleteOnClose);
 }
-} // namespace control2
+} // namespace deepvaccontrol

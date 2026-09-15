@@ -3,7 +3,7 @@
 
 #include <QDialog>
 
-namespace control2 {
+namespace deepvaccontrol {
 class CycleDialog : public QDialog {
   Q_OBJECT
 public:
@@ -13,6 +13,6 @@ public:
 private:
   QVariantMap &m_cycleParams;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CYCLEDIALOG_H

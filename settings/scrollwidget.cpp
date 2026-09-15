@@ -5,7 +5,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 ScrollWidget::ScrollWidget(bool useStyle, QWidget *parent) : QWidget{parent} {
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(3, 3, 3, 3);
@@ -26,4 +26,4 @@ ScrollWidget::ScrollWidget(bool useStyle, QWidget *parent) : QWidget{parent} {
 void ScrollWidget::setLayout2(QLayout *layout) {
   m_marginWidget->setLayout(layout);
 }
-} // namespace control2
+} // namespace deepvaccontrol

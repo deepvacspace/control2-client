@@ -11,7 +11,7 @@
 #include "statuslabel.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 constexpr static quint8 const TEMP_RAMP_CHECHED{16U}; // bit in flags SystemValue
 constexpr static quint8 const TEMP_HOLD_CHECHED{15U}; // bit in flags SystemValue
@@ -255,12 +255,12 @@ void Manual::sendProgram() {
   }
 
   m_model->setParamValue(1, "duration", holdChecked ? hold_set : LONG_TIME);
-  utils::setBitOfDword(flags1_set, control2::AWAIT_BIT, holdChecked);
+  utils::setBitOfDword(flags1_set, deepvaccontrol::AWAIT_BIT, holdChecked);
   m_model->setParamValue(1, "flags", flags1_set);
 
   if (rampChecked) {
     m_model->setParamValue(0, "duration", fabs((temp_cur - temp_set) / ramp_set * (speedUnitIsHour ? 3600 : 60)));
-    utils::setBitOfDword(flags0_set, control2::RAMP_BIT, true);
+    utils::setBitOfDword(flags0_set, deepvaccontrol::RAMP_BIT, true);
     m_model->setParamValue(0, "flags", flags0_set);
   } else {
     m_model->delItem(0);
@@ -372,4 +372,4 @@ CommonSetWidget::CommonSetWidget(quint32 index, SystemValueList *manualModel, Sy
                 + QString("QCheckBox::indicator{width: %1px; height: %1px;}").arg(26 * utils::ssf()));
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

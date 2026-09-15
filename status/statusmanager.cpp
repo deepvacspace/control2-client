@@ -3,7 +3,7 @@
 #include "constants.h"
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 StatusManager::StatusManager(ResHolder *resHolder, QObject *parent)
     : QObject{parent}
     , m_opcState{-2}
@@ -20,7 +20,7 @@ void StatusManager::setAppState(AppState const newState) {
 
   m_appState = newState;
   emit appStateChanged(newState);
-  m_resHolder->logger->stream(Logger::Level::DEB) << control2::APP_STATE_LIST[static_cast<quint32>(newState)];
+  m_resHolder->logger->stream(Logger::Level::DEB) << deepvaccontrol::APP_STATE_LIST[static_cast<quint32>(newState)];
 
   switch (newState) {
     case AppState::IDLE: // starting point
@@ -63,4 +63,4 @@ void StatusManager::setOpcStatus(int newState) {
   m_resHolder->logger->stream(Logger::Level::INFO) << "OPC Ua Server initialized with status:" << newState;
   emit opcStateChanged(m_opcState);
 }
-} // namespace control2
+} // namespace deepvaccontrol

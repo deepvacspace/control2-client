@@ -3,7 +3,7 @@
 #include <QGridLayout>
 #include <QLabel>
 
-namespace control2 {
+namespace deepvaccontrol {
 PidWidget::PidWidget(QVariantMap data, QWidget *parent) : QWidget{parent} {
   m_name     = data["name"].toString();
   m_label    = data["label"].toString();
@@ -121,4 +121,4 @@ void PidWidget::initGui() {
   mainLay->setColumnStretch(3 + 1, 1);
   mainLay->setRowStretch(m_points + 1 + 1, 1);
 }
-} // namespace control2
+} // namespace deepvaccontrol

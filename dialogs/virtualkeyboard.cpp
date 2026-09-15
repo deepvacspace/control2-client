@@ -2,7 +2,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 VirtualKeyboard::VirtualKeyboard(QString const &title, Language lang, QWidget *parent)
     : QDialog{parent}, m_isUpper{false}, m_currLang{Language::NONE} {
   setWindowTitle(title);
@@ -211,4 +211,4 @@ VirtKeyBtn::VirtKeyBtn(QString const &text, QString const &textAlt, QWidget *par
 void VirtKeyBtn::enableAltText(bool enable) {
   setText(enable ? m_textAlt : m_text);
 }
-} // namespace control2
+} // namespace deepvaccontrol

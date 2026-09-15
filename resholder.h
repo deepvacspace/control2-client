@@ -13,7 +13,7 @@
 #include "systemvaluelist.h"
 #include "usbmanager.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 struct ResHolder {
   SystemValueList *states{nullptr};
@@ -29,5 +29,5 @@ struct ResHolder {
   UsbManager      *usb{nullptr};
   bool             aiAdvisorEnabled{true};
 };
-} // namespace control2
+} // namespace deepvaccontrol
 #endif // RESHOLDER_H

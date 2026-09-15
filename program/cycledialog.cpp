@@ -8,7 +8,7 @@
 #include "lineeditnum.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 constexpr quint32 const INFINITY_CYCLE_COUNT{65535};
 
 CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent)
@@ -41,7 +41,7 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
     endIndexEdit->setText(QString::number(cycleParams["end"].toUInt() + 1));
     cycleNumberEdit->setText(QString::number(cycleParams["count"].toUInt()));
 
-    if (control2::INFINITY_CYCLE_COUNT == cycleParams["count"].toUInt()) {
+    if (deepvaccontrol::INFINITY_CYCLE_COUNT == cycleParams["count"].toUInt()) {
       cycleNumberEdit->setText("3");
       cycleNumberEdit->setEnabled(false);
       infinity->setChecked(true);
@@ -122,4 +122,4 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
   setModal(true);
   adjustSize();
 }
-} // namespace control2
+} // namespace deepvaccontrol

@@ -8,7 +8,7 @@
 #include "chambertwinsim.h"
 #include "gruonnxmodel.h"
 
-namespace control2::ai {
+namespace deepvaccontrol::ai {
 
 // Result of pre-run CEM tuning: the best fixed PID triplet found for the
 // experiment about to run (with its twin-predicted trajectory), and the
@@ -53,6 +53,6 @@ private:
   OfflineTuneResult m_result;
 };
 
-} // namespace control2::ai
+} // namespace deepvaccontrol::ai
 
 #endif // OFFLINETUNEWORKER_H

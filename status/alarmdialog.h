@@ -4,7 +4,7 @@
 #include <QDialog>
 #include <QLabel>
 
-namespace control2 {
+namespace deepvaccontrol {
 class AlarmDialog : public QDialog {
   Q_OBJECT
 public:
@@ -23,6 +23,6 @@ private:
 protected:
   void closeEvent(QCloseEvent *event) override;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // ALARMDIALOG_H

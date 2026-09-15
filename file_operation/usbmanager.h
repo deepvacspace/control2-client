@@ -3,7 +3,7 @@
 #include <QObject>
 #include <QTimer>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class UsbManager : public QObject {
   Q_OBJECT

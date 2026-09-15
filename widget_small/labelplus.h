@@ -5,7 +5,7 @@
 
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class LabelPlus : public QLabel {
   Q_OBJECT
 public:
@@ -31,6 +31,6 @@ inline void LabelPlus::setPrec(int newPrec) {
 inline void LabelPlus::setFormat(QString (*dispFnc)(float, int)) {
   m_dispFnc = dispFnc;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // LABELPLUS_H

@@ -7,7 +7,7 @@
 #include "drivepathselect.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 FileLoadDialog::FileLoadDialog(QList<QString> pathList, QString const &filter, QWidget *parent)
     : QDialog{parent}, m_fileFilter{filter} {
   auto *drivePathSelect = new DrivePathSelect(pathList, this);
@@ -84,4 +84,4 @@ void FileLoadDialog::selectPath(QString const &path) {
   m_fileListView->setModel(m_sortedModel);
   m_fileListView->setRootIndex(m_sortedModel->mapFromSource(m_fileSysModel->index(path)));
 }
-} // namespace control2
+} // namespace deepvaccontrol

@@ -5,7 +5,7 @@
 
 #include "virtualkeyboard.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class LineEditScreen : public QLineEdit {
   Q_OBJECT
 public:
@@ -18,6 +18,6 @@ private:
 protected:
   void mousePressEvent(QMouseEvent *event) override;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // LINEEDITSCREEN_H

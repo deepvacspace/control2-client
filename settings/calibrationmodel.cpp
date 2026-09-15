@@ -1,6 +1,6 @@
 #include "calibrationmodel.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 CalibrationModel::CalibrationModel(QVariantMap calibVariantMap, QObject *parent)
     : QStandardItemModel{parent}, m_selectedIndex{0U} {
   this->setColumnCount(3);
@@ -102,4 +102,4 @@ void CalibrationModel::removePoint(int index) {
   selectIndex(index, /*force*/ true);
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

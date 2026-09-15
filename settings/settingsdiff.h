@@ -3,7 +3,7 @@
 
 #include <QDialog>
 
-namespace control2 {
+namespace deepvaccontrol {
 class SettingsDiff : public QDialog {
   Q_OBJECT
 public:
@@ -14,6 +14,6 @@ private:
   QMap<QString, float> m_local;
   QMap<QString, float> m_plc;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SETTINGSDIFF_H

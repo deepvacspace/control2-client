@@ -6,7 +6,7 @@
 #include "cycledialog.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 CycleWidget::CycleWidget(QWidget *parent) : QWidget{parent}, m_intervalNumber{0U} {
   initGui();
 }
@@ -73,4 +73,4 @@ void CycleWidget::setIntervalsCount(int i) {
   m_intervalNumber = i;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

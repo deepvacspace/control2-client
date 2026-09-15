@@ -3,7 +3,7 @@
 
 #include <QVariantList>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 // Functions to convert complex settings structures "pid" and "calibration"
 // to QMap<QString, float>
@@ -16,6 +16,6 @@ QVariantMap          updatePidValuesFromMap(QMap<QString, float> const &map, QVa
 
 QMap<QString, float> calibrationVariantToStringMap(QVariantMap const &calibrationVariantMap);
 QVariantMap          updateCalibrationValuesFromMap(QMap<QString, float> const &map, QVariantMap calibrationVariantMap);
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SETTINGSTRANSFORMER_H

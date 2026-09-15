@@ -5,7 +5,7 @@
 #include <graphstylesinglewidget.h>
 #include <resholder.h>
 
-namespace control2 {
+namespace deepvaccontrol {
 class GraphStyleEditor : public QDialog {
   Q_OBJECT
 public:
@@ -24,6 +24,6 @@ private:
 protected:
   void hideEvent(QHideEvent *event) override;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // GRAPHSTYLEEDITOR_H

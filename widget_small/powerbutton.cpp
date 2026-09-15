@@ -8,10 +8,10 @@
 #include "messagedialog.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{"Выкл.", parent} {
   setText(tr("Выкл"));
-  setFixedHeight(control2::UI_MENU_BTN_HEIGHT * utils::ssf());
+  setFixedHeight(deepvaccontrol::UI_MENU_BTN_HEIGHT * utils::ssf());
 
   setIcon(QIcon(":/imgs/power.png"));
   setIconSize(QSize(30 * utils::ssf(), 30 * utils::ssf()));
@@ -45,4 +45,4 @@ PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{"�
     }
   });
 }
-} // namespace control2
+} // namespace deepvaccontrol

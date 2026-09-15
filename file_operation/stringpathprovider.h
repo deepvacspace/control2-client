@@ -2,7 +2,7 @@
 #define STRINGPATHPROVIDER_H
 #include "pathprovider.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class StringPathProvider : public PathProvider {
 public:
   StringPathProvider(QString const &path, Logger *logger, QObject *parent = nullptr)
@@ -18,6 +18,6 @@ public:
 private:
   QString m_predefinedPath;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // STRINGPATHPROVIDER_H

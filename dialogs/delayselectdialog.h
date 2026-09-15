@@ -4,7 +4,7 @@
 #include <QDateTimeEdit>
 #include <QDialog>
 
-namespace control2 {
+namespace deepvaccontrol {
 class DelaySelectDialog : public QDialog {
   Q_OBJECT
 public:
@@ -18,5 +18,5 @@ private:
 
   QDateTimeEdit *startTimeEdit;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 #endif // DELAYSELECTDIALOG_H

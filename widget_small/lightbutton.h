@@ -6,7 +6,7 @@
 #include "gatetcp.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class LightButton : public QPushButton {
   Q_OBJECT
 public:
@@ -17,6 +17,6 @@ private:
   SystemValue *m_sysVal;
   bool         m_enabled;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // LIGHTBUTTON_H

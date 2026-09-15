@@ -1,6 +1,6 @@
 #include "settingstransformer.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 QMap<QString, float> pidVariantToStringMap(QVariantMap const &pidVariantMap) {
   QString const pidName{pidVariantMap["name"].toString()};
@@ -199,4 +199,4 @@ QVariantMap updateCalibrationValuesFromMap(QMap<QString, float> const &map, QVar
   return calibrationVariantMap;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

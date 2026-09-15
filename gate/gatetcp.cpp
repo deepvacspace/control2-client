@@ -5,7 +5,7 @@
 #include <QDateTime>
 
 #include "messagedialog.h"
-namespace control2 {
+namespace deepvaccontrol {
 GateTcp::GateTcp(
   Logger *logger, QHostAddress serverIp4Address, quint16 port, ConnectionDialog *connectionDialog, QObject *parent)
     : QObject{parent}
@@ -445,4 +445,4 @@ bool GateTcp::parseUserMsg(QByteArray data) {
   return true;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

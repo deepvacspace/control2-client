@@ -6,7 +6,7 @@
 #include "calibrationmodel.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class CalibrationWidget : public QWidget {
   Q_OBJECT
 public:
@@ -30,6 +30,6 @@ inline void CalibrationWidget::setDataVariant(QVariantMap const &data) {
 inline QVariantMap CalibrationWidget::getDataVariant() const {
   return m_calibModel.getDataVariant();
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // CALIBRATIONWIDGET_H

@@ -9,7 +9,7 @@
 #include "resholder.h"
 #include "stopbutton.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class Head : public QWidget {
   Q_OBJECT
 public:
@@ -37,6 +37,6 @@ private:
 
   AccessManager::AccessLevel m_accessLevel;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // HEAD_H

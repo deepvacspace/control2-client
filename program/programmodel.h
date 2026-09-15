@@ -4,7 +4,7 @@
 #include <QStandardItemModel>
 
 #include "filehandler.h"
-namespace control2 {
+namespace deepvaccontrol {
 /*
 Program model should be represented as json to save/load
 {
@@ -131,6 +131,6 @@ inline void ProgramModel::emitModelUpdated() {
 inline ProgramModel::ProgType ProgramModel::getProgType() const {
   return m_progType;
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PROGRAMMODEL_H

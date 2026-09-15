@@ -5,7 +5,7 @@
 
 #include "programmodel.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ProgramTableDelegate : public QStyledItemDelegate {
   Q_OBJECT
 public:
@@ -20,6 +20,6 @@ private:
 public:
   void paint(QPainter *painter, QStyleOptionViewItem const &option, QModelIndex const &index) const override;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PROGRAMTABLEDELEGATE_H

@@ -6,7 +6,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class VirtKeyBtn : public QPushButton {
   Q_OBJECT
@@ -60,6 +60,6 @@ private:
   bool     m_isUpper;
   Language m_currLang;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // VIRTUALKEYBOARD_H

@@ -10,15 +10,15 @@
 #include <QJsonParseError>
 #include <QObject>
 
-#ifdef CONTROL2_HAVE_ONNXRUNTIME
+#ifdef DEEPVACCONTROL_HAVE_ONNXRUNTIME
 #include <onnxruntime_cxx_api.h>
 #endif
 
-namespace control2 {
+namespace deepvaccontrol {
 
-#ifdef CONTROL2_HAVE_ONNXRUNTIME
+#ifdef DEEPVACCONTROL_HAVE_ONNXRUNTIME
 struct GruOnnxModel::Impl {
-  Ort::Env                      env{ORT_LOGGING_LEVEL_WARNING, "control2-ai"};
+  Ort::Env                      env{ORT_LOGGING_LEVEL_WARNING, "deepvaccontrol-ai"};
   std::unique_ptr<Ort::Session> session;
   Ort::MemoryInfo               memoryInfo{Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)};
 };
@@ -63,7 +63,7 @@ bool GruOnnxModel::load(QString const &onnxPath, QString const &metadataPath) {
     return false;
   }
 
-#ifdef CONTROL2_HAVE_ONNXRUNTIME
+#ifdef DEEPVACCONTROL_HAVE_ONNXRUNTIME
   try {
     Ort::SessionOptions sessionOptions;
     sessionOptions.SetIntraOpNumThreads(1);
@@ -105,7 +105,7 @@ QString const &GruOnnxModel::statusMessage() const {
 }
 
 bool GruOnnxModel::predictDeltaT1(QVector<float> const &windowFlat, float &deltaOut) {
-#ifdef CONTROL2_HAVE_ONNXRUNTIME
+#ifdef DEEPVACCONTROL_HAVE_ONNXRUNTIME
   if (!m_loaded || !m_impl->session) {
     m_status = QObject::tr("Model not loaded");
     return false;
@@ -144,7 +144,7 @@ bool GruOnnxModel::predictDeltaT1(QVector<float> const &windowFlat, float &delta
 }
 
 bool GruOnnxModel::predictDeltaT1Batch(QVector<float> const &windowsFlat, int batchSize, QVector<float> &deltaOut) {
-#ifdef CONTROL2_HAVE_ONNXRUNTIME
+#ifdef DEEPVACCONTROL_HAVE_ONNXRUNTIME
   if (!m_loaded || !m_impl->session) {
     m_status = QObject::tr("Model not loaded");
     return false;

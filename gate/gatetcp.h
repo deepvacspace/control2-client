@@ -9,7 +9,7 @@
 #include "logger.h"
 #include "streambuffer.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class GateTcp : public QObject {
   Q_OBJECT
@@ -129,6 +129,6 @@ private:
   ConnectionDialog *m_connectionDialog;
   quint8            m_sendPacketCount;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // GATETCP_H

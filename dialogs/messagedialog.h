@@ -6,7 +6,7 @@
 #include <QPushButton>
 #include <QTimer>
 
-namespace control2 {
+namespace deepvaccontrol {
 class MessageDialog : public QDialog {
   Q_OBJECT
 public:
@@ -22,6 +22,6 @@ protected:
   QPushButton *m_closeBtn;
   QTimer      *m_closeTimer;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // MESSAGEDIALOG_H

@@ -8,7 +8,7 @@
 #include "lineedittime.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QWidget *parent) : QDialog{parent}, m_model{model} {
   paramsOrder = m_model->getParamListOrder();
 
@@ -269,7 +269,7 @@ void IntervalEditDialog::updateGuiElements(int newIndex) {
   //   userFlagsCheckBoxList[i]->setChecked(flags >> bit & 0x01);
   // }
 
-  maxSpeedCheck->setChecked(utils::getBitOfDword(flags, control2::AWAIT_BIT));
+  maxSpeedCheck->setChecked(utils::getBitOfDword(flags, deepvaccontrol::AWAIT_BIT));
 
   int const count{m_model->getStandardModel()->columnCount()};
 
@@ -293,8 +293,8 @@ void IntervalEditDialog::localCommit() {
   // }
 
   bool const tempIsEnabled{utils::getBitOfDword(flags, paramsOrder.indexOf("temp"))};
-  utils::setBitOfDword(flags, control2::AWAIT_BIT, tempIsEnabled & maxSpeedCheck->isChecked());
-  utils::setBitOfDword(flags, control2::RAMP_BIT, tempIsEnabled & (!maxSpeedCheck->isChecked()));
+  utils::setBitOfDword(flags, deepvaccontrol::AWAIT_BIT, tempIsEnabled & maxSpeedCheck->isChecked());
+  utils::setBitOfDword(flags, deepvaccontrol::RAMP_BIT, tempIsEnabled & (!maxSpeedCheck->isChecked()));
 
   // flags does not mapped to anything, so 'commit' it value manualy
   m_model->getStandardModel()->item(m_model->getFlagsIndex(), curIndex)->setData(flags, Qt::UserRole + 1);
@@ -351,4 +351,4 @@ IntervalHelpWindow::IntervalHelpWindow(QWidget *parent) : QDialog(parent) {
   setWindowTitle(tr("Изменение скорости"));
   setAttribute(Qt::WA_DeleteOnClose);
 }
-} // namespace control2
+} // namespace deepvaccontrol

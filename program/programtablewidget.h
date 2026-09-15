@@ -6,7 +6,7 @@
 
 #include "programmodel.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ProgramTableWidget : public QFrame {
   Q_OBJECT
 public:
@@ -26,6 +26,6 @@ private:
   QTableView *m_tableView;
   void verticalResizeTableViewToContents();
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PROGRAMTABLEWIDGET_H

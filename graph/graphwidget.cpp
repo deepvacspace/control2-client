@@ -8,7 +8,7 @@
 #include "exportdialog.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_styleEditor{nullptr} {
   auto *mainLay    = new QGridLayout(this);
@@ -165,7 +165,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   connect(m_dataViewer, &DataViewer::controlModeChanged, this, &GraphWidget::updateModeSelectButton);
 
   connect(calendarBtn, &QPushButton::clicked, this, [this]() {
-    auto *dialog = new CalendarDialog(control2::INTERVALS_DIR, this);
+    auto *dialog = new CalendarDialog(deepvaccontrol::INTERVALS_DIR, this);
     connect(dialog, &CalendarDialog::intervalKeySelected, this, [this, dialog](double selectedIntervalKey) {
       if (m_resHolder->dataManager->prepareIntervalToDisplay(selectedIntervalKey)) {
         if (m_dataViewer->getData()
@@ -288,4 +288,4 @@ void GraphWidget::exportData() {
   });
   exportDialog->open();
 }
-} // namespace control2
+} // namespace deepvaccontrol

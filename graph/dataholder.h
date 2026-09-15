@@ -9,7 +9,7 @@
 #include "filehandler.h"
 #include "logger.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class DataExporter;
 
@@ -87,7 +87,7 @@ protected:
   bool writeData(QFile &file) override;
   bool readData(QFile &file) override;
 
-  friend control2::DataExporter;
+  friend deepvaccontrol::DataExporter;
 };
 
 inline QVector<double> DataHolder::getTimes() const {
@@ -113,6 +113,6 @@ inline bool DataHolder::isDirty() const noexcept {
 inline bool DataHolder::inRange(double epochSecTime) const {
   return (m_intervalKey <= epochSecTime) && ((epochSecTime - m_intervalKey) < m_maxLength);
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif

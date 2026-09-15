@@ -2,7 +2,7 @@
 
 #include <QStorageInfo>
 
-namespace control2 {
+namespace deepvaccontrol {
 
 UsbManager::UsbManager(QObject *parent) : QObject(parent) {
   connect(&m_timer, &QTimer::timeout, this, &UsbManager::updateDriveList);
@@ -28,4 +28,4 @@ void UsbManager::updateDriveList() {
   }
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

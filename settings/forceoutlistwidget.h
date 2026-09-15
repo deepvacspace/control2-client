@@ -7,7 +7,7 @@
 #include "resholder.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ForceOutListWidget : public QWidget {
   Q_OBJECT
 public:
@@ -21,6 +21,6 @@ private:
 
   QList<ForceOutSingleWidget *> m_outWidgets;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FORCEOUTLISTWIDGET_H

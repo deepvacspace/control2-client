@@ -4,7 +4,7 @@
 
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 LineEditTime::LineEditTime(quint64 timeInSecs, quint64 min, quint64 max, bool secEnable, QWidget *parent)
     : QLineEdit{parent}, m_sysValue{nullptr}, m_value{timeInSecs}, m_min{min}, m_max{max}, m_secEnable{secEnable} {
   {
@@ -170,4 +170,4 @@ void LineEditTime::updateTextByValue(long sec) {
     sEdit->setText(QString::number(sec % 60));
   }
 }
-} // namespace control2
+} // namespace deepvaccontrol

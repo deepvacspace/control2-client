@@ -9,7 +9,7 @@
 #include "programtablewidget.h"
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ProgramWidget : public QWidget {
   Q_OBJECT
 public:
@@ -42,6 +42,6 @@ private:
 
   // ProgramModel *m_currentProgramModel;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // PROGRAMWIDGET_H

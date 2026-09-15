@@ -9,7 +9,7 @@
 #include "lineeditnum.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class ForceOutSingleWidget : public QWidget {
   Q_OBJECT
 public:
@@ -54,6 +54,6 @@ inline void ForceOutSingleWidget::resetSelection() {
 inline void ForceOutSingleWidget::resetSetBtn() {
   m_setBtn->setVisible(false);
 }
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // FORCEOUTSINGLEWIDGET_H

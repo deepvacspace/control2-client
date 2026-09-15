@@ -13,7 +13,7 @@
 #include "resholder.h"
 #include "settingswidget.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class MainWindow : public QMainWindow {
   Q_OBJECT
 
@@ -47,6 +47,6 @@ protected:
   // void resizeEvent(QResizeEvent *event) override;
   void closeEvent(QCloseEvent *event) override;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // MAINWINDOW_H

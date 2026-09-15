@@ -10,7 +10,7 @@
 #include "offlineadvisorwidget.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 namespace {
 char const AI_TAB_PAGE_OBJECT_NAME[]{"aiTabPage"};
@@ -65,4 +65,4 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   m_tabWidget->addTab(offlineAdvisorWidget, tr("Offline advisor"));
 }
 
-} // namespace control2
+} // namespace deepvaccontrol

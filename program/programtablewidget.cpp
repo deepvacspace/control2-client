@@ -6,7 +6,7 @@
 
 #include "programtabledelegate.h"
 #include "utils.h"
-namespace control2 {
+namespace deepvaccontrol {
 ProgramTableWidget::ProgramTableWidget(QWidget *parent) : QFrame{parent} {
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
@@ -90,4 +90,4 @@ void ProgramTableWidget::verticalResizeTableViewToContents() {
   }
   m_tableView->setFixedHeight(rowTotalHeight + 2);
 }
-} // namespace control2
+} // namespace deepvaccontrol

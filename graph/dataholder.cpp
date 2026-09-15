@@ -10,7 +10,7 @@
 #include "stringpathprovider.h"
 #include "utils.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 DataHolder::DataHolder(uint16_t numberOfStates,
                        Logger  *logger,
                        double   intervalKey,
@@ -93,7 +93,7 @@ QVector<double> DataHolder::getValueAtIndex(quint64 index) const {
 
 void DataHolder::autoSave() {
   if (isDirty()) {
-    StringPathProvider path(control2::INTERVALS_DIR + utils::calculateFileName(getIntervalKey()), m_logger);
+    StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(getIntervalKey()), m_logger);
     saveToFile(&path);
   }
 }
@@ -201,7 +201,7 @@ qint64 DataHolder::findLastIndexBeforeEqualTime(double epochSecTime) const {
   return std::distance(m_times.cbegin(), iter - 1);
 }
 
-bool control2::DataHolder::writeData(QFile &file) {
+bool deepvaccontrol::DataHolder::writeData(QFile &file) {
   QElapsedTimer timer;
   timer.start();
 
@@ -222,7 +222,7 @@ bool control2::DataHolder::writeData(QFile &file) {
   return true;
 }
 
-bool control2::DataHolder::readData(QFile &file) {
+bool deepvaccontrol::DataHolder::readData(QFile &file) {
   QElapsedTimer timer;
   timer.start();
 
@@ -255,4 +255,4 @@ bool control2::DataHolder::readData(QFile &file) {
   emit dataChanged();
   return true;
 }
-} // namespace control2
+} // namespace deepvaccontrol

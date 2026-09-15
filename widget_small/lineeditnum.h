@@ -6,7 +6,7 @@
 #include "doublevalidator.h"
 #include "systemvalue.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 class VirtualNumKeyboard;
 
 class LineEditNum : public QLineEdit {
@@ -87,6 +87,6 @@ inline bool LineEditNum::getIsScientific() const {
   return m_isScientific;
 }
 
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // LINEEDITNUM_H

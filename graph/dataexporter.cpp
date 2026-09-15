@@ -3,7 +3,7 @@
 #include <QDateTime>
 #include <QTextStream>
 
-namespace control2 {
+namespace deepvaccontrol {
 DataExporter::DataExporter(DataHolder        *dataHolder,
                            QString const     &fileExtension,
                            QStringList const &stateLabels,
@@ -52,4 +52,4 @@ bool DataExporter::writeData(QFile &file) {
 
   return true;
 }
-} // namespace control2
+} // namespace deepvaccontrol

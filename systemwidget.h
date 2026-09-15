@@ -6,7 +6,7 @@
 
 #include "resholder.h"
 
-namespace control2 {
+namespace deepvaccontrol {
 
 class SysCmdWidget : public QWidget {
   Q_OBJECT
@@ -38,6 +38,6 @@ private:
   void        handleAccessChange(QString const &, AccessManager::AccessLevel newLevel);
   QTabWidget *m_tabWidget;
 };
-} // namespace control2
+} // namespace deepvaccontrol
 
 #endif // SYSTEMWIDGET_H
