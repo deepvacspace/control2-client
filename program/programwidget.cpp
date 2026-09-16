@@ -9,6 +9,7 @@
 #include "fileloaddialogpathprovider.h"
 #include "filesavedialogpathprovider.h"
 #include "intervaleditdialog.h"
+#include "offlineadvisorstart.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -221,8 +222,8 @@ void ProgramWidget::updateGui() {
 }
 
 void ProgramWidget::sendProgram() {
-  if (m_resHolder->aiAdvisorEnabled) {
-    utils::showAiAdvisorStartPromptAndRun(this);
+  if (m_resHolder->aiAdvisorEnabled && !offerOfflineAdvisorBeforeStart(m_resHolder, m_model, this)) {
+    return;
   }
 
   m_model->printToDebug();

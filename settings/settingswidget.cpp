@@ -1,5 +1,8 @@
 #include "settingswidget.h"
 
+#include <QCheckBox>
+#include <QGridLayout>
+#include <QLabel>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
@@ -107,6 +110,23 @@ void SettingsWidget::initGui() {
   // 4 - аварии
   auto *alarmListWidget = new AlarmListWidget(m_resHolder, this);
   tabWidget->addTab(alarmListWidget, tr("Аварии"));
+
+  // App-only AI setting. Its top-left alignment mirrors Operating Params;
+  // this value is not part of the settings sent to the PLC.
+  auto *aiSettingsWidget = new QWidget(this);
+  auto *aiSettingsLayout = new QGridLayout(aiSettingsWidget);
+  aiSettingsLayout->setContentsMargins(3, 3, 3, 3);
+  auto *aiAdvisorLabel  = new QLabel(tr("AI Advisor"), aiSettingsWidget);
+  auto *aiAdvisorToggle = new QCheckBox(aiSettingsWidget);
+  aiAdvisorToggle->setChecked(m_resHolder->aiAdvisorEnabled);
+  aiSettingsLayout->addWidget(aiAdvisorLabel, 0, 0);
+  aiSettingsLayout->addWidget(aiAdvisorToggle, 0, 1, Qt::AlignLeft);
+  aiSettingsLayout->setColumnStretch(2, 1);
+  aiSettingsLayout->setRowStretch(1, 1);
+  connect(aiAdvisorToggle, &QCheckBox::toggled, this, [this](bool checked) {
+    m_resHolder->aiAdvisorEnabled = checked;
+  });
+  tabWidget->addTab(aiSettingsWidget, tr("AI"));
 
   auto *btnsLay = new QHBoxLayout();
   mainLay->addLayout(btnsLay);

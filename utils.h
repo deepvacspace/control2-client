@@ -6,8 +6,6 @@
 #include <QStringList>
 #include <limits>
 
-class QWidget;
-
 namespace deepvaccontrol::utils {
 
 constexpr inline float const floatNan{std::numeric_limits<float>::quiet_NaN()};
@@ -36,8 +34,6 @@ QByteArray  makePascalStringPair(QString const &str, float value);
 QString     binaryString(char const *adr, int size, bool isLittleEndian);
 double      calculateKey(quint64 epochSecTime);
 QString     calculateFileName(quint64 epochSecTime);
-void        showAiAdvisorStartPromptAndRun(QWidget *parent);
-
 QString toSuperscript(int exp); // Convert integer exponent to superscript string like "⁻¹²"
 QString formatScientific(double v, int frac, bool fixedWhenReadable);
 QString formatScientific(float v, int frac, bool fixedWhenReadable);
