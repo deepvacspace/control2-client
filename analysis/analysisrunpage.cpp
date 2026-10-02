@@ -15,7 +15,9 @@
 #include <QPushButton>
 #include <QSaveFile>
 #include <QSignalBlocker>
+#include <QHeaderView>
 #include <QSpinBox>
+#include <QTableWidget>
 #include <QTabWidget>
 #include <QTextStream>
 #include <QTimer>
@@ -24,10 +26,17 @@
 #include <cmath>
 
 #include "analysisnotesstore.h"
+#include "seriesstats.h"
+#include "derivedexpression.h"
+#include "derivedvariablesdialog.h"
+#include "experimentrecorder.h"
 #include "constants.h"
 #include "flowlayout.h"
 #include "dialogs/messagedialog.h"
 #include "filesavedialogpathprovider.h"
+#include "lineeditnum.h"
+#include "lineeditscreen.h"
+#include "runstore.h"
 #include "resholder.h"
 #include "utils.h"
 
@@ -130,7 +139,7 @@ AnalysisRunPage::AnalysisRunPage(ResHolder          *resHolder,
     refreshAnnotationsList();
   });
   connect(m_notes, &AnalysisNotesStore::rulesChanged, this, [this](QString const &runKey) {
-    if (runKey == m_run.key) {
+    if (runKey.isEmpty() || (runKey == m_run.key)) { // empty: changed by a sync
       refreshBands();
       refreshRulesList();
     }
@@ -199,16 +208,23 @@ void AnalysisRunPage::buildUi() {
   auto *notesBtn = makeButton(tr("Rules && notes"), this);
   notesBtn->setCheckable(true);
 
+  auto *statisticsBtn = makeButton(tr("Statistics"), this);
+  statisticsBtn->setCheckable(true);
+  statisticsBtn->setToolTip(tr("Statistics of the visible range, run KPIs and automatic stages"));
+
   m_exportBtn      = makeButton(tr("Export ▾"), this);
   auto *exportMenu = new QMenu(m_exportBtn);
   exportMenu->addAction(tr("Chart PNG"), this, &AnalysisRunPage::exportChartPng);
   exportMenu->addAction(tr("Experiment CSV"), this, &AnalysisRunPage::exportRunCsv);
   exportMenu->addAction(tr("Comparison CSV"), this, &AnalysisRunPage::exportComparisonCsv);
+  exportMenu->addSeparator();
+  exportMenu->addAction(tr("Save to experiment database…"), this, &AnalysisRunPage::saveToDatabase)
+    ->setEnabled(m_run.storeKey.isEmpty());
   m_exportBtn->setMenu(exportMenu);
 
   auto *tools = new FlowLayout(nullptr, 4 * utils::ssf());
   for (QWidget *widget : std::initializer_list<QWidget *>{
-         m_channelsBtn, m_compareBtn, m_modeCombo, resetBtn, m_annotateBtn, notesBtn, m_exportBtn}) {
+         m_channelsBtn, m_compareBtn, m_modeCombo, resetBtn, m_annotateBtn, notesBtn, statisticsBtn, m_exportBtn}) {
     tools->addWidget(widget);
   }
   root->addLayout(tools);
@@ -282,13 +298,42 @@ void AnalysisRunPage::buildUi() {
     makeGroup({new QLabel(tr("From"), this), m_fromSpin, new QLabel(tr("to"), this), m_toSpin, applyRangeBtn, fullRangeBtn}));
   controls->addWidget(makeGroup({new QLabel(tr("Smooth"), this), m_smoothSpin}));
   controls->addWidget(makeGroup({new QLabel(tr("Overlays:"), this), m_minCheck, m_maxCheck, m_avgCheck}));
-  controls->addWidget(makeGroup({m_eventsCheck}));
+  m_stagesCheck = new QCheckBox(tr("Stages"), this);
+  m_stagesCheck->setToolTip(tr("Show the automatic ramp / setpoint / hold stages"));
+  connect(m_stagesCheck, &QCheckBox::toggled, this, &AnalysisRunPage::refreshStages);
+  controls->addWidget(makeGroup({m_eventsCheck, m_stagesCheck}));
+
+  // compare mode: reference line, by default the run's own setpoint channel
+  m_setpointCheck = new QCheckBox(tr("Setpoint"), this);
+  m_setpointCheck->setChecked(true);
+  m_setpointEdit = new LineEditNum(-1'000'000, 1'000'000, 2, false, this);
+  m_setpointEdit->setFixedWidth(110 * utils::ssf());
+  m_setpointEdit->setMinimumHeight(buttonHeight());
+  m_setpointGroup = makeGroup({m_setpointCheck, m_setpointEdit});
+  m_setpointGroup->setVisible(false);
+  controls->addWidget(m_setpointGroup);
+  connect(m_setpointCheck, &QCheckBox::toggled, this, &AnalysisRunPage::refreshSetpoint);
+  connect(m_setpointEdit, &LineEditNum::userEditingFinished, this, &AnalysisRunPage::refreshSetpoint);
   root->addLayout(controls);
 
   m_notesPanel = buildNotesPanel();
   m_notesPanel->setVisible(false);
   root->addWidget(m_notesPanel);
   connect(notesBtn, &QPushButton::toggled, m_notesPanel, &QWidget::setVisible);
+
+  m_statisticsPanel = buildStatisticsPanel();
+  m_statisticsPanel->setVisible(false);
+  root->addWidget(m_statisticsPanel);
+  connect(statisticsBtn, &QPushButton::toggled, this, [this](bool visible) {
+    m_statisticsPanel->setVisible(visible);
+    refreshRangeStatistics();
+  });
+  // follow zoom / pan, without recomputing on every intermediate step
+  m_statisticsTimer = new QTimer(this);
+  m_statisticsTimer->setSingleShot(true);
+  m_statisticsTimer->setInterval(250);
+  connect(m_statisticsTimer, &QTimer::timeout, this, &AnalysisRunPage::refreshRangeStatistics);
+  connect(m_chart, &AnalysisChart::viewRangeChanged, m_statisticsTimer, qOverload<>(&QTimer::start));
 }
 
 QWidget *AnalysisRunPage::buildNotesPanel() {
@@ -374,9 +419,10 @@ void AnalysisRunPage::load() {
     m_statsLabel->setStyleSheet("color: #b03030;");
     return;
   }
-  m_run     = m_data->run;
-  m_elapsed = elapsed(*m_data);
-  m_channels = m_library->channels(m_data->states.size());
+  m_run      = m_data->run;
+  m_baseData = m_data;
+  m_elapsed  = elapsed(*m_data);
+  applyDerived();
 
   // channel selection: saved one, else the ones visible on the main graph
   QStringList const saved = m_notes->channels(m_run.key);
@@ -396,6 +442,7 @@ void AnalysisRunPage::load() {
 
   refreshStats();
   updateChannelsButton();
+  computeRunAnalysis();
   refreshChart();
   refreshRulesList();
   refreshAnnotationsList();
@@ -418,6 +465,134 @@ bool AnalysisRunPage::compareMode() const {
 
 int AnalysisRunPage::compareChannel() const {
   return m_selected.isEmpty() ? 0 : m_selected.first();
+}
+
+int AnalysisRunPage::channelIndexIn(ExperimentData const &data, int channel) const {
+  // same channel in another run: by name for database runs, by position for interval files
+  if (data.channelNames.isEmpty() && m_data->channelNames.isEmpty()) {
+    return channel < data.states.size() ? channel : -1;
+  }
+  QString const name = m_channels.value(channel).name;
+  if (!data.channelNames.isEmpty()) {
+    return static_cast<int>(data.channelNames.indexOf(name));
+  }
+  QVector<ChannelInfo> const infos = m_library->channels(data);
+  for (int i{0}; i < infos.size(); ++i) {
+    if (infos[i].name == name) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+QVector<double> AnalysisRunPage::channelSeries(ExperimentData const &data, int channel) const {
+  int const index{channelIndexIn(data, channel)};
+  if ((index >= 0) && (index < data.states.size())) {
+    return data.states[index];
+  }
+  int const derivedIndex{channel - m_baseChannelCount};
+  if ((derivedIndex < 0) || (derivedIndex >= m_derived.size())) {
+    return {};
+  }
+  // derived channel: compute it from that experiment's own channels
+  QVector<ChannelInfo> const              infos = m_library->channels(data);
+  QHash<QString, QVector<double> const *> columns;
+  for (int i{0}; i < infos.size(); ++i) {
+    columns.insert(infos[i].name, &data.states[i]);
+  }
+  QVector<double> values;
+  return derived::compute(m_derived[derivedIndex], columns, elapsed(data), values) ? values : QVector<double>{};
+}
+
+void AnalysisRunPage::applyDerived() {
+  QStringList selectedNames;
+  for (int const index : std::as_const(m_selected)) {
+    selectedNames.push_back(m_channels.value(index).name);
+  }
+
+  QVector<ChannelInfo> channels = m_library->channels(*m_baseData);
+  m_baseChannelCount            = static_cast<int>(channels.size());
+
+  QHash<QString, QVector<double> const *> columns;
+  for (int i{0}; i < channels.size(); ++i) {
+    columns.insert(channels[i].name, &m_baseData->states[i]);
+  }
+
+  auto data = std::make_shared<ExperimentData>(*m_baseData);
+  m_derived.clear();
+  for (storage::DerivedVariable const &definition : storage::DerivedVariablesStore::list()) {
+    QVector<double> values;
+    if (columns.contains(definition.name) || !derived::compute(definition, columns, m_elapsed, values)) {
+      continue; // needs channels this experiment does not have
+    }
+    data->states.push_back(values);
+    if (!data->channelNames.isEmpty()) {
+      data->channelNames.push_back(definition.name);
+    }
+    ChannelInfo info;
+    info.name  = definition.name;
+    info.label = tr("%1 (derived)").arg(definition.name);
+    info.color = definition.color.isValid() ? definition.color : QColor("#9333ea");
+    channels.push_back(info);
+    m_derived.push_back(definition);
+  }
+  m_data     = data;
+  m_channels = channels;
+
+  if (!selectedNames.isEmpty()) {
+    m_selected.clear();
+    for (int i{0}; i < m_channels.size(); ++i) {
+      if (selectedNames.contains(m_channels[i].name)) {
+        m_selected.push_back(i);
+      }
+    }
+  }
+}
+
+void AnalysisRunPage::openDerivedDialog() {
+  if (!m_baseData) {
+    return;
+  }
+  DerivedVariablesDialog dialog(m_channels.mid(0, m_baseChannelCount), m_resHolder->users->getCurrentUserName(), this);
+  dialog.exec();
+  if (!dialog.changed()) {
+    return;
+  }
+  applyDerived();
+  computeRunAnalysis();
+  m_ruleChannelCombo->clear();
+  for (ChannelInfo const &channel : std::as_const(m_channels)) {
+    m_ruleChannelCombo->addItem(channel.label, channel.name);
+  }
+  updateChannelsButton();
+  refreshChart();
+}
+
+void AnalysisRunPage::updateSetpointDefault() {
+  int const channel{compareChannel()};
+  if (channel == m_setpointDefaultFor) {
+    return;
+  }
+  m_setpointDefaultFor = channel;
+  // last recorded value of "<channel>_ref" (e.g. temp -> temp_ref)
+  QString const reference = m_channels.value(channel).name + "_ref";
+  for (int i{0}; i < m_channels.size(); ++i) {
+    if (m_channels[i].name != reference) {
+      continue;
+    }
+    QVector<double> const &values = m_data->states[i];
+    for (qsizetype j = values.size() - 1; j >= 0; --j) {
+      if (!std::isnan(values[j])) {
+        m_setpointEdit->setValue(static_cast<float>(values[j]));
+        return;
+      }
+    }
+  }
+}
+
+void AnalysisRunPage::refreshSetpoint() {
+  bool const show{compareMode() && m_setpointCheck->isChecked()};
+  m_chart->setSetpoint(show ? m_setpointEdit->text().toDouble() : qQNaN(), m_channels.value(compareChannel()).scientific);
 }
 
 QColor AnalysisRunPage::channelColor(int index) const {
@@ -445,14 +620,15 @@ void AnalysisRunPage::refreshChart() {
     ChannelInfo const &info = m_channels.value(channel);
 
     auto addRun = [&](ExperimentData const &data, QString const &label) {
-      if (channel >= data.states.size()) {
+      QVector<double> values = channelSeries(data, channel);
+      if (values.isEmpty()) {
         return;
       }
       ChartSeries item;
       item.label   = label;
       item.color   = COMPARE_COLORS[series.size() % COMPARE_COLORS.size()];
       item.x       = elapsed(data);
-      item.y       = data.states[channel];
+      item.y       = std::move(values);
       item.logAxis = info.scientific;
       series.push_back(item);
     };
@@ -481,6 +657,13 @@ void AnalysisRunPage::refreshChart() {
     m_chart->setSeries(series, m_run.start);
   }
 
+  m_setpointGroup->setVisible(compareMode());
+  if (compareMode()) {
+    updateSetpointDefault();
+  }
+  refreshSetpoint();
+  refreshStages();
+  m_statisticsTimer->start();
   m_annotateBtn->setEnabled(!compareMode());
   if (compareMode()) {
     m_annotateBtn->setChecked(false);
@@ -497,7 +680,7 @@ void AnalysisRunPage::refreshRegions() {
     return;
   }
   QVector<ChartRegion> regions;
-  for (auto const &annotation : m_notes->annotations(m_run.start, m_run.end)) {
+  for (auto const &annotation : m_notes->annotations(m_run.start, m_run.end, m_run.key)) {
     regions.push_back({annotation.start - m_run.start, annotation.end - m_run.start, annotation.label, annotation.color});
   }
   m_chart->setRegions(regions);
@@ -530,6 +713,320 @@ void AnalysisRunPage::refreshBands() {
     bands.push_back({rule.lo, rule.hi, rule.label, rule.color, scientific});
   }
   m_chart->setBands(bands);
+}
+
+namespace {
+QString statText(double value, int precision = 4) {
+  if (!std::isfinite(value)) {
+    return QStringLiteral("—");
+  }
+  double const absValue{std::fabs(value)};
+  if ((absValue != 0.0) && ((absValue < 1e-3) || (absValue >= 1e6))) {
+    return QString::number(value, 'e', 2);
+  }
+  return QString::number(value, 'f', absValue >= 100 ? 1 : precision > 2 ? 3 : precision);
+}
+
+QString secondsText(double seconds) {
+  return std::isfinite(seconds) ? ExperimentLibrary::formatDuration(seconds) : QStringLiteral("—");
+}
+
+QColor stageColor(core::Segment::Kind kind) {
+  switch (kind) {
+    case core::Segment::Kind::RAMP:
+      return QColor("#d97706");
+    case core::Segment::Kind::SETPOINT:
+      return QColor("#2563eb");
+    case core::Segment::Kind::HOLD:
+      return QColor("#16a34a");
+    default:
+      return QColor("#64748b");
+  }
+}
+
+QString stageName(core::Segment::Kind kind) {
+  switch (kind) {
+    case core::Segment::Kind::RAMP:
+      return QObject::tr("Ramp");
+    case core::Segment::Kind::SETPOINT:
+      return QObject::tr("Setpoint");
+    case core::Segment::Kind::HOLD:
+      return QObject::tr("Hold");
+    default:
+      return QObject::tr("Unknown");
+  }
+}
+
+QTableWidget *makeTable(QStringList const &headers, int stretchColumn, QWidget *parent) {
+  auto *table = new QTableWidget(0, static_cast<int>(headers.size()), parent);
+  table->setHorizontalHeaderLabels(headers);
+  table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+  table->horizontalHeader()->setSectionResizeMode(stretchColumn, QHeaderView::Stretch);
+  table->verticalHeader()->setVisible(false);
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table->setSelectionBehavior(QAbstractItemView::SelectRows);
+  table->setFixedHeight(170 * utils::ssf());
+  return table;
+}
+} // namespace
+
+int AnalysisRunPage::channelIndex(QString const &name) const {
+  for (int i{0}; i < m_channels.size(); ++i) {
+    if (m_channels[i].name == name) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+QWidget *AnalysisRunPage::buildStatisticsPanel() {
+  auto *panel = new QTabWidget(this);
+  panel->setDocumentMode(true);
+
+  auto *rangePage = new QWidget(panel);
+  auto *rangeLay  = new QVBoxLayout(rangePage);
+  rangeLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  m_rangeLabel = new QLabel(rangePage);
+  m_rangeLabel->setStyleSheet("color: #64748b;");
+  m_rangeTable = makeTable({tr("Channel"), tr("n"), tr("Missing"), tr("Min"), tr("Max"), tr("Mean"), tr("Std"), tr("RMS"),
+                            tr("Slope /min"), tr("P95")},
+                           0,
+                           rangePage);
+  m_rangeKpiLabel = new QLabel(rangePage);
+  m_rangeKpiLabel->setWordWrap(true);
+  m_rangeKpiLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  rangeLay->addWidget(m_rangeLabel);
+  rangeLay->addWidget(m_rangeTable);
+  rangeLay->addWidget(m_rangeKpiLabel);
+
+  auto *kpiPage = new QWidget(panel);
+  auto *kpiLay  = new QVBoxLayout(kpiPage);
+  kpiLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  m_kpiLabel = new QLabel(kpiPage);
+  m_kpiLabel->setWordWrap(true);
+  m_kpiLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  m_stagesTable = makeTable({tr("#"), tr("Stage"), tr("Interval"), tr("Cycle"), tr("Start"), tr("Duration"), tr("Setpoint"),
+                             tr("MAE"), tr("Overshoot"), tr("Settling"), tr("Rise / fall"), tr("Steady-state error")},
+                            1,
+                            kpiPage);
+  m_stagesTable->setToolTip(tr("Tap a stage to zoom to it"));
+  connect(m_stagesTable, &QTableWidget::cellClicked, this, [this](int row) {
+    if (m_analysis && (row >= 0) && (row < m_analysis->stages.size())) {
+      core::Segment const &segment = m_analysis->stages[row].segment;
+      m_chart->setTimeRange(segment.start, std::max(segment.end, segment.start + 1.0));
+      updateTimeControls();
+    }
+  });
+  kpiLay->addWidget(m_kpiLabel);
+  kpiLay->addWidget(m_stagesTable);
+
+  panel->addTab(rangePage, tr("Selected range"));
+  panel->addTab(kpiPage, tr("KPIs && stages"));
+  return panel;
+}
+
+void AnalysisRunPage::refreshRangeStatistics() {
+  if (!m_data || !m_statisticsPanel->isVisible()) {
+    return;
+  }
+  auto const [from, to] = m_chart->viewXRange();
+  m_rangeLabel->setText(tr("Visible range %1 – %2 (raw samples, before smoothing)")
+                          .arg(ExperimentLibrary::formatDuration(std::max(0.0, from)), ExperimentLibrary::formatDuration(std::max(0.0, to))));
+
+  struct Row {
+    QString         label;
+    QVector<double> times;
+    QVector<double> values;
+  };
+  QVector<Row> rows;
+  if (compareMode()) {
+    int const channel{compareChannel()};
+    rows.push_back({m_run.title, m_elapsed, channelSeries(*m_data, channel)});
+    for (QString const &key : std::as_const(m_compareKeys)) {
+      if (auto data = m_compareData.value(key)) {
+        rows.push_back({data->run.title, elapsed(*data), channelSeries(*data, channel)});
+      }
+    }
+  } else {
+    for (int const index : std::as_const(m_selected)) {
+      if (index < m_data->states.size()) {
+        rows.push_back({m_channels[index].label, m_elapsed, m_data->states[index]});
+      }
+    }
+  }
+
+  m_rangeTable->setRowCount(static_cast<int>(rows.size()));
+  for (int r{0}; r < rows.size(); ++r) {
+    core::SeriesStats const stats = core::computeStats(rows[r].times, rows[r].values, from, to);
+    QStringList const       cells{rows[r].label,
+                            QString::number(stats.n),
+                            QString::number(stats.missing),
+                            statText(stats.min),
+                            statText(stats.max),
+                            statText(stats.mean),
+                            statText(stats.std),
+                            statText(stats.rms),
+                            statText(stats.slopePerS * 60.0),
+                            statText(stats.p95)};
+    for (int c{0}; c < cells.size(); ++c) {
+      auto *item = new QTableWidgetItem(cells[c]);
+      item->setTextAlignment(c == 0 ? (Qt::AlignLeft | Qt::AlignVCenter) : (Qt::AlignRight | Qt::AlignVCenter));
+      m_rangeTable->setItem(r, c, item);
+    }
+  }
+  refreshRangeKpis(from, to);
+}
+
+void AnalysisRunPage::refreshRangeKpis(double from, double to) {
+  int const temp{channelIndex("temp")};
+  int const reference{channelIndex("temp_ref")};
+  if ((temp < 0) || (reference < 0)) {
+    m_rangeKpiLabel->setText(tr("Control KPIs need the channels temp and temp_ref."));
+    return;
+  }
+
+  QVector<std::pair<QString, std::shared_ptr<ExperimentData const>>> runs{{m_run.title, m_data}};
+  if (compareMode()) {
+    for (QString const &key : std::as_const(m_compareKeys)) {
+      if (auto data = m_compareData.value(key)) {
+        runs.push_back({data->run.title, data});
+      }
+    }
+  }
+
+  QStringList lines;
+  for (auto const &[title, data] : runs) {
+    // the visible slice of this run
+    QVector<double> const times = (data == m_data) ? m_elapsed : elapsed(*data);
+    QVector<double> const columns[4]{channelSeries(*data, temp), channelSeries(*data, reference),
+                                     channelSeries(*data, channelIndex("interval")), channelSeries(*data, channelIndex("cycle_cur"))};
+    QVector<double>       sliceTimes;
+    QVector<double>       slices[4];
+    for (int i{0}; i < times.size(); ++i) {
+      if ((times[i] < from) || (times[i] > to)) {
+        continue;
+      }
+      sliceTimes.push_back(times[i]);
+      for (int c{0}; c < 4; ++c) {
+        slices[c].push_back(i < columns[c].size() ? columns[c][i] : core::NaN);
+      }
+    }
+    if (columns[2].isEmpty()) {
+      slices[2].clear();
+    }
+    if (columns[3].isEmpty()) {
+      slices[3].clear();
+    }
+
+    core::RunAnalysis const analysis = core::analyseRun(sliceTimes, slices[0], slices[1], slices[2], slices[3]);
+    QString const           name     = runs.size() > 1 ? QStringLiteral("<b>%1</b>: ").arg(title.toHtmlEscaped())
+                                                       : QStringLiteral("<b>%1</b> ").arg(tr("Control in range"));
+    if (analysis.overall.samples == 0) {
+      lines << name + tr("no setpoint (temp_ref) in this range.");
+      continue;
+    }
+
+    QMap<core::Segment::Kind, int> stageCount;
+    for (core::StageAnalysis const &stage : analysis.stages) {
+      ++stageCount[stage.segment.kind];
+    }
+    QStringList stages;
+    for (auto it = stageCount.cbegin(); it != stageCount.cend(); ++it) {
+      stages << QStringLiteral("<span style=\"color:%1\">%2</span> ×%3").arg(stageColor(it.key()).name(), stageName(it.key())).arg(it.value());
+    }
+    core::ControlKpis const &k = analysis.overall;
+    lines << name
+               + tr("(temp vs temp_ref, %1 samples): MAE %2 · RMSE %3 · max |error| %4 · overshoot %5 · undershoot %6 · "
+                    "settling %7 · steady-state error %8 · tail MAE %9 · tail std %10 · stages: %11")
+                   .arg(k.samples)
+                   .arg(statText(k.mae), statText(k.rmse), statText(k.maxAbsError), statText(analysis.overshoot),
+                        statText(analysis.undershoot), secondsText(analysis.settlingTimeS), statText(k.steadyStateError),
+                        statText(k.tailMae), statText(k.tailStd))
+                   .arg(stages.join(QStringLiteral(", ")));
+  }
+  m_rangeKpiLabel->setText(lines.join(QStringLiteral("<br>")));
+}
+
+void AnalysisRunPage::computeRunAnalysis() {
+  m_analysis.reset();
+  int const temp{channelIndex("temp")};
+  int const reference{channelIndex("temp_ref")};
+  if ((temp < 0) || (reference < 0)) {
+    m_kpiLabel->setText(tr("KPIs need the channels temp and temp_ref."));
+    m_stagesTable->setRowCount(0);
+    refreshStages();
+    return;
+  }
+  auto column = [this](QString const &name) {
+    int const index{channelIndex(name)};
+    return (index >= 0) ? m_data->states[index] : QVector<double>{};
+  };
+  m_analysis = core::analyseRun(m_elapsed, m_data->states[temp], m_data->states[reference], column("interval"),
+                                column("cycle_cur"));
+  if (m_analysis->overall.samples == 0) {
+    m_analysis.reset();
+    m_kpiLabel->setText(tr("No setpoint (temp_ref) was recorded in this experiment, so there are no KPIs or stages."));
+    m_stagesTable->setRowCount(0);
+    refreshStages();
+    return;
+  }
+
+  core::ControlKpis const &k = m_analysis->overall;
+  m_kpiLabel->setText(tr("<b>Run</b> (temp vs temp_ref, %1 samples): MAE %2 · RMSE %3 · max |error| %4 · worst step overshoot %5 · "
+                         "worst step undershoot %6 · settling of the last setpoint %7 · tail MAE %8 · tail std %9. "
+                         "Rise / fall time and steady-state error per setpoint below.")
+                        .arg(k.samples)
+                        .arg(statText(k.mae), statText(k.rmse), statText(k.maxAbsError), statText(m_analysis->overshoot),
+                             statText(m_analysis->undershoot), secondsText(m_analysis->settlingTimeS), statText(k.tailMae),
+                             statText(k.tailStd)));
+
+  m_stagesTable->setRowCount(static_cast<int>(m_analysis->stages.size()));
+  for (int r{0}; r < m_analysis->stages.size(); ++r) {
+    core::StageAnalysis const &stage = m_analysis->stages[r];
+    core::Segment const       &s     = stage.segment;
+    bool const                 step{s.kind == core::Segment::Kind::SETPOINT};
+    QString const              setpoint = (std::fabs(s.referenceEnd - s.referenceStart) < 0.05)
+                                            ? statText(s.referenceEnd, 2)
+                                            : QStringLiteral("%1 → %2").arg(statText(s.referenceStart, 2), statText(s.referenceEnd, 2));
+    double const               transitionTime{std::isfinite(stage.kpis.riseTimeS) ? stage.kpis.riseTimeS : stage.kpis.fallTimeS};
+    QStringList const          cells{QString::number(r + 1),
+                            stageName(s.kind),
+                            s.interval >= 0 ? QString::number(s.interval) : QStringLiteral("—"),
+                            s.cycle >= 0 ? QString::number(s.cycle) : QStringLiteral("—"),
+                            ExperimentLibrary::formatDuration(s.start),
+                            ExperimentLibrary::formatDuration(s.duration()),
+                            setpoint,
+                            statText(stage.kpis.mae),
+                            step ? statText(stage.kpis.overshoot) : QStringLiteral("—"),
+                            step ? secondsText(stage.kpis.settlingTimeS) : QStringLiteral("—"),
+                            step ? secondsText(transitionTime) : QStringLiteral("—"),
+                            step ? statText(stage.kpis.steadyStateError) : QStringLiteral("—")};
+    for (int c{0}; c < cells.size(); ++c) {
+      auto *item = new QTableWidgetItem(cells[c]);
+      if (c == 1) {
+        item->setForeground(stageColor(s.kind));
+      }
+      m_stagesTable->setItem(r, c, item);
+    }
+  }
+  refreshStages();
+}
+
+void AnalysisRunPage::refreshStages() {
+  if (!m_analysis || compareMode() || !m_stagesCheck->isChecked()) {
+    m_chart->setStages({});
+    return;
+  }
+  QVector<ChartRegion> regions;
+  for (core::StageAnalysis const &stage : std::as_const(m_analysis->stages)) {
+    core::Segment const &s = stage.segment;
+    QString              label = stageName(s.kind);
+    if (s.interval >= 0) {
+      label += QStringLiteral(" %1").arg(s.interval);
+    }
+    regions.push_back({s.start, std::max(s.end, s.start + 1.0), label, stageColor(s.kind)});
+  }
+  m_chart->setStages(regions);
 }
 
 void AnalysisRunPage::refreshEvents() {
@@ -566,7 +1063,7 @@ void AnalysisRunPage::refreshRulesList() {
 
 void AnalysisRunPage::refreshAnnotationsList() {
   m_annotationsList->clear();
-  for (auto const &annotation : m_notes->annotations(m_run.start, m_run.end)) {
+  for (auto const &annotation : m_notes->annotations(m_run.start, m_run.end, m_run.key)) {
     QPixmap swatch(14, 14);
     swatch.fill(annotation.color);
     auto *item = new QListWidgetItem(
@@ -642,6 +1139,10 @@ void AnalysisRunPage::openChannelsMenu() {
   menu->addSeparator();
 
   for (int i{0}; i < m_channels.size(); ++i) {
+    if (i == m_baseChannelCount) {
+      menu->addSeparator();
+      menu->addAction(tr("Derived variables"))->setEnabled(false);
+    }
     auto *action = new QWidgetAction(menu);
     auto *row    = new QWidget(menu);
     auto *rowLay = new QHBoxLayout(row);
@@ -674,6 +1175,11 @@ void AnalysisRunPage::openChannelsMenu() {
     action->setDefaultWidget(row);
     menu->addAction(action);
   }
+
+  menu->addSeparator();
+  connect(menu->addAction(tr("Manage derived variables…")), &QAction::triggered, this, [this] {
+    QTimer::singleShot(0, this, &AnalysisRunPage::openDerivedDialog); // after the menu closed
+  });
 
   menu->exec(m_channelsBtn->mapToGlobal(m_channelsBtn->rect().bottomLeft()));
 }
@@ -816,7 +1322,9 @@ void AnalysisRunPage::onAnnotationDrawn(double x0, double x1) {
   }
 
   AnalysisNotesStore::Annotation annotation;
-  annotation.start = m_run.start + x0;
+  annotation.runKey   = m_run.key;
+  annotation.runStart = m_run.start;
+  annotation.start    = m_run.start + x0;
   annotation.end   = m_run.start + x1;
   annotation.label = labelEdit->text().trimmed();
   if (annotation.label.isEmpty()) {
@@ -959,8 +1467,8 @@ void AnalysisRunPage::exportComparisonCsv() {
       double finalValue{qQNaN()};
       double sum{0.0};
       qint64 count{0};
-      if (channel < data->states.size()) {
-        for (double const value : data->states[channel]) {
+      if (QVector<double> const values = channelSeries(*data, channel); !values.isEmpty()) {
+        for (double const value : values) {
           if (std::isnan(value)) {
             continue;
           }
@@ -987,6 +1495,53 @@ void AnalysisRunPage::exportComparisonCsv() {
     out.flush();
     return file.commit();
   });
+}
+
+void AnalysisRunPage::saveToDatabase() {
+  if (!m_data || !m_resHolder->recorder) {
+    return;
+  }
+
+  QDialog dialog(this);
+  dialog.setWindowTitle(tr("Save to experiment database"));
+  auto *lay      = new QVBoxLayout(&dialog);
+  auto *nameEdit = new LineEditScreen(&dialog, VirtualKeyboard::EN);
+  nameEdit->setText(m_run.title);
+  nameEdit->setMinimumHeight(buttonHeight());
+  lay->addWidget(new QLabel(tr("Name of the experiment (shared with paired computers):"), &dialog));
+  lay->addWidget(nameEdit);
+  auto *buttons   = new QHBoxLayout();
+  auto *cancelBtn = makeButton(tr("Cancel"), &dialog);
+  auto *saveBtn   = makeButton(tr("Save"), &dialog);
+  buttons->addWidget(cancelBtn);
+  buttons->addStretch();
+  buttons->addWidget(saveBtn);
+  lay->addLayout(buttons);
+  connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+  connect(saveBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+  dialog.resize(520 * utils::ssf(), dialog.sizeHint().height());
+  if ((dialog.exec() != QDialog::Accepted) || nameEdit->text().trimmed().isEmpty()) {
+    return;
+  }
+
+  storage::RunStore::NewRun run;
+  run.name    = nameEdit->text().trimmed();
+  run.chamber = m_resHolder->recorder->chamberName();
+  run.runUid  = storage::RunStore::makeRunUid(m_resHolder->recorder->chamberRef(), m_run.start, m_run.end);
+  run.times   = m_data->times;
+  for (int c{0}; c < m_baseChannelCount; ++c) { // recorded channels only, derived ones are recomputed
+    run.columns.push_back(m_channels[c].name);
+    run.values.push_back(m_data->states.value(c));
+  }
+  if (auto existing = storage::RunStore::findByUid(run.runUid)) {
+    (new MessageDialog(tr("Save to experiment database"), tr("Already saved as \"%1\".").arg(existing->id)))->open();
+    return;
+  }
+  connect(m_resHolder->recorder, &ExperimentRecorder::runSaved, this, [this](QString const &, QString const &name) {
+    (new MessageDialog(tr("Save to experiment database"), tr("Saved \"%1\".").arg(name)))->open();
+    m_library->refresh();
+  }, Qt::SingleShotConnection);
+  m_resHolder->recorder->saveAsync(run);
 }
 
 void AnalysisRunPage::handleAccessChange(QString const &name, AccessManager::AccessLevel level) {

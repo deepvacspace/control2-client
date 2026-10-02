@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "runstore.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -170,6 +171,24 @@ void ExperimentLibrary::setGapThresholdSec(double sec) {
 
 void ExperimentLibrary::applySegmentation() {
   m_runs = segment(m_files);
+
+  m_storedRuns.clear();
+  for (storage::StoredRun const &stored : storage::RunStore::list()) {
+    ExperimentRun run;
+    run.key      = QStringLiteral("db:%1").arg(stored.key);
+    run.storeKey = stored.key;
+    run.title    = stored.id;
+    run.start    = stored.startEpoch;
+    run.end      = stored.endEpoch;
+    run.samples  = stored.samples;
+    run.chamber  = stored.chamber;
+    if (std::isnan(run.start)) {
+      // runs written by Deepvac Insight only carry text times
+      run.start = QDateTime::fromString(stored.startTime.chopped(4), "yyyy-MM-dd HH:mm:ss").toSecsSinceEpoch();
+      run.end   = run.start + (std::isnan(stored.durationS) ? 0.0 : stored.durationS);
+    }
+    m_storedRuns.push_back(run);
+  }
   emit runsChanged();
 }
 
@@ -240,9 +259,11 @@ QVector<ExperimentRun> ExperimentLibrary::segment(QVector<FileSummary> const &fi
 }
 
 std::optional<ExperimentRun> ExperimentLibrary::findRun(QString const &key) const {
-  for (ExperimentRun const &run : m_runs) {
-    if (run.key == key) {
-      return run;
+  for (QVector<ExperimentRun> const *list : {&m_runs, &m_storedRuns}) {
+    for (ExperimentRun const &run : *list) {
+      if (run.key == key) {
+        return run;
+      }
     }
   }
   return std::nullopt;
@@ -298,6 +319,20 @@ std::shared_ptr<ExperimentLibrary::ParsedFile const> ExperimentLibrary::parsedFi
 std::shared_ptr<ExperimentData const> ExperimentLibrary::load(ExperimentRun const &run, QString *error) {
   auto data = std::make_shared<ExperimentData>();
   data->run = run;
+
+  if (!run.storeKey.isEmpty()) {
+    storage::RunSamples samples;
+    if (!storage::RunStore::loadSamples(run.storeKey, samples, error)) {
+      return nullptr;
+    }
+    data->times        = std::move(samples.times);
+    data->states       = std::move(samples.values);
+    data->channelNames = std::move(samples.columns);
+    data->run.samples  = data->times.size();
+    data->run.start    = data->times.first();
+    data->run.end      = data->times.last();
+    return data;
+  }
 
   if (run.files.isEmpty()) {
     if (error) {
@@ -393,13 +428,24 @@ QVector<ExperimentEvent> ExperimentLibrary::events(double start, double end) {
   return result;
 }
 
-QVector<ChannelInfo> ExperimentLibrary::channels(int count) const {
-  QVariantList const   statesSettings = m_statesProvider ? m_statesProvider() : QVariantList{};
+QVector<ChannelInfo> ExperimentLibrary::channels(ExperimentData const &data) const {
+  QVariantList const statesSettings = m_statesProvider ? m_statesProvider() : QVariantList{};
+  QHash<QString, int> settingsByName;
+  for (int i{0}; i < statesSettings.size(); ++i) {
+    settingsByName.insert(statesSettings[i].toMap()["name"].toString(), i);
+  }
+
   QVector<ChannelInfo> result;
+  int const            count{static_cast<int>(data.states.size())};
   for (int i{0}; i < count; ++i) {
     ChannelInfo info;
-    if (i < statesSettings.size()) {
-      QVariantMap const map = statesSettings[i].toMap();
+    // interval files follow the settings order; database runs name their channels
+    int const settingsIndex{data.channelNames.isEmpty() ? i : settingsByName.value(data.channelNames.value(i), -1)};
+    if (!data.channelNames.isEmpty()) {
+      info.name = data.channelNames.value(i);
+    }
+    if ((settingsIndex >= 0) && (settingsIndex < statesSettings.size())) {
+      QVariantMap const map = statesSettings[settingsIndex].toMap();
       info.name             = map["name"].toString();
       info.label            = map["label"].toString();
       info.color            = QColor(map["color"].toString());

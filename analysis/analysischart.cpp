@@ -141,6 +141,9 @@ AnalysisChart::AnalysisChart(QWidget *parent) : QWidget{parent}, m_plot{new QCus
   m_hoverText->setTextAlignment(Qt::AlignLeft);
   m_hoverText->setClipToAxisRect(false);
 
+  connect(m_plot->xAxis, qOverload<QCPRange const &>(&QCPAxis::rangeChanged), this, [this](QCPRange const &range) {
+    emit viewRangeChanged(range.lower, range.upper);
+  });
   connect(m_plot, &QCustomPlot::mousePress, this, &AnalysisChart::onMousePress);
   connect(m_plot, &QCustomPlot::mouseMove, this, &AnalysisChart::onMouseMove);
   connect(m_plot->selectionRect(), &QCPSelectionRect::accepted, this, &AnalysisChart::onSelectionAccepted);
@@ -207,6 +210,42 @@ void AnalysisChart::endUpdate() {
       rebuild();
     } else if (m_decorationsDirty) {
       rebuildDecorations();
+    }
+  }
+}
+
+void AnalysisChart::setStages(QVector<ChartRegion> const &stages) {
+  m_stages = stages;
+  rebuildDecorations();
+}
+
+void AnalysisChart::addStages() {
+  for (ChartRegion const &stage : std::as_const(m_stages)) {
+    auto *rect = new QCPItemRect(m_plot);
+    for (auto *position : {rect->topLeft, rect->bottomRight}) {
+      position->setTypeY(QCPItemPosition::ptAxisRectRatio);
+    }
+    rect->topLeft->setCoords(stage.x0, 0.0);
+    rect->bottomRight->setCoords(stage.x1, 0.035);
+    rect->setPen(QPen(Qt::white, 1));
+    rect->setBrush(QBrush(withAlpha(stage.color, 150)));
+    m_decorations.push_back(rect);
+
+    auto *boundary = new QCPItemStraightLine(m_plot);
+    boundary->point1->setCoords(stage.x0, 0);
+    boundary->point2->setCoords(stage.x0, 1);
+    boundary->setPen(QPen(withAlpha(stage.color, 90), 1, Qt::DotLine));
+    m_decorations.push_back(boundary);
+
+    if (!stage.label.isEmpty()) {
+      auto *text = new QCPItemText(m_plot);
+      text->position->setTypeY(QCPItemPosition::ptAxisRectRatio);
+      text->position->setCoords((stage.x0 + stage.x1) / 2.0, 0.0175);
+      text->setPositionAlignment(Qt::AlignCenter);
+      text->setText(stage.label);
+      text->setColor(Qt::white);
+      text->setClipToAxisRect(true);
+      m_decorations.push_back(text);
     }
   }
 }
@@ -352,6 +391,8 @@ void AnalysisChart::rebuild() {
   addBands();
   addRegions();
   addEvents();
+  addStages();
+  addSetpoint();
   addOverlays();
 
   if (m_autoRangePending && !m_series.isEmpty()) {
@@ -371,6 +412,8 @@ void AnalysisChart::rebuildDecorations() {
   addBands();
   addRegions();
   addEvents();
+  addStages();
+  addSetpoint();
   addOverlays();
   m_plot->replot();
 }
@@ -434,6 +477,41 @@ void AnalysisChart::addOverlays() {
   if (m_overlayAvg) {
     addLine(sum / static_cast<double>(count), tr("Avg"), QColor("#ca8a04"));
   }
+}
+
+void AnalysisChart::setSetpoint(double value, bool logAxis) {
+  bool const same{(std::isnan(value) && std::isnan(m_setpoint)) || ((value == m_setpoint) && (logAxis == m_setpointLog))};
+  if (same) {
+    return;
+  }
+  m_setpoint    = value;
+  m_setpointLog = logAxis;
+  rebuildDecorations();
+}
+
+void AnalysisChart::addSetpoint() {
+  if (std::isnan(m_setpoint) || (m_series.isEmpty())) {
+    return;
+  }
+  QCPAxis *valueAxis = valueAxisFor(m_setpointLog);
+  QColor const color("#475569");
+
+  auto *line = new QCPItemStraightLine(m_plot);
+  line->point1->setAxes(m_plot->xAxis, valueAxis);
+  line->point2->setAxes(m_plot->xAxis, valueAxis);
+  line->point1->setCoords(0, m_setpoint);
+  line->point2->setCoords(1, m_setpoint);
+  line->setPen(QPen(color, 1.5, Qt::DashDotLine));
+  m_decorations.push_back(line);
+
+  auto *text = new QCPItemText(m_plot);
+  text->position->setAxes(m_plot->xAxis, valueAxis);
+  text->position->setTypeX(QCPItemPosition::ptAxisRectRatio);
+  text->position->setCoords(0.995, m_setpoint);
+  text->setPositionAlignment(Qt::AlignRight | Qt::AlignTop);
+  text->setText(tr("Setpoint %1").arg(formatValue(m_setpoint)));
+  text->setColor(color);
+  m_decorations.push_back(text);
 }
 
 void AnalysisChart::addBands() {

@@ -65,9 +65,13 @@ public:
   void setMode(Mode mode);
   void setSmoothingWindow(int window);
   void setOverlays(bool min, bool max, bool avg);
+  // horizontal reference line (NaN: none)
+  void setSetpoint(double value, bool logAxis = false);
   void setRegions(QVector<ChartRegion> const &regions);
   void setBands(QVector<ChartBand> const &bands);
   void setEvents(QVector<ChartEvent> const &events);
+  // experiment stages as a labelled strip along the top of the plot
+  void setStages(QVector<ChartRegion> const &stages);
   void setAnnotateMode(bool enabled);
 
   // batch several setters into a single redraw
@@ -86,6 +90,7 @@ public:
 
 signals:
   void annotationDrawn(double x0, double x1);
+  void viewRangeChanged(double lower, double upper); // visible time range (elapsed s)
 
 protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
@@ -96,9 +101,11 @@ private:
   void rebuildDecorations();
   void clearDecorations();
   void addOverlays();
+  void addSetpoint();
   void addBands();
   void addRegions();
   void addEvents();
+  void addStages();
   void autoRange();
   void onMousePress(QMouseEvent *event);
   void onMouseMove(QMouseEvent *event);
@@ -118,12 +125,15 @@ private:
   QVector<ChartRegion> m_regions;
   QVector<ChartBand>   m_bands;
   QVector<ChartEvent>  m_events;
+  QVector<ChartRegion> m_stages;
   double               m_startEpoch{0.0};
   Mode                 m_mode{Mode::LINE};
   int                  m_smoothingWindow{1};
   bool                 m_overlayMin{false};
   bool                 m_overlayMax{false};
   bool                 m_overlayAvg{false};
+  double               m_setpoint{qQNaN()};
+  bool                 m_setpointLog{false};
   bool                 m_annotateMode{false};
   bool                 m_autoRangePending{true};
   int                  m_updateDepth{0};

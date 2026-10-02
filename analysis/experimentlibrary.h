@@ -25,6 +25,8 @@ struct ExperimentRun {
   qint64      samples{0};
   QStringList files; // interval files the run is read from
   bool        custom{false}; // user defined time range instead of a detected experiment
+  QString     storeKey;      // run saved in the experiment database (storage::RunStore)
+  QString     chamber;       // database runs: chamber it was recorded on
 
   [[nodiscard]] double duration() const {
     return end - start;
@@ -35,6 +37,7 @@ struct ExperimentData {
   ExperimentRun            run;
   QVector<double>          times;  // epoch sec
   QVector<QVector<double>> states; // [channel][sample]
+  QStringList              channelNames; // database runs: state name of each channel (else settings order)
 };
 
 struct ExperimentEvent {
@@ -89,12 +92,14 @@ public:
   [[nodiscard]] bool                          isScanning() const;
   [[nodiscard]] double                        gapThresholdSec() const;
   [[nodiscard]] QVector<ExperimentRun> const &runs() const;
+  // runs saved in the experiment database (recorded here or received from other computers)
+  [[nodiscard]] QVector<ExperimentRun> const &storedRuns() const;
   [[nodiscard]] std::optional<ExperimentRun>  findRun(QString const &key) const;
   [[nodiscard]] ExperimentRun                 makeRangeRun(double start, double end) const;
 
   std::shared_ptr<ExperimentData const> load(ExperimentRun const &run, QString *error = nullptr);
   QVector<ExperimentEvent>              events(double start, double end);
-  QVector<ChannelInfo>                  channels(int count) const;
+  QVector<ChannelInfo>                  channels(ExperimentData const &data) const;
 
   static bool readIntervalFile(QString const &path, QVector<double> &times, QVector<QVector<double>> &states);
   static QString formatDuration(double sec);
@@ -125,6 +130,7 @@ private:
   QHash<QString, FileSummary>  m_summaryCache;
   QVector<FileSummary>         m_files;
   QVector<ExperimentRun>       m_runs;
+  QVector<ExperimentRun>       m_storedRuns;
 
   QVector<std::shared_ptr<ParsedFile const>> m_parsedCache; // most recent first
   QVector<ExperimentEvent>                   m_events;
@@ -141,6 +147,10 @@ inline double ExperimentLibrary::gapThresholdSec() const {
 
 inline QVector<ExperimentRun> const &ExperimentLibrary::runs() const {
   return m_runs;
+}
+
+inline QVector<ExperimentRun> const &ExperimentLibrary::storedRuns() const {
+  return m_storedRuns;
 }
 
 } // namespace deepvaccontrol

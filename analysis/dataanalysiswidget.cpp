@@ -12,8 +12,10 @@
 #include "analysiseditorarea.h"
 #include "analysisnotesstore.h"
 #include "analysisrunpage.h"
+#include "collabmanager.h"
 #include "constants.h"
 #include "dialogs/messagedialog.h"
+#include "experimentrecorder.h"
 #include "graph/daterangedialog.h"
 #include "resholder.h"
 #include "utils.h"
@@ -139,6 +141,15 @@ DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
     m_refreshBtn->setEnabled(false);
   });
   connect(m_library, &ExperimentLibrary::runsChanged, this, &DataAnalysisWidget::populateTree);
+  if (m_resHolder->recorder) {
+    connect(m_resHolder->recorder, &ExperimentRecorder::runSaved, m_library, &ExperimentLibrary::refresh);
+  }
+  if (m_resHolder->collab) {
+    connect(m_resHolder->collab, &CollabManager::localDataChanged, this, [this] {
+      m_notes->notifyExternalChange();
+      m_library->refresh();
+    });
+  }
 }
 
 void DataAnalysisWidget::showEvent(QShowEvent *event) {
@@ -156,6 +167,30 @@ void DataAnalysisWidget::populateTree() {
   m_tree->clear();
   QHash<QDate, QTreeWidgetItem *> dayItems;
   QTreeWidgetItem                *selected{nullptr};
+
+  // experiments saved in the database (recorded here or received from paired computers)
+  if (!m_library->storedRuns().isEmpty()) {
+    auto *dbItem = new QTreeWidgetItem(m_tree);
+    dbItem->setText(0, tr("Saved in database"));
+    dbItem->setText(2, QString::number(m_library->storedRuns().size()));
+    dbItem->setTextAlignment(2, Qt::AlignRight | Qt::AlignVCenter);
+    QFont font = dbItem->font(0);
+    font.setBold(true);
+    dbItem->setFont(0, font);
+    for (ExperimentRun const &run : m_library->storedRuns()) {
+      auto *item = new QTreeWidgetItem(dbItem);
+      item->setText(0, run.title);
+      item->setText(1, ExperimentLibrary::formatDuration(run.duration()));
+      item->setText(2, QString::number(run.samples));
+      item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
+      item->setTextAlignment(2, Qt::AlignRight | Qt::AlignVCenter);
+      item->setData(0, RUN_KEY_ROLE, run.key);
+      item->setToolTip(0, QStringLiteral("%1\n%2").arg(run.title, run.chamber));
+      if (run.key == selectedKey) {
+        selected = item;
+      }
+    }
+  }
   for (ExperimentRun const &run : m_library->runs()) {
     QDateTime const start = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(run.start));
     QDate const     day   = start.date();
@@ -192,8 +227,11 @@ void DataAnalysisWidget::populateTree() {
     dayItem->setText(2, QString::number(dayItem->childCount()));
     dayItem->setTextAlignment(2, Qt::AlignRight | Qt::AlignVCenter);
   }
-  if (m_tree->topLevelItemCount() > 0) {
-    m_tree->topLevelItem(0)->setExpanded(true);
+  for (int i{0}; i < m_tree->topLevelItemCount(); ++i) {
+    if (m_tree->topLevelItem(i)->data(0, DAY_ROLE).isValid()) {
+      m_tree->topLevelItem(i)->setExpanded(true); // newest day
+      break;
+    }
   }
   if (selected) {
     selected->parent()->setExpanded(true);

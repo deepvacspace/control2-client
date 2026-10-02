@@ -2,7 +2,6 @@
 #define ANALYSISNOTESSTORE_H
 
 #include <QColor>
-#include <QHash>
 #include <QObject>
 #include <QStringList>
 #include <QVector>
@@ -10,8 +9,9 @@
 namespace deepvaccontrol {
 
 /**
- * @brief Persists data analysis notes in a JSON file:
- * - annotations (labelled time ranges, absolute time so they show up in every run covering them);
+ * @brief Data analysis notes, stored in Deepvac Insight's annotations database
+ * (data/deepvac_annotations.sqlite3, see storage::AnnotationsDb):
+ * - annotations: labelled time ranges, shown in every run covering them;
  * - variable rules per run (acceptable range of a channel);
  * - selected channels per run.
  */
@@ -20,8 +20,10 @@ class AnalysisNotesStore : public QObject {
 public:
   struct Annotation {
     QString id;
-    double  start{0.0}; // epoch sec
-    double  end{0.0};   // epoch sec
+    QString runKey;          // run the annotation was drawn on
+    double  runStart{0.0};   // that run's start, epoch sec
+    double  start{0.0};      // epoch sec
+    double  end{0.0};        // epoch sec
     QString label;
     QColor  color;
     QString user;
@@ -37,31 +39,26 @@ public:
     QString user;
   };
 
-  explicit AnalysisNotesStore(QString const &filePath, QObject *parent = nullptr);
+  // legacyJsonPath: notes.json written by earlier versions, imported once
+  explicit AnalysisNotesStore(QString const &legacyJsonPath, QObject *parent = nullptr);
 
-  [[nodiscard]] QVector<Annotation> annotations(double start, double end) const;
-  void                              addAnnotation(Annotation annotation);
+  [[nodiscard]] QVector<Annotation> annotations(double start, double end, QString const &runKey) const;
+  void                              addAnnotation(Annotation const &annotation);
   void                              removeAnnotation(QString const &id);
 
   [[nodiscard]] QVector<Rule> rules(QString const &runKey) const;
-  void                        addRule(QString const &runKey, Rule rule);
+  void                        addRule(QString const &runKey, Rule const &rule);
   void                        removeRule(QString const &runKey, QString const &id);
 
   [[nodiscard]] QStringList channels(QString const &runKey) const;
   void                      setChannels(QString const &runKey, QStringList const &channels);
 
+  // the database was changed elsewhere (e.g. synced from another computer)
+  void notifyExternalChange();
+
 signals:
   void annotationsChanged();
   void rulesChanged(QString const &runKey);
-
-private:
-  void load();
-  void save() const;
-
-  QString                       m_filePath;
-  QVector<Annotation>           m_annotations;
-  QHash<QString, QVector<Rule>> m_rules;
-  QHash<QString, QStringList>   m_channels;
 };
 
 } // namespace deepvaccontrol
