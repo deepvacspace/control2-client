@@ -64,6 +64,9 @@ public:
   ProgType            getProgType() const;
   void                resetCycle();
   QByteArray          makeSendData() const;
+  // whole program {"intervals": [...], "cycle": {...}}, same layout as the program files
+  QVariantMap         programVariant() const;
+  bool                setProgramVariant(QVariantMap const &program);
 
 signals:
   void numberOfIntervalChanged(qint16);

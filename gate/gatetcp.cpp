@@ -3,6 +3,7 @@
 #include <QAbstractSocket>
 #include <QDataStream>
 #include <QDateTime>
+#include <QElapsedTimer>
 
 #include "messagedialog.h"
 namespace deepvaccontrol {
@@ -231,6 +232,21 @@ void GateTcp::sendTextCmd(QString const &cmd) {
   data.push_front(static_cast<char>(OutcomeMessageCode::TEXT_CMD));
 
   sendData(data);
+}
+
+bool GateTcp::flush(int timeoutMs) {
+  if (QAbstractSocket::ConnectedState != m_socket->state()) {
+    return false;
+  }
+  QElapsedTimer clock;
+  clock.start();
+  while (m_socket->bytesToWrite() > 0) {
+    int const left = timeoutMs - static_cast<int>(clock.elapsed());
+    if ((left <= 0) || !m_socket->waitForBytesWritten(left)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void GateTcp::sendSettingMap(QMap<QString, float> const &map) {

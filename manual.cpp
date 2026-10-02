@@ -3,6 +3,7 @@
 #include <QVBoxLayout>
 
 #include "constants.h"
+#include "experimentrecorder.h"
 #include "delayinfodialog.h"
 #include "delayselectdialog.h"
 #include "labelplus.h"
@@ -267,13 +268,21 @@ void Manual::sendProgram() {
     m_model->delItem(0);
   }
 
-  if (m_resHolder->aiAdvisorEnabled && !offerOfflineAdvisorBeforeStart(m_resHolder, m_model, this)) {
-    return;
+  sendJob(m_model, tr("Manual setpoint"), QString{}, tr("Запуск работы по уставке"));
+}
+
+bool Manual::sendJob(ProgramModel *model, QString const &runLabel, QString const &testProfile, QString const &actionText) {
+  if (m_resHolder->aiAdvisorEnabled && !offerOfflineAdvisorBeforeStart(m_resHolder, model, this)) {
+    return false;
   }
 
-  m_model->printToDebug();
-  m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, m_model->makeSendData());
-  m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("Запуск работы по уставке"));
+  if (m_resHolder->recorder) {
+    m_resHolder->recorder->setNextJob(runLabel, testProfile);
+  }
+  model->printToDebug();
+  m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, model->makeSendData());
+  m_resHolder->actions->addAction(ActionManager::ActionType::PLC, actionText);
+  return true;
 }
 
 TempSetWidget::TempSetWidget(quint32          index,

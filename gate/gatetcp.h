@@ -54,6 +54,9 @@ public:
   void sendSettingMap(QMap<QString, float> const &map);
   void sendGeneral(OutcomeMessageCode cmdCode, QByteArray data);
   void sendPair(QString const &text, float value);
+  // Blocks until everything queued has been handed to the OS (app shutdown
+  // path, no event loop left). False if not connected or timed out.
+  bool flush(int timeoutMs);
 
 signals:
   // Display RED BLINKING WARNING

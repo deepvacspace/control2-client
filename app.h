@@ -48,6 +48,8 @@ private:
   // 0 - ok, -1 - error, -2 - disabled
   void setupOpc();
   void stopOpc();
+  // re-reads opc settings: stops the server and starts it again if enabled and online
+  void restartOpc();
   void setExperimentSyncEnabled(bool enabled);
   void startOnline();
 

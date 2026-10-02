@@ -128,6 +128,7 @@ void App::runtimeSetups() {
           this,
           &App::setExperimentSyncEnabled);
   setExperimentSyncEnabled(insightServerMap.value("enabled", false).toBool());
+  connect(&m_settings, &SettingsManager::opcSettingsChanged, this, &App::restartOpc);
 
   // Make default program, todo: add settings checks
   m_resHolder.defaultProgram
@@ -371,6 +372,18 @@ void App::stopOpc() {
   if (m_opcThread) {
     m_opcThread->quit();
     m_opcThread->wait();
+    // both are deleted by the thread's finished() connections
+    m_opcThread = nullptr;
+    m_opcServer = nullptr;
+  }
+  m_opcStates.clear();
+}
+
+void App::restartOpc() {
+  stopOpc();
+  m_status.setOpcStatus(-2); // OPC OFF
+  if (StatusManager::AppState::ONLINE == m_status.getAppState()) {
+    setupOpc();
   }
 }
 

@@ -33,6 +33,13 @@ public:
   [[nodiscard]] bool    isListening() const;
   [[nodiscard]] quint16 serverPort() const;
   [[nodiscard]] QString activeRunId() const;
+  [[nodiscard]] QStringList clientAddresses() const;
+  [[nodiscard]] QString lastError() const;
+
+signals:
+  void listeningChanged(bool listening);
+  void clientsChanged();
+  void activeRunChanged(QString const &runId);
 
 private:
   QString nextRunId();
@@ -44,6 +51,7 @@ private:
   QSet<QTcpSocket *> m_clients;
   QString            m_activeRunId;
   QString            m_activeMode;
+  QString            m_lastError;
   quint64            m_sequence{0};
 };
 

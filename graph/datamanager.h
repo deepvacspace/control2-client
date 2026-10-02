@@ -30,6 +30,10 @@ public:
   bool prepareIntervalToDisplay(double epochSecTime);
 
   std::shared_ptr<DataHolder> getIntervalToDisplay() const;
+  // interval receiving live points (may hold data not yet saved to its file)
+  std::shared_ptr<DataHolder const> getIntervalToAdd() const {
+    return m_intervalToAdd;
+  }
 signals:
 
   // interval created

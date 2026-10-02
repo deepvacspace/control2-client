@@ -2,10 +2,15 @@
 
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QThread>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include "constants.h"
+#include "backupservice.h"
+#include "collabmanager.h"
 #include "dialogs/messagedialog.h"
+#include "experimentrecorder.h"
 #include "lightbutton.h"
 #include "powerbutton.h"
 #include "statusbar.h"
@@ -43,6 +48,11 @@ void MainWindow::initGui() {
 
   stackedWidgetMenuLay->addWidget(m_stackedWidget);
   stackedWidgetMenuLay->addWidget(m_menu);
+
+  // saves every finished chamber job to the experiment database (Deepvac Insight format)
+  m_resHolder->recorder = new ExperimentRecorder(m_resHolder, this);
+  // local-network sharing with other Deepvac apps (settings: Connections tab)
+  m_resHolder->collab = new CollabManager(m_resHolder, this);
 
   m_head             = new Head(m_resHolder, this);
   m_manual           = new Manual(m_resHolder, this);
@@ -127,6 +137,19 @@ void MainWindow::initGui() {
   // connect(&usbDevManager, &UsbDeviceManager::changed, statusBar, &StatusBar::setUsb);
 
   m_flasher = new Flasher(this);
+
+  // daily database backups (data/backups), shortly after start and then checked hourly
+  auto runBackups = [] {
+    QThread *thread = QThread::create([] {
+      storage::BackupService::backupAll(false);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start(QThread::LowestPriority);
+  };
+  QTimer::singleShot(10'000, this, runBackups);
+  auto *backupTimer = new QTimer(this);
+  connect(backupTimer, &QTimer::timeout, this, runBackups);
+  backupTimer->start(3'600'000);
 
   // titling
   auto const tcp_server_address = m_resHolder->settings->settingsMap()["tcp_server"].toMap()["server_ip"].toString();

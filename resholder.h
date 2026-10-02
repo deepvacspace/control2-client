@@ -16,6 +16,8 @@
 namespace deepvaccontrol {
 
 class ExperimentSyncServer;
+class ExperimentRecorder;
+class CollabManager;
 
 struct ResHolder {
   SystemValueList *states{nullptr};
@@ -30,6 +32,8 @@ struct ResHolder {
   HardwareStatus  *hard_status{nullptr};
   UsbManager           *usb{nullptr};
   ExperimentSyncServer *experimentSync{nullptr};
+  ExperimentRecorder   *recorder{nullptr};
+  CollabManager        *collab{nullptr};
   bool                  aiAdvisorEnabled{true};
 };
 } // namespace deepvaccontrol

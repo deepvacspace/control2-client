@@ -34,10 +34,14 @@ bool ExperimentSyncServer::listen(QHostAddress const &address, quint16 port) {
   }
 
   if (!m_server->listen(address, port)) {
+    m_lastError = m_server->errorString();
     m_logger->stream(Logger::Level::ERR) << "Deepvac Insight telemetry server failed to listen on" << address.toString()
                                          << port << m_server->errorString();
+    emit listeningChanged(false);
     return false;
   }
+  m_lastError.clear();
+  emit listeningChanged(true);
 
   m_logger->stream(Logger::Level::INFO) << "Deepvac Insight telemetry server listening on"
                                         << m_server->serverAddress().toString() << m_server->serverPort();
@@ -53,6 +57,9 @@ void ExperimentSyncServer::close() {
   m_activeRunId.clear();
   m_activeMode.clear();
   m_sequence = 0;
+  emit clientsChanged();
+  emit activeRunChanged({});
+  emit listeningChanged(false);
 }
 
 QString ExperimentSyncServer::beginExperiment(QString const &mode) {
@@ -69,6 +76,7 @@ QString ExperimentSyncServer::beginExperiment(QString const &mode) {
   m_activeMode  = mode;
   m_sequence    = 0;
   m_logger->stream(Logger::Level::INFO) << "Experiment sync started:" << m_activeRunId << "mode:" << mode;
+  emit activeRunChanged(m_activeRunId);
   return m_activeRunId;
 }
 
@@ -79,6 +87,7 @@ void ExperimentSyncServer::endExperiment(QString const &runId) {
 
   m_logger->stream(Logger::Level::INFO) << "Experiment sync finished:" << m_activeRunId << "samples:" << m_sequence;
   m_activeRunId.clear();
+  emit activeRunChanged({});
   m_activeMode.clear();
   m_sequence = 0;
 }
@@ -155,6 +164,7 @@ void ExperimentSyncServer::acceptPendingConnections() {
     }
 
     m_clients.insert(client);
+    emit clientsChanged();
     m_logger->stream(Logger::Level::INFO)
       << "Deepvac Insight client connected:" << client->peerAddress().toString() << client->peerPort();
 
@@ -179,6 +189,20 @@ void ExperimentSyncServer::removeClient(QTcpSocket *socket) {
   m_logger->stream(Logger::Level::INFO) << "Deepvac Insight client disconnected:" << socket->peerAddress().toString();
   m_clients.remove(socket);
   socket->deleteLater();
+  emit clientsChanged();
+}
+
+QStringList ExperimentSyncServer::clientAddresses() const {
+  QStringList addresses;
+  for (QTcpSocket const *client : m_clients) {
+    addresses.push_back(QStringLiteral("%1:%2").arg(client->peerAddress().toString()).arg(client->peerPort()));
+  }
+  addresses.sort();
+  return addresses;
+}
+
+QString ExperimentSyncServer::lastError() const {
+  return m_lastError;
 }
 
 } // namespace deepvaccontrol

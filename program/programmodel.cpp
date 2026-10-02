@@ -212,11 +212,8 @@ QByteArray ProgramModel::makeSendData() const {
   return data;
 }
 
-bool ProgramModel::writeData(QFile &file) {
+QVariantMap ProgramModel::programVariant() const {
   QVariantList intervals;
-  if (m_standardModel.columnCount() < 1) {
-    return false;
-  }
   for (int i{0U}; i < m_standardModel.columnCount(); ++i) {
     intervals << intervalToVariantMap(i);
   }
@@ -229,14 +226,26 @@ bool ProgramModel::writeData(QFile &file) {
   QVariantMap outMap;
   outMap["intervals"] = intervals;
   outMap["cycle"]     = cycle;
+  return outMap;
+}
 
-  file.write(QJsonDocument::fromVariant(outMap).toJson());
+bool ProgramModel::writeData(QFile &file) {
+  if (m_standardModel.columnCount() < 1) {
+    return false;
+  }
+  file.write(QJsonDocument::fromVariant(programVariant()).toJson());
   return true;
 }
 
 bool ProgramModel::readData(QFile &file) {
-  QVariantMap loadedProgramVariant = utils::parseJsonToVariant(file.readAll(), file.fileName());
+  bool const result{setProgramVariant(utils::parseJsonToVariant(file.readAll(), file.fileName()))};
+  if (!result) {
+    qWarning() << "Error on loading program from" << file.fileName();
+  }
+  return result;
+}
 
+bool ProgramModel::setProgramVariant(QVariantMap const &loadedProgramVariant) {
   // Integrity checks
   if (loadedProgramVariant.empty()) {
     return false;
@@ -246,6 +255,9 @@ bool ProgramModel::readData(QFile &file) {
                      && loadedProgramVariant["cycle"].toMap().contains("end")
                      && loadedProgramVariant["cycle"].toMap().contains("count")};
 
+  if (loadedProgramVariant["intervals"].toList().isEmpty()) {
+    return false;
+  }
   QVariantMap fileParamMap = loadedProgramVariant["intervals"].toList()[0].toMap();
   if (fileParamMap.empty()) {
     return false;
@@ -284,7 +296,7 @@ bool ProgramModel::readData(QFile &file) {
     auto const fileIntervalMap = intervalListVariant[i].toMap();
     result                     = setIntervalFromVariantMap(i, fileIntervalMap);
     if (!result) {
-      qWarning() << "Error on adding" << i << "interval from" << file.fileName();
+      qWarning() << "Error on adding interval" << i;
       break;
     }
   }
@@ -293,6 +305,7 @@ bool ProgramModel::readData(QFile &file) {
   // Because the settings are read asynchronously, it is necessary to transmit the cycle parameters asynchronously via
   // the signal as well.
   emit cycleParamsUpdated(getCycleParams());
+  emit numberOfIntervalChanged(m_standardModel.columnCount());
 
   return result;
 }

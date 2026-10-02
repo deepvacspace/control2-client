@@ -96,6 +96,48 @@ bool SettingsManager::setInsightSyncEnabled(bool enabled) {
   return saved;
 }
 
+bool SettingsManager::setInsightServerSettings(bool enabled, QString const &address, quint16 port) {
+  QVariantMap insightServer         = m_settingsMap.value("insight_server").toMap();
+  insightServer["enabled"]          = enabled;
+  insightServer["listen_address"]   = address;
+  insightServer["port"]             = port;
+  m_settingsMap["insight_server"]   = insightServer;
+
+  bool const saved = saveToSettingsFile();
+  // listeners re-read address / port from the settings
+  emit insightSyncEnabledChanged(enabled);
+  return saved;
+}
+
+bool SettingsManager::setOpcSettings(bool enabled, QVariantMap const &opcSettings) {
+  QVariantMap appSettings       = m_settingsMap.value("app_settings").toMap();
+  appSettings["opc_server"]     = enabled;
+  m_settingsMap["app_settings"] = appSettings;
+  m_settingsMap["opc_settings"] = opcSettings;
+
+  bool const saved = saveToSettingsFile();
+  emit opcSettingsChanged();
+  return saved;
+}
+
+bool SettingsManager::setTcpServer(QString const &address, quint16 port) {
+  QVariantMap tcpServer       = m_settingsMap.value("tcp_server").toMap();
+  tcpServer["server_ip"]      = address;
+  tcpServer["server_port"]    = port;
+  m_settingsMap["tcp_server"] = tcpServer;
+  return saveToSettingsFile();
+}
+
+bool SettingsManager::setSection(QString const &key, QVariantMap const &section) {
+  m_settingsMap[key] = section;
+  return saveToSettingsFile();
+}
+
+bool SettingsManager::setChambers(QVariantList const &chambers) {
+  m_settingsMap["chambers"] = chambers;
+  return saveToSettingsFile();
+}
+
 QMap<QString, float> SettingsManager::getSettingPairs() const {
   QMap<QString, float> ret;
 

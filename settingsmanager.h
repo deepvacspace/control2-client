@@ -30,6 +30,12 @@ public:
   void                          setPlcSettings(QVariantMap const &plcSettings);
   void                          setStatesSettings(QVariantList const &statesSettings);
   bool                          setInsightSyncEnabled(bool enabled);
+  // Connections tab (app-only settings, not sent to the PLC)
+  bool                          setInsightServerSettings(bool enabled, QString const &address, quint16 port);
+  bool                          setOpcSettings(bool enabled, QVariantMap const &opcSettings);
+  bool                          setTcpServer(QString const &address, quint16 port);
+  bool                          setChambers(QVariantList const &chambers);
+  bool                          setSection(QString const &key, QVariantMap const &section); // app-only section
   QMap<QString, float>          getSettingPairs() const;
   void                          applySettingsFromPairs(QMap<QString, float> const &plcPairs);
   QMap<quint32, QString> const &getAlarmsMap() const;
@@ -42,6 +48,7 @@ signals:
   // need be informed.
   void settingsPulled();
   void insightSyncEnabledChanged(bool enabled);
+  void opcSettingsChanged();
 
 private:
   // Creates new items or update existing in m_settingValueList from general settings.

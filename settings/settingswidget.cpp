@@ -7,6 +7,8 @@
 #include <QVBoxLayout>
 
 #include "alarmlistwidget.h"
+#include "connectionswidget.h"
+#include "datawidget.h"
 #include "constants.h"
 #include "settingslistwidget.h"
 #include "utils.h"
@@ -122,21 +124,18 @@ void SettingsWidget::initGui() {
   aiSettingsLayout->addWidget(aiAdvisorLabel, 0, 0);
   aiSettingsLayout->addWidget(aiAdvisorToggle, 0, 1, Qt::AlignLeft);
 
-  auto *databaseSyncLabel  = new QLabel(tr("Database Synchronization"), aiSettingsWidget);
-  auto *databaseSyncToggle = new QCheckBox(aiSettingsWidget);
-  bool const databaseSyncEnabled = settingsVariantMap.value("insight_server").toMap().value("enabled", false).toBool();
-  databaseSyncToggle->setChecked(databaseSyncEnabled);
-  aiSettingsLayout->addWidget(databaseSyncLabel, 1, 0);
-  aiSettingsLayout->addWidget(databaseSyncToggle, 1, 1, Qt::AlignLeft);
+  // Database Synchronization (Deepvac Insight link) lives in the Connections tab
   aiSettingsLayout->setColumnStretch(2, 1);
-  aiSettingsLayout->setRowStretch(2, 1);
+  aiSettingsLayout->setRowStretch(1, 1);
   connect(aiAdvisorToggle, &QCheckBox::toggled, this, [this](bool checked) {
     m_resHolder->aiAdvisorEnabled = checked;
   });
-  connect(databaseSyncToggle, &QCheckBox::toggled, this, [this](bool checked) {
-    m_resHolder->settings->setInsightSyncEnabled(checked);
-  });
   tabWidget->addTab(aiSettingsWidget, tr("AI"));
+
+  // App-only network links: chamber gate, Deepvac Insight, OPC UA
+  tabWidget->addTab(new ConnectionsWidget(m_resHolder, this), tr("Connections"));
+  // databases and their backups
+  tabWidget->addTab(new DataWidget(m_resHolder, this), tr("Data"));
 
   auto *btnsLay = new QHBoxLayout();
   mainLay->addLayout(btnsLay);

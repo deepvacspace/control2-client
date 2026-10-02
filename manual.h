@@ -21,6 +21,8 @@ private:
   void sendProgram();
   void initGui();
   void updateGui();
+  // common tail of every start: AI advisor offer, send to PLC, event log, run recording
+  bool     sendJob(ProgramModel *model, QString const &runLabel, QString const &testProfile, QString const &actionText);
 
   ResHolder *m_resHolder;
 
