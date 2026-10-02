@@ -49,6 +49,7 @@ void MainWindow::initGui() {
   m_programWidget    = new ProgramWidget(m_resHolder, this);
   m_settingsWidget   = new SettingsWidget(m_resHolder, this);
   m_graphWidget      = new GraphWidget(m_resHolder, this);
+  m_dataAnalysisWidget = new DataAnalysisWidget(m_resHolder, this);
   m_aiWidget         = new AiWidget(m_resHolder, this);
   auto *userWidget   = new UserWidget(m_resHolder->logger, m_resHolder->users, this);
   auto *systemWidget = new SystemWidget(m_resHolder, this);
@@ -64,6 +65,7 @@ void MainWindow::initGui() {
   addWidgetToStacked(m_manual, tr("Ручное\nуправление"));
   addWidgetToStacked(m_programWidget, tr("Программное\nуправление"));
   addWidgetToStacked(m_graphWidget, tr("График"));
+  addWidgetToStacked(m_dataAnalysisWidget, tr("Data\nanalysis"));
   addWidgetToStacked(m_aiWidget, tr("AI"));
   addWidgetToStacked(m_settingsWidget, tr("Настройки"));
   addWidgetToStacked(userWidget, tr("Пользователи"));
@@ -127,16 +129,9 @@ void MainWindow::initGui() {
   m_flasher = new Flasher(this);
 
   // titling
-  QString    eq_name{};
-  auto       plc_settings_map   = m_resHolder->settings->settingsMap()["app_settings"].toMap();
   auto const tcp_server_address = m_resHolder->settings->settingsMap()["tcp_server"].toMap()["server_ip"].toString();
-  if (plc_settings_map.contains("name")) {
-    eq_name = plc_settings_map["name"].toString();
-  }
-  QString const connectionTitle =
-    eq_name.isEmpty() ? tcp_server_address : QString("%1 (%2)").arg(eq_name).arg(tcp_server_address);
-  QString const title = connectionTitle.isEmpty() ? QStringLiteral("Deepvac Control")
-                                                  : QStringLiteral("Deepvac Control - %1").arg(connectionTitle);
+  QString const title = tcp_server_address.isEmpty() ? QStringLiteral("Deepvac Control")
+                                                     : QStringLiteral("Deepvac Control (%1)").arg(tcp_server_address);
   setWindowTitle(title);
 }
 
@@ -145,6 +140,7 @@ void MainWindow::handleAccessChange(QString const &, AccessManager::AccessLevel 
   // "Ручное\nуправление"
   // "Программное\nуправление"
   // "График"
+  // "Data\nanalysis"
   // "AI"
   // "Настройки"
   // "Пользователи"
@@ -154,14 +150,14 @@ void MainWindow::handleAccessChange(QString const &, AccessManager::AccessLevel 
   switch (newLevel) {
     case AccessManager::AccessLevel::USER_START_1:
     case AccessManager::AccessLevel::USER_EDIT_2:
-      m_menu->setElementsEnable({1, 1, 1, 1, 1, 0, 1, 1});
+      m_menu->setElementsEnable({1, 1, 1, 1, 1, 1, 0, 1, 1});
       break;
     case AccessManager::AccessLevel::USER_ADMIN_3:
       m_menu->setElementsEnableAll();
       break;
     case AccessManager::AccessLevel::SPECTATOR_0:
     default:
-      m_menu->setElementsEnable({1, 0, 0, 1, 1, 0, 1, 1});
+      m_menu->setElementsEnable({1, 0, 0, 1, 1, 1, 0, 1, 1});
       break;
   }
 }

@@ -29,6 +29,7 @@ public:
   QVariantList                  commitSystemValues(); // returns SystemValues as VariantList
   void                          setPlcSettings(QVariantMap const &plcSettings);
   void                          setStatesSettings(QVariantList const &statesSettings);
+  bool                          setInsightSyncEnabled(bool enabled);
   QMap<QString, float>          getSettingPairs() const;
   void                          applySettingsFromPairs(QMap<QString, float> const &plcPairs);
   QMap<quint32, QString> const &getAlarmsMap() const;
@@ -40,6 +41,7 @@ signals:
   // Set of general settings updates its widget automatically, but another (pid, calibration)
   // need be informed.
   void settingsPulled();
+  void insightSyncEnabledChanged(bool enabled);
 
 private:
   // Creates new items or update existing in m_settingValueList from general settings.

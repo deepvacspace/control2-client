@@ -15,6 +15,8 @@
 
 namespace deepvaccontrol {
 
+class ExperimentSyncServer;
+
 struct ResHolder {
   SystemValueList *states{nullptr};
   GateTcp         *tcpGate{nullptr};
@@ -26,8 +28,9 @@ struct ResHolder {
   ActionManager   *actions{nullptr};
   AccessManager   *users{nullptr};
   HardwareStatus  *hard_status{nullptr};
-  UsbManager      *usb{nullptr};
-  bool             aiAdvisorEnabled{true};
+  UsbManager           *usb{nullptr};
+  ExperimentSyncServer *experimentSync{nullptr};
+  bool                  aiAdvisorEnabled{true};
 };
 } // namespace deepvaccontrol
 #endif // RESHOLDER_H

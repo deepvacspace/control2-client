@@ -24,6 +24,8 @@ App::App(bool windowMode, bool debugMode, QObject *parent)
     , m_finishDialog{nullptr}
     , m_states{&m_logger, this}
     , m_settings{&m_logger, SETTINGS_FILE, this}
+    , m_dataManager{nullptr}
+    , m_experimentSyncServer{nullptr}
     , m_actions{&m_logger, ACTIONS_FILE, this}
     , m_hardStatus{&m_resHolder}
     , m_opcThread{nullptr}
@@ -116,6 +118,16 @@ void App::runtimeSetups() {
   // Data manager
   m_dataManager           = new DataManager(&m_resHolder, m_states.size(), deepvaccontrol::INTERVAL_DURATION, this);
   m_resHolder.dataManager = m_dataManager;
+
+  // Read-only LAN telemetry endpoint consumed by Deepvac Insight.
+  QVariantMap const insightServerMap = settingMapVariant["insight_server"].toMap();
+  m_experimentSyncServer     = new ExperimentSyncServer(&m_logger, this);
+  m_resHolder.experimentSync = m_experimentSyncServer;
+  connect(&m_settings,
+          &SettingsManager::insightSyncEnabledChanged,
+          this,
+          &App::setExperimentSyncEnabled);
+  setExperimentSyncEnabled(insightServerMap.value("enabled", false).toBool());
 
   // Make default program, todo: add settings checks
   m_resHolder.defaultProgram
@@ -287,7 +299,9 @@ void App::onStateValuesReceive(QVector<float> stateValues) {
   m_states.setFloatValues(stateValues);
 
   QVector<double> valuesDouble{stateValues.cbegin(), stateValues.cend()};
-  m_dataManager->addPoint(static_cast<double>(QDateTime::currentSecsSinceEpoch()), valuesDouble);
+  qint64 const    timestampMs = QDateTime::currentMSecsSinceEpoch();
+  m_dataManager->addPoint(static_cast<double>(timestampMs / 1000), valuesDouble);
+  m_experimentSyncServer->publishSample(m_states.getNames(), stateValues, timestampMs);
 
   if (m_opcServer && (0 == m_status.getOpcStatus())) {
     QVector<double> opcStateValuesVector;
@@ -358,6 +372,35 @@ void App::stopOpc() {
     m_opcThread->quit();
     m_opcThread->wait();
   }
+}
+
+void App::setExperimentSyncEnabled(bool enabled) {
+  if (!m_experimentSyncServer) {
+    return;
+  }
+  if (!enabled) {
+    m_experimentSyncServer->close();
+    m_logger.stream(Logger::Level::INFO) << "Database synchronization disabled";
+    return;
+  }
+
+  QVariantMap const insightServerMap = m_settings.settingsMap().value("insight_server").toMap();
+  QString const insightAddressText = insightServerMap.value("listen_address", "0.0.0.0").toString();
+  uint const    configuredInsightPort = insightServerMap.value("port", 5555).toUInt();
+  quint16 const insightPort = (configuredInsightPort > 0U) && (configuredInsightPort <= 65535U)
+                                ? static_cast<quint16>(configuredInsightPort)
+                                : static_cast<quint16>(5555);
+  if (configuredInsightPort != insightPort) {
+    m_logger.stream(Logger::Level::WAR) << "Invalid Insight port" << configuredInsightPort << "- using 5555";
+  }
+
+  QHostAddress insightAddress{insightAddressText};
+  if (insightAddress.isNull()) {
+    m_logger.stream(Logger::Level::WAR)
+      << "Invalid Insight listen address" << insightAddressText << "- using 0.0.0.0";
+    insightAddress = QHostAddress::AnyIPv4;
+  }
+  m_experimentSyncServer->listen(insightAddress, insightPort);
 }
 
 void App::requestStateList() {

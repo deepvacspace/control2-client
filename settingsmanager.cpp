@@ -86,6 +86,16 @@ void SettingsManager::setStatesSettings(QVariantList const &statesSettings) {
   saveToSettingsFile();
 }
 
+bool SettingsManager::setInsightSyncEnabled(bool enabled) {
+  QVariantMap insightServer = m_settingsMap.value("insight_server").toMap();
+  insightServer["enabled"]  = enabled;
+  m_settingsMap["insight_server"] = insightServer;
+
+  bool const saved = saveToSettingsFile();
+  emit insightSyncEnabledChanged(enabled);
+  return saved;
+}
+
 QMap<QString, float> SettingsManager::getSettingPairs() const {
   QMap<QString, float> ret;
 

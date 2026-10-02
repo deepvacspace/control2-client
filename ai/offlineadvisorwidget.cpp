@@ -18,6 +18,7 @@
 #include "advisorcem.h"
 #include "confdialog.h"
 #include "constants.h"
+#include "experimentsyncserver.h"
 #include "gatetcp.h"
 #include "lineeditnum.h"
 #include "programmodel.h"
@@ -58,6 +59,9 @@ OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent
 OfflineAdvisorWidget::~OfflineAdvisorWidget() {
   if (m_running) {
     m_progressTimer.stop();
+    if (m_resHolder->experimentSync) {
+      m_resHolder->experimentSync->endExperiment(m_runId);
+    }
   }
   if (m_tuneWorker) {
     m_tuneWorker->wait();
@@ -486,6 +490,9 @@ void OfflineAdvisorWidget::redrawPretunedChart() {
 void OfflineAdvisorWidget::startRealRun() {
   m_running = true;
   m_runClock.start();
+  if (m_resHolder->experimentSync) {
+    m_runId = m_resHolder->experimentSync->beginExperiment(QStringLiteral("offline_advisor"));
+  }
 
   m_runBtn->setEnabled(false);
   m_stopBtn->setVisible(true);
@@ -560,6 +567,10 @@ void OfflineAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
     return;
   }
   m_running = false;
+  if (m_resHolder->experimentSync) {
+    m_resHolder->experimentSync->endExperiment(m_runId);
+  }
+  m_runId.clear();
   m_progressTimer.stop();
   stopChamberJob();
 

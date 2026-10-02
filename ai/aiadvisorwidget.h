@@ -160,6 +160,7 @@ private:
   ai::SimParams                 m_currentParams; // for the later simulated comparison only
   QVector<ai::AdvisorDecision>  m_decisions;
   QVector<ai::TrajectoryPoint>  m_actualTrajectory;
+  QString                       m_runId;
 
   ai::ComparisonWorker *m_comparisonWorker{nullptr};
 };

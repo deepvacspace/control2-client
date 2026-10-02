@@ -9,6 +9,7 @@
 #include "actionmanager.h"
 #include "alarmdialog.h"
 #include "datamanager.h"
+#include "experimentsyncserver.h"
 #include "gatetcp.h"
 #include "hardwarestatus.h"
 #include "logger.h"
@@ -47,6 +48,7 @@ private:
   // 0 - ok, -1 - error, -2 - disabled
   void setupOpc();
   void stopOpc();
+  void setExperimentSyncEnabled(bool enabled);
   void startOnline();
 
   ResHolder m_resHolder;
@@ -70,6 +72,8 @@ private:
   SettingsManager m_settings;
 
   DataManager *m_dataManager;
+
+  ExperimentSyncServer *m_experimentSyncServer;
 
   ActionManager m_actions;
 

@@ -121,10 +121,20 @@ void SettingsWidget::initGui() {
   aiAdvisorToggle->setChecked(m_resHolder->aiAdvisorEnabled);
   aiSettingsLayout->addWidget(aiAdvisorLabel, 0, 0);
   aiSettingsLayout->addWidget(aiAdvisorToggle, 0, 1, Qt::AlignLeft);
+
+  auto *databaseSyncLabel  = new QLabel(tr("Database Synchronization"), aiSettingsWidget);
+  auto *databaseSyncToggle = new QCheckBox(aiSettingsWidget);
+  bool const databaseSyncEnabled = settingsVariantMap.value("insight_server").toMap().value("enabled", false).toBool();
+  databaseSyncToggle->setChecked(databaseSyncEnabled);
+  aiSettingsLayout->addWidget(databaseSyncLabel, 1, 0);
+  aiSettingsLayout->addWidget(databaseSyncToggle, 1, 1, Qt::AlignLeft);
   aiSettingsLayout->setColumnStretch(2, 1);
-  aiSettingsLayout->setRowStretch(1, 1);
+  aiSettingsLayout->setRowStretch(2, 1);
   connect(aiAdvisorToggle, &QCheckBox::toggled, this, [this](bool checked) {
     m_resHolder->aiAdvisorEnabled = checked;
+  });
+  connect(databaseSyncToggle, &QCheckBox::toggled, this, [this](bool checked) {
+    m_resHolder->settings->setInsightSyncEnabled(checked);
   });
   tabWidget->addTab(aiSettingsWidget, tr("AI"));
 

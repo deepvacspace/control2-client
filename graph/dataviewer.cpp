@@ -414,11 +414,11 @@ void DataViewer::mouseEventHeadler(QMouseEvent *event) {
 
     if (CursorMode::LEGEND_CURSOR != m_cursorMode) {
       if (isCtrlPressed) {
-        m_plot->setSelectionRectMode(QCP::srmNone);
-        m_plot->setInteraction(QCP::iRangeDrag, true);
-      } else {
         m_plot->setSelectionRectMode(QCP::srmZoom);
         m_plot->setInteraction(QCP::iRangeDrag, false);
+      } else {
+        m_plot->setSelectionRectMode(QCP::srmNone);
+        m_plot->setInteraction(QCP::iRangeDrag, true);
       }
     }
   }

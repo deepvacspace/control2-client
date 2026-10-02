@@ -92,6 +92,7 @@ private:
 
   ai::SimParams                m_currentParams;
   QVector<ai::TrajectoryPoint> m_actualTrajectory;
+  QString                      m_runId;
 
   ai::OfflineTuneWorker *m_tuneWorker{nullptr};
   QProgressDialog       *m_tuneDialog{nullptr};

@@ -17,6 +17,7 @@
 #include "actionmanager.h"
 #include "confdialog.h"
 #include "constants.h"
+#include "experimentsyncserver.h"
 #include "gatetcp.h"
 #include "lineeditnum.h"
 #include "programmodel.h"
@@ -42,12 +43,10 @@ QString formatPid(double kp, double ki, double kd) {
 constexpr double SAFETY_MAX_OVERSHOOT_C{1.0};
 constexpr int    SAFETY_MAX_SETPOINT_CROSSINGS{3};
 constexpr double SAFETY_CROSSING_DEADBAND_C{0.2};
-// ~4x the GRU's held-out one-step RMSE (foresight validation_rollout_2026-09-02:
-// test_one_step.rmse_delta_t1 = 0.056 degC on unseen PID configs).
 constexpr double SAFETY_PREDICTION_DRIFT_C{0.2};
 constexpr int    SAFETY_PREDICTION_DRIFT_MIN_SAMPLES{3};
 constexpr int    SAFETY_PREDICTION_DRIFT_WINDOW{5};
-} // namespace
+}
 
 AiAdvisorWidget::AiAdvisorWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
   initGui();
@@ -71,6 +70,9 @@ AiAdvisorWidget::~AiAdvisorWidget() {
     m_progressTimer.stop();
     m_shadowPidTimer.stop();
     m_twinCheckTimer.stop();
+    if (m_resHolder->experimentSync) {
+      m_resHolder->experimentSync->endExperiment(m_runId);
+    }
   }
   if (m_comparisonWorker) {
     m_comparisonWorker->wait();
@@ -715,6 +717,9 @@ void AiAdvisorWidget::runExperiment() {
 
   m_running = true;
   m_runClock.start();
+  if (m_resHolder->experimentSync) {
+    m_runId = m_resHolder->experimentSync->beginExperiment(QStringLiteral("online_advisor"));
+  }
 
   m_runBtn->setEnabled(false);
   m_stopBtn->setVisible(true);
@@ -834,6 +839,10 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
     return;
   }
   m_running = false;
+  if (m_resHolder->experimentSync) {
+    m_resHolder->experimentSync->endExperiment(m_runId);
+  }
+  m_runId.clear();
   m_decisionTimer.stop();
   m_progressTimer.stop();
   m_shadowPidTimer.stop();
