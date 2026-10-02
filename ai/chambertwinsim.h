@@ -7,6 +7,7 @@
 #include <array>
 
 #include "gruonnxmodel.h"
+#include "kpis.h"
 
 namespace deepvaccontrol::ai {
 
@@ -89,6 +90,11 @@ struct SimMetrics {
   double  maxTemp{0.0};
   double  endTemp{0.0};
 };
+
+// SimMetrics (the AI pages' view of the KPIs) from the shared core::computeKpis() result
+SimMetrics metricsFromKpis(core::ControlKpis const &kpis, bool valid, QString const &invalidReason = {});
+// core KPI options matching the AI constants (bands, tail window)
+core::KpiOptions kpiOptions(double tailEndS, double initialValue);
 
 class CodesysDiff {
 public:

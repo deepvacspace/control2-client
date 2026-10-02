@@ -14,6 +14,7 @@
 #include <cmath>
 #include <limits>
 
+#include "accessmanager.h"
 #include "actionmanager.h"
 #include "advisorcem.h"
 #include "confdialog.h"
@@ -33,19 +34,37 @@ namespace deepvaccontrol {
 
 namespace {
 QString formatNumber(double value, int prec = 2) {
-  return QString::number(value, 'f', prec);
+  return std::isfinite(value) ? QString::number(value, 'f', prec) : QStringLiteral("—");
 }
 
 QString formatPid(double kp, double ki, double kd) {
   return QStringLiteral("Kp=%1  Ki=%2  Kd=%3")
     .arg(formatNumber(kp, 1), formatNumber(ki, 1), formatNumber(kd, 1));
 }
+
+constexpr qint64 TELEMETRY_TIMEOUT_MS{10'000}; // no telemetry for this long aborts the run
 } // namespace
 
 OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder} {
+  m_pidGuard = new ai::ManualPidGuard(m_resHolder, QStringLiteral("offline_advisor"), this);
   initGui();
   loadModel();
+
+  connect(m_pidGuard, &ai::ManualPidGuard::restoreConfirmed, this, [this] {
+    m_pidLabel->setText(tr("Manual PID restored (confirmed by the chamber)"));
+    updateRunButtonEnabled();
+  });
+  connect(m_pidGuard, &ai::ManualPidGuard::restoreFailed, this, [this](QString const &message) {
+    setStatusText(message, true);
+    updateRunButtonEnabled();
+  });
+  connect(m_pidGuard, &ai::ManualPidGuard::pendingRestoreSent, this, [this](QString const &reason) {
+    setStatusText(tr("Restored the manual PID the AI Advisor had replaced (%1)").arg(reason), true);
+  });
+  if (m_resHolder->users) {
+    connect(m_resHolder->users, &AccessManager::userSelected, this, &OfflineAdvisorWidget::onAccessChanged);
+  }
 
   connect(&m_progressTimer, &QTimer::timeout, this, &OfflineAdvisorWidget::onProgressTick);
   connect(m_resHolder->states, &SystemValueList::ValuesUpdated, this, &OfflineAdvisorWidget::onTelemetryUpdated);
@@ -59,6 +78,7 @@ OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent
 OfflineAdvisorWidget::~OfflineAdvisorWidget() {
   if (m_running) {
     m_progressTimer.stop();
+    m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor run"));
     if (m_resHolder->experimentSync) {
       m_resHolder->experimentSync->endExperiment(m_runId);
     }
@@ -78,7 +98,9 @@ void OfflineAdvisorWidget::loadModel() {
 
 void OfflineAdvisorWidget::updateRunButtonEnabled() {
   bool const online = m_resHolder->status && (StatusManager::AppState::ONLINE == m_resHolder->status->getAppState());
-  m_runBtn->setEnabled(m_model.isLoaded() && online && !m_running && !m_tuneWorker);
+  bool const allowed = ai::advisorControlDenied(m_resHolder).isEmpty();
+  bool const settled = !m_pidGuard || !m_pidGuard->isPending(); // previous restore confirmed
+  m_runBtn->setEnabled(m_model.isLoaded() && online && allowed && settled && !m_running && !m_tuneWorker);
 }
 
 void OfflineAdvisorWidget::initGui() {
@@ -329,13 +351,6 @@ bool OfflineAdvisorWidget::startChamberJob(double targetTemp) {
   return true;
 }
 
-void OfflineAdvisorWidget::stopChamberJob() {
-  m_resHolder->tcpGate->sendTextCmd("stop");
-  if (m_resHolder->actions) {
-    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("AI Advisor stopped the chamber"));
-  }
-}
-
 void OfflineAdvisorWidget::runExperiment() {
   if (m_running || m_tuneWorker) {
     return;
@@ -346,6 +361,14 @@ void OfflineAdvisorWidget::runExperiment() {
   }
   if (!m_resHolder->status || (StatusManager::AppState::ONLINE != m_resHolder->status->getAppState())) {
     setStatusText(tr("Chamber is not connected"), true);
+    return;
+  }
+  if (QString const denied = ai::advisorControlDenied(m_resHolder); !denied.isEmpty()) {
+    setStatusText(denied, true);
+    return;
+  }
+  if (m_pidGuard->isPending()) {
+    setStatusText(tr("The manual PID from the previous run has not been confirmed by the chamber yet"), true);
     return;
   }
 
@@ -366,6 +389,11 @@ void OfflineAdvisorWidget::runExperiment() {
   m_targetTemp       = m_targetTempEdit->text().toDouble();
   if (!std::isfinite(m_startTemp) || !std::isfinite(m_targetTemp)) {
     setStatusText(tr("Chamber temperature reading is invalid - cannot tune"), true);
+    return;
+  }
+  if (QString const outside = m_model.envelope().checkScenario(m_startTemp, m_targetTemp, durationS);
+      !outside.isEmpty()) {
+    setStatusText(outside + tr(" - the digital twin was not trained for it"), true);
     return;
   }
   m_targetDurationS = durationS;
@@ -441,12 +469,31 @@ void OfflineAdvisorWidget::onTuneFinished() {
                     tr("Yes"), tr("No"), this);
   connect(dialog, &ConfDialog::finished, this, [this](int accepted) {
     if (1 == accepted) { // == accepted()
+      // things may have changed while the dialog was open
+      QString refusal = ai::advisorControlDenied(m_resHolder);
+      if (refusal.isEmpty() && (!m_resHolder->status || (StatusManager::AppState::ONLINE != m_resHolder->status->getAppState()))) {
+        refusal = tr("Chamber is not connected");
+      }
+      if (refusal.isEmpty() && !m_model.envelope().containsPid(m_tuneResult.bestKp, m_tuneResult.bestKi, m_tuneResult.bestKd)) {
+        refusal = tr("Suggested PID %1 is outside the valid range")
+                    .arg(formatPid(m_tuneResult.bestKp, m_tuneResult.bestKi, m_tuneResult.bestKd));
+      }
+      if (refusal.isEmpty() && !m_pidGuard->capture()) {
+        refusal = tr("No valid manual Temperature PID table to fall back to");
+      }
+      if (!refusal.isEmpty()) {
+        setStatusText(refusal + tr(" - suggested PID not applied"), true);
+        updateRunButtonEnabled();
+        return;
+      }
       if (!writePidToActiveBand(m_tuneResult.bestKp, m_tuneResult.bestKi, m_tuneResult.bestKd)) {
+        m_pidGuard->restore(false, tr("suggested PID could not be written"));
         setStatusText(tr("Failed to write suggested PID to the chamber"), true);
         updateRunButtonEnabled();
         return;
       }
       if (!startChamberJob(m_targetTemp)) {
+        m_pidGuard->restore(false, tr("chamber could not be started"));
         setStatusText(tr("Failed to start the chamber"), true);
         updateRunButtonEnabled();
         return;
@@ -490,6 +537,8 @@ void OfflineAdvisorWidget::redrawPretunedChart() {
 void OfflineAdvisorWidget::startRealRun() {
   m_running = true;
   m_runClock.start();
+  m_lastTelemetryMs = 0;
+  m_manualRestored  = false;
   if (m_resHolder->experimentSync) {
     m_runId = m_resHolder->experimentSync->beginExperiment(QStringLiteral("offline_advisor"));
   }
@@ -514,17 +563,31 @@ void OfflineAdvisorWidget::onProgressTick() {
     stopExperiment(false);
     return;
   }
+  if (m_runClock.elapsed() - m_lastTelemetryMs > TELEMETRY_TIMEOUT_MS) {
+    stopExperiment(true, tr("No chamber telemetry for %1 s - experiment aborted").arg(TELEMETRY_TIMEOUT_MS / 1000));
+    return;
+  }
 
   m_progressBar->setValue(static_cast<int>(elapsedS));
-  setStatusText(
-    tr("Running real experiment: %1 / %2 s elapsed").arg(static_cast<int>(elapsedS)).arg(static_cast<int>(m_targetDurationS)),
-    false);
+  if (m_manualRestored) {
+    setStatusText(tr("%1 - continuing on manual PID (%2 / %3 s elapsed)")
+                    .arg(m_manualReason)
+                    .arg(static_cast<int>(elapsedS))
+                    .arg(static_cast<int>(m_targetDurationS)),
+                  true);
+  } else {
+    setStatusText(
+      tr("Running real experiment: %1 / %2 s elapsed").arg(static_cast<int>(elapsedS)).arg(static_cast<int>(m_targetDurationS)),
+      false);
+  }
 }
 
 void OfflineAdvisorWidget::onTelemetryUpdated() {
   if (!m_running) {
     return;
   }
+
+  m_lastTelemetryMs = m_runClock.elapsed();
 
   SystemValue *tempVal = m_resHolder->states->getSysValue("temp");
   if (!tempVal) {
@@ -562,6 +625,20 @@ void OfflineAdvisorWidget::onAlarmReceived(quint32 alarmCode) {
   }
 }
 
+void OfflineAdvisorWidget::onAccessChanged() {
+  updateRunButtonEnabled();
+  if (!m_running || m_manualRestored) {
+    return;
+  }
+  if (QString const denied = ai::advisorControlDenied(m_resHolder); !denied.isEmpty()) {
+    // the suggested PID was applied on the previous user's authority
+    m_pidGuard->restore(false, denied);
+    m_manualRestored = true;
+    m_manualReason   = denied;
+    m_pidLabel->setText(tr("Reverted to manual PID: %1").arg(denied));
+  }
+}
+
 void OfflineAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   if (!m_running) {
     return;
@@ -572,15 +649,19 @@ void OfflineAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   }
   m_runId.clear();
   m_progressTimer.stop();
-  stopChamberJob();
+  // manual PID table first, then stop the job the advisor started
+  ai::ManualPidGuard::Result const restored =
+    m_pidGuard->restore(true, aborted ? (reason.isEmpty() ? tr("experiment aborted") : reason) : tr("run finished"));
+  QString const restoreNote = (ai::ManualPidGuard::Result::PENDING == restored)
+                                ? tr(" - manual PID and stop will be sent when the chamber is reachable again")
+                                : QString();
 
-  m_runBtn->setEnabled(true);
   m_stopBtn->setVisible(false);
   m_progressBar->setVisible(false);
   updateRunButtonEnabled();
 
   if (aborted) {
-    setStatusText(reason.isEmpty() ? tr("Experiment aborted") : reason, true);
+    setStatusText((reason.isEmpty() ? tr("Experiment aborted") : reason) + restoreNote, true);
     if (!m_actualTrajectory.isEmpty()) {
       setMetricsColumn(1, computeActualMetrics());
     }
@@ -612,100 +693,22 @@ void OfflineAdvisorWidget::redrawActualChart() {
 }
 
 ai::SimMetrics OfflineAdvisorWidget::computeActualMetrics() const {
-  ai::SimMetrics metrics;
-  metrics.valid = true;
-
   if (m_actualTrajectory.isEmpty()) {
+    ai::SimMetrics metrics;
+    metrics.valid = true;
     return metrics;
   }
-
-  double const tailStart = std::max(0.0, m_targetDurationS - ai::TAIL_WINDOW_S);
-  bool         anyTail{false};
+  // each point against its own live setpoint, so a setpoint change mid-run is judged correctly
+  QVector<double> times;
+  QVector<double> temps;
+  QVector<double> references;
   for (auto const &p : m_actualTrajectory) {
-    if (p.elapsedS >= tailStart) {
-      anyTail = true;
-      break;
-    }
+    times << p.elapsedS;
+    temps << p.temp;
+    references << p.tempRef;
   }
-
-  double sumAbsErrorFull{0.0};
-  double sumTailAbsError{0.0};
-  double sumTailError{0.0};
-  double tailTempSum{0.0};
-  int    tailCount{0};
-  double minTemp{std::numeric_limits<double>::infinity()};
-  double maxTemp{-std::numeric_limits<double>::infinity()};
-  double overshootMax{0.0};
-  double sumOvershootSq{0.0};
-  double timeToNear{m_targetDurationS + 999.0};
-  double timeToSettle{m_targetDurationS + 999.0};
-  bool   foundNear{false};
-  bool   foundSettle{false};
-
-  for (auto const &p : m_actualTrajectory) {
-    double const absErr = std::abs(p.error);
-    sumAbsErrorFull += absErr;
-    minTemp = std::min(minTemp, p.temp);
-    maxTemp = std::max(maxTemp, p.temp);
-
-    double overshoot{0.0};
-    if (p.tempRef <= m_startTemp) {
-      overshoot = std::max(p.tempRef - p.temp, 0.0);
-    } else {
-      overshoot = std::max(p.temp - p.tempRef, 0.0);
-    }
-    overshootMax = std::max(overshootMax, overshoot);
-    sumOvershootSq += overshoot * overshoot;
-
-    bool const inTail = anyTail ? (p.elapsedS >= tailStart) : true;
-    if (inTail) {
-      sumTailAbsError += absErr;
-      sumTailError += p.error;
-      tailTempSum += p.temp;
-      ++tailCount;
-    }
-
-    if (!foundNear && (absErr <= ai::NEAR_BAND)) {
-      timeToNear = p.elapsedS;
-      foundNear  = true;
-    }
-    if (!foundSettle && (absErr <= ai::SETTLE_BAND)) {
-      timeToSettle = p.elapsedS;
-      foundSettle  = true;
-    }
-  }
-
-  int const    n        = m_actualTrajectory.size();
-  double const tailMean = tailCount > 0 ? tailTempSum / tailCount : 0.0;
-  double       sumTailVar{0.0};
-  if (tailCount > 0) {
-    for (auto const &p : m_actualTrajectory) {
-      bool const inTail = anyTail ? (p.elapsedS >= tailStart) : true;
-      if (inTail) {
-        double const d = p.temp - tailMean;
-        sumTailVar += d * d;
-      }
-    }
-  }
-
-  metrics.maeFull        = sumAbsErrorFull / n;
-  metrics.tailMae        = tailCount > 0 ? sumTailAbsError / tailCount : 0.0;
-  metrics.tailBias       = tailCount > 0 ? sumTailError / tailCount : 0.0;
-  metrics.tailStd        = tailCount > 0 ? std::sqrt(sumTailVar / tailCount) : 0.0;
-  metrics.overshootMax   = overshootMax;
-  metrics.overshootRmse  = std::sqrt(sumOvershootSq / n);
-  metrics.finalError     = m_actualTrajectory.last().error;
-  metrics.finalAbsError  = std::abs(metrics.finalError);
-  metrics.timeToNearS    = timeToNear;
-  metrics.timeToSettleS  = timeToSettle;
-  metrics.minTemp        = minTemp;
-  metrics.maxTemp        = maxTemp;
-  metrics.endTemp        = m_actualTrajectory.last().temp;
-
-  metrics.cost = ai::W_TAIL_MAE * metrics.tailMae + ai::W_OVERSHOOT_MAX * metrics.overshootMax
-               + ai::W_TAIL_STD * metrics.tailStd + ai::W_FINAL_ERROR * metrics.finalAbsError;
-
-  return metrics;
+  return ai::metricsFromKpis(
+    core::computeKpis(times, temps, references, ai::kpiOptions(m_targetDurationS, m_startTemp)), true);
 }
 
 void OfflineAdvisorWidget::setMetricsColumn(int column, ai::SimMetrics const &metrics) {

@@ -156,6 +156,19 @@ std::vector<double> PpoAdvisorModel::forward(std::vector<double> const &input) c
   return activation;
 }
 
+ai::ModelEnvelope PpoAdvisorModel::envelope() const {
+  ai::ModelEnvelope envelope;
+  envelope.tempMin = m_tempMin;
+  envelope.tempMax = m_tempMax;
+  envelope.kpMin   = m_kpMin;
+  envelope.kpMax   = m_kpMax;
+  envelope.kiMin   = m_kiMin;
+  envelope.kiMax   = m_kiMax;
+  envelope.kdMin   = m_kdMin;
+  envelope.kdMax   = m_kdMax;
+  return envelope;
+}
+
 std::array<double, 3> PpoAdvisorModel::decide(std::array<double, 8> const &obs) const {
   if (!m_loaded) {
     return {0.0, 0.0, 0.0};

@@ -294,106 +294,54 @@ QVector<TrajectoryPoint> const &ChamberTwinSim::trajectory() const {
   return m_trajectory;
 }
 
-SimMetrics ChamberTwinSim::metrics() const {
-  SimMetrics metrics;
-  metrics.valid         = m_valid;
-  metrics.invalidReason = m_invalidReason;
+core::KpiOptions kpiOptions(double tailEndS, double initialValue) {
+  core::KpiOptions options;
+  options.settleBand   = SETTLE_BAND;
+  options.nearBand     = NEAR_BAND;
+  options.tailWindowS  = TAIL_WINDOW_S;
+  options.tailEndS     = tailEndS;
+  options.initialValue = initialValue;
+  options.startTimeS   = 0.0; // experiment / simulation time starts at 0
+  return options;
+}
 
+SimMetrics metricsFromKpis(core::ControlKpis const &kpis, bool valid, QString const &invalidReason) {
+  SimMetrics metrics;
+  metrics.valid         = valid;
+  metrics.invalidReason = invalidReason;
+  metrics.tailMae       = kpis.tailMae;
+  metrics.tailBias      = kpis.tailBias;
+  metrics.tailStd       = kpis.tailStd;
+  metrics.overshootMax  = kpis.overshoot;
+  metrics.overshootRmse = kpis.overshootRms;
+  metrics.finalError    = kpis.finalError;
+  metrics.finalAbsError = std::abs(kpis.finalError);
+  metrics.timeToNearS   = kpis.timeToNearS;   // NaN: never got near
+  metrics.timeToSettleS = kpis.settlingTimeS; // NaN: did not settle (enter and stay in the band)
+  metrics.maeFull       = kpis.mae;
+  metrics.minTemp       = kpis.minValue;
+  metrics.maxTemp       = kpis.maxValue;
+  metrics.endTemp       = kpis.endValue;
+  metrics.cost          = core::controlCost(kpis, !valid, {W_TAIL_MAE, W_OVERSHOOT_MAX, W_TAIL_STD, W_FINAL_ERROR, W_INVALID});
+  return metrics;
+}
+
+SimMetrics ChamberTwinSim::metrics() const {
   if (m_trajectory.isEmpty()) {
+    SimMetrics metrics;
+    metrics.valid         = m_valid;
+    metrics.invalidReason = m_invalidReason;
     return metrics;
   }
-
-  double const tailStart = std::max(0.0, m_params.durationS - TAIL_WINDOW_S);
-
-  bool anyTail{false};
+  QVector<double> times;
+  QVector<double> temps;
   for (auto const &p : m_trajectory) {
-    if (p.elapsedS >= tailStart) {
-      anyTail = true;
-      break;
-    }
+    times << p.elapsedS;
+    temps << p.temp;
   }
-
-  double sumAbsErrorFull{0.0};
-  double sumTailAbsError{0.0};
-  double sumTailError{0.0};
-  double tailTempSum{0.0};
-  int    tailCount{0};
-  double minTemp{std::numeric_limits<double>::infinity()};
-  double maxTemp{-std::numeric_limits<double>::infinity()};
-  double overshootMax{0.0};
-  double sumOvershootSq{0.0};
-  double timeToNear{m_params.durationS + 999.0};
-  double timeToSettle{m_params.durationS + 999.0};
-  bool   foundNear{false};
-  bool   foundSettle{false};
-
-  for (auto const &p : m_trajectory) {
-    double const absErr = std::abs(p.error);
-    sumAbsErrorFull += absErr;
-    minTemp = std::min(minTemp, p.temp);
-    maxTemp = std::max(maxTemp, p.temp);
-
-    double overshoot{0.0};
-    if (m_params.targetTemp <= m_params.startTemp) {
-      overshoot = std::max(m_params.targetTemp - p.temp, 0.0); // cooling: below target
-    } else {
-      overshoot = std::max(p.temp - m_params.targetTemp, 0.0); // heating: above target
-    }
-    overshootMax = std::max(overshootMax, overshoot);
-    sumOvershootSq += overshoot * overshoot;
-
-    bool const inTail = anyTail ? (p.elapsedS >= tailStart) : true;
-    if (inTail) {
-      sumTailAbsError += absErr;
-      sumTailError += p.error;
-      tailTempSum += p.temp;
-      ++tailCount;
-    }
-
-    if (!foundNear && absErr <= NEAR_BAND) {
-      timeToNear = p.elapsedS;
-      foundNear  = true;
-    }
-    if (!foundSettle && absErr <= SETTLE_BAND) {
-      timeToSettle = p.elapsedS;
-      foundSettle  = true;
-    }
-  }
-
-  int const    n        = m_trajectory.size();
-  double const tailMean = tailCount > 0 ? tailTempSum / tailCount : 0.0;
-  double       sumTailVar{0.0};
-  if (tailCount > 0) {
-    for (auto const &p : m_trajectory) {
-      bool const inTail = anyTail ? (p.elapsedS >= tailStart) : true;
-      if (inTail) {
-        double const d = p.temp - tailMean;
-        sumTailVar += d * d;
-      }
-    }
-  }
-
-  metrics.maeFull       = sumAbsErrorFull / n;
-  metrics.tailMae       = tailCount > 0 ? sumTailAbsError / tailCount : 0.0;
-  metrics.tailBias      = tailCount > 0 ? sumTailError / tailCount : 0.0;
-  metrics.tailStd       = tailCount > 0 ? std::sqrt(sumTailVar / tailCount) : 0.0;
-  metrics.overshootMax  = overshootMax;
-  metrics.overshootRmse = std::sqrt(sumOvershootSq / n);
-  metrics.finalError    = m_trajectory.last().error;
-  metrics.finalAbsError = std::abs(metrics.finalError);
-  metrics.timeToNearS   = timeToNear;
-  metrics.timeToSettleS = timeToSettle;
-  metrics.minTemp       = minTemp;
-  metrics.maxTemp       = maxTemp;
-  metrics.endTemp       = m_trajectory.last().temp;
-
-  metrics.cost = W_TAIL_MAE * metrics.tailMae + W_OVERSHOOT_MAX * metrics.overshootMax
-               + W_TAIL_STD * metrics.tailStd + W_FINAL_ERROR * metrics.finalAbsError;
-  if (!metrics.valid) {
-    metrics.cost += W_INVALID;
-  }
-
-  return metrics;
+  core::ControlKpis const kpis =
+    core::computeKpis(times, temps, m_params.targetTemp, kpiOptions(m_params.durationS, m_params.startTemp));
+  return metricsFromKpis(kpis, m_valid, m_invalidReason);
 }
 
 } // namespace deepvaccontrol::ai

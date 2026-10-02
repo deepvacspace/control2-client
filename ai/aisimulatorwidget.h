@@ -10,11 +10,11 @@
 #include "resholder.h"
 
 class QComboBox;
-class QCustomPlot;
 class QGridLayout;
 class QPushButton;
 
 namespace deepvaccontrol {
+class AnalysisChart;
 class LineEditNum;
 
 // Simulator tab of the AI page: a closed-loop chamber simulator driven by
@@ -67,7 +67,8 @@ private:
   QLabel *m_settleTile{nullptr};
 
   QComboBox   *m_channelCombo{nullptr};
-  QCustomPlot *m_plot{nullptr};
+  AnalysisChart *m_chart{nullptr};
+  QString        m_runTitle;
   QTimer       m_animTimer;
   int          m_stepsPerTick{1};
 };

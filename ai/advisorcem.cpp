@@ -158,70 +158,24 @@ double CemOptimizer::horizonCost(QVector<TrajectoryPoint> const &trajectory, Sim
     return CEM_W_INVALID;
   }
 
-  double sumAbsError{0.0};
-  double overshootMax{0.0};
-  double sumOvershootSq{0.0};
-  double nearSum{0.0};
-  int    nearCount{0};
-
+  QVector<double> times;
+  QVector<double> temps;
   for (auto const &p : trajectory) {
-    double const absErr = std::abs(p.error);
-    sumAbsError += absErr;
-
-    double overshoot{0.0};
-    if (params.targetTemp <= params.startTemp) {
-      overshoot = std::max(params.targetTemp - p.temp, 0.0);
-    } else {
-      overshoot = std::max(p.temp - params.targetTemp, 0.0);
-    }
-    overshootMax = std::max(overshootMax, overshoot);
-    sumOvershootSq += overshoot * overshoot;
-
-    if (absErr <= NEAR_BAND) {
-      nearSum += p.temp;
-      ++nearCount;
-    }
+    times << p.elapsedS;
+    temps << p.temp;
   }
-
-  int const    n            = trajectory.size();
-  double const maeFull      = sumAbsError / n;
-  double const overshootRms = std::sqrt(sumOvershootSq / n);
-  double const finalAbsErr  = std::abs(trajectory.last().error);
-
-  double nearStd{0.0};
-  if (nearCount > 0) {
-    double const nearMean = nearSum / nearCount;
-    double       varSum{0.0};
-    for (auto const &p : trajectory) {
-      if (std::abs(p.error) <= NEAR_BAND) {
-        double const d = p.temp - nearMean;
-        varSum += d * d;
-      }
-    }
-    nearStd = std::sqrt(varSum / nearCount);
-  }
-
-  // Std-dev over just the last TAIL_WINDOW_S of the horizon: genuine
-  // post-settle stability, independent of how the candidate got there.
-  double const dtSafe     = std::max(params.dtS, 1e-9);
-  int const    nTailSteps = std::max(1, static_cast<int>(std::llround(TAIL_WINDOW_S / dtSafe)));
-  int const    tailStart  = std::max(0, n - nTailSteps);
-  int const    tailCount  = n - tailStart;
-
-  double tailStd{0.0};
-  if (tailCount > 1) {
-    double tailSum{0.0};
-    for (int i{tailStart}; i < n; ++i) {
-      tailSum += trajectory[i].temp;
-    }
-    double const tailMean = tailSum / tailCount;
-    double       tailVarSum{0.0};
-    for (int i{tailStart}; i < n; ++i) {
-      double const d = trajectory[i].temp - tailMean;
-      tailVarSum += d * d;
-    }
-    tailStd = std::sqrt(tailVarSum / tailCount);
-  }
+  core::ControlKpis const kpis =
+    core::computeKpis(times, temps, params.targetTemp, kpiOptions(qQNaN(), params.startTemp));
+  auto orZero = [](double v) {
+    return std::isfinite(v) ? v : 0.0;
+  };
+  double const maeFull      = orZero(kpis.mae);
+  double const overshootMax = orZero(kpis.overshoot);
+  double const overshootRms = orZero(kpis.overshootRms);
+  double const finalAbsErr  = std::abs(orZero(kpis.finalError));
+  double const nearStd      = orZero(kpis.nearStd);
+  // post-settle stability over the last TAIL_WINDOW_S of the horizon
+  double const tailStd      = orZero(kpis.tailStd);
 
   double const kpRange = std::max(KP_MAX - KP_MIN, 1e-9);
   double const kiRange = std::max(KI_MAX - KI_MIN, 1e-9);

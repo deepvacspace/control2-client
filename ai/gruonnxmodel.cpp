@@ -53,6 +53,19 @@ bool GruOnnxModel::load(QString const &onnxPath, QString const &metadataPath) {
   }
   m_windowSteps = obj.value("window_steps").toInt(60);
 
+  QJsonObject const range = obj.value("valid_range").toObject();
+  m_envelope              = ai::ModelEnvelope{};
+  m_envelope.maxDurationS = 1200.0;
+  m_envelope.tempMin      = range.value("temp_min").toDouble(m_envelope.tempMin);
+  m_envelope.tempMax      = range.value("temp_max").toDouble(m_envelope.tempMax);
+  m_envelope.maxDurationS = range.value("max_duration_s").toDouble(m_envelope.maxDurationS);
+  m_envelope.kpMin        = range.value("kp_min").toDouble(m_envelope.kpMin);
+  m_envelope.kpMax        = range.value("kp_max").toDouble(m_envelope.kpMax);
+  m_envelope.kiMin        = range.value("ki_min").toDouble(m_envelope.kiMin);
+  m_envelope.kiMax        = range.value("ki_max").toDouble(m_envelope.kiMax);
+  m_envelope.kdMin        = range.value("kd_min").toDouble(m_envelope.kdMin);
+  m_envelope.kdMax        = range.value("kd_max").toDouble(m_envelope.kdMax);
+
   if (m_featureNames.isEmpty()) {
     m_status = QObject::tr("Metadata file has no feature_names: %1").arg(metadataPath);
     return false;
@@ -94,6 +107,10 @@ bool GruOnnxModel::isLoaded() const {
 
 int GruOnnxModel::windowSteps() const {
   return m_windowSteps;
+}
+
+ai::ModelEnvelope const &GruOnnxModel::envelope() const {
+  return m_envelope;
 }
 
 QStringList const &GruOnnxModel::featureNames() const {

@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QWidget>
 
+#include "advisorsafety.h"
 #include "chambertwinsim.h"
 #include "gruonnxmodel.h"
 #include "offlinetuneworker.h"
@@ -32,7 +33,12 @@ class LineEditNum;
 // same JOB message Manual/Program control's Start button sends), and the
 // real run begins, holding that PID fixed for the whole duration. The
 // chamber is stopped (the same "stop" command their Stop button sends)
-// whenever the run ends, is stopped, or aborts.
+// whenever the run ends, is stopped, or aborts (disconnection, alarm, lost
+// telemetry, app closed), and the operator's pre-run PID table is put back
+// by ai::ManualPidGuard -- right away, or once the chamber is reachable
+// again. Running requires ai::ADVISOR_CONTROL_LEVEL (losing it mid-run
+// reverts to the manual PID) and a scenario inside the twin's validated
+// range (GruOnnxModel::envelope()).
 class OfflineAdvisorWidget : public QWidget {
   Q_OBJECT
 public:
@@ -54,9 +60,9 @@ private:
   void onAppStateChanged(StatusManager::AppState state);
   void onGateDisconnected();
   void onAlarmReceived(quint32 alarmCode);
+  void onAccessChanged();
   bool writePidToActiveBand(double kp, double ki, double kd);
   bool startChamberJob(double targetTemp);
-  void stopChamberJob();
   void setStatusText(QString const &text, bool isError);
   void redrawPretunedChart();
   void redrawActualChart();
@@ -85,6 +91,11 @@ private:
   bool          m_running{false};
   QTimer        m_progressTimer; // ~1s UI refresh / duration-elapsed check
   QElapsedTimer m_runClock;
+  qint64        m_lastTelemetryMs{0}; // m_runClock time of the last telemetry update
+
+  ai::ManualPidGuard *m_pidGuard{nullptr}; // pre-run PID table, put back when the run ends
+  bool                m_manualRestored{false}; // reverted to manual PID mid-run
+  QString             m_manualReason;
 
   double m_targetDurationS{0.0};
   double m_targetTemp{0.0}; // user-entered setpoint (temp_ref reads NaN while the chamber is idle)

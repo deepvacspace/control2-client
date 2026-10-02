@@ -11,9 +11,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include "analysischart.h"
 #include "constants.h"
 #include "lineeditnum.h"
-#include "qcustomplot.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -25,7 +25,7 @@ constexpr double INITIAL_TERM_MIN{-1.0};
 constexpr double INITIAL_TERM_MAX{1.0};
 
 QString formatNumber(double value, int prec = 2) {
-  return QString::number(value, 'f', prec);
+  return std::isfinite(value) ? QString::number(value, 'f', prec) : QStringLiteral("—");
 }
 } // namespace
 
@@ -148,33 +148,20 @@ QWidget *AiSimulatorWidget::buildChartCard() {
   auto *topLay = new QHBoxLayout();
   topLay->addWidget(new QLabel(tr("Channel:"), frame));
 
+  // same channels as Deepvac Insight's simulator
   m_channelCombo = new QComboBox(frame);
   m_channelCombo->addItem(tr("Temperature"));
+  m_channelCombo->addItem(tr("Error (setpoint − temp)"));
   m_channelCombo->addItem(tr("Control (u)"));
+  m_channelCombo->addItem(tr("Predicted ΔT per step"));
   topLay->addWidget(m_channelCombo);
   topLay->addStretch();
   lay->addLayout(topLay);
 
-  m_plot = new QCustomPlot(frame);
-  m_plot->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-  m_plot->xAxis->setLabel(tr("Time, s"));
-
-  m_plot->addGraph();
-  m_plot->graph(0)->setPen(QPen(QColor(40, 100, 200), 2));
-  m_plot->graph(0)->setName(tr("Temp."));
-
-  m_plot->addGraph();
-  m_plot->graph(1)->setPen(QPen(QColor(140, 140, 140), 1, Qt::DashLine));
-  m_plot->graph(1)->setName(tr("Setpoint"));
-
-  m_plot->addGraph();
-  m_plot->graph(2)->setPen(QPen(QColor(200, 60, 60), 2));
-  m_plot->graph(2)->setName(tr("Control (u)"));
-
-  m_plot->legend->setVisible(true);
-
-  lay->addWidget(m_plot, 1);
+  // shared analysis chart: crosshair, hover values, pan / zoom, box zoom
+  m_chart = new AnalysisChart(frame);
+  m_chart->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  lay->addWidget(m_chart, 1);
 
   connect(m_channelCombo, &QComboBox::currentIndexChanged, this, &AiSimulatorWidget::redrawChart);
 
@@ -218,10 +205,8 @@ void AiSimulatorWidget::runSimulation() {
   m_runBtn->setEnabled(false);
   setStatusText(tr("Running simulation..."), false);
 
-  for (int i{0}; i < m_plot->graphCount(); ++i) {
-    m_plot->graph(i)->data()->clear();
-  }
-  m_plot->replot();
+  m_runTitle = tr("Kp %1 / Ki %2 / Kd %3").arg(params.kp).arg(params.ki).arg(params.kd);
+  m_chart->setSeries({}, 0.0);
 
   m_stepsPerTick = std::max(1, static_cast<int>(std::ceil(m_sim.totalSteps() / static_cast<double>(ANIM_TARGET_TICKS))));
   m_animTimer.start(ANIM_INTERVAL_MS);
@@ -254,9 +239,9 @@ void AiSimulatorWidget::finishSimulation() {
   m_runBtn->setEnabled(true);
 
   if (metrics.valid) {
-    setStatusText(tr("Done"), false);
+    setStatusText(m_runTitle, false);
   } else {
-    setStatusText(tr("Done (warning: %1)").arg(metrics.invalidReason), true);
+    setStatusText(tr("%1 (warning: %2)").arg(m_runTitle, metrics.invalidReason), true);
   }
 }
 
@@ -269,36 +254,38 @@ void AiSimulatorWidget::redrawChart() {
     xs << p.elapsedS;
   }
 
-  int const channel = m_channelCombo->currentIndex();
-  bool const isTemp  = (0 == channel);
-
-  m_plot->graph(0)->setVisible(isTemp);
-  m_plot->graph(1)->setVisible(isTemp);
-  m_plot->graph(2)->setVisible(!isTemp);
-
-  if (isTemp) {
-    QVector<double> temps;
-    QVector<double> refs;
-    temps.reserve(traj.size());
-    refs.reserve(traj.size());
+  auto makeSeries = [&](QString const &label, QColor const &color, int width, auto value) {
+    ChartSeries series;
+    series.label = label;
+    series.color = color;
+    series.width = width;
+    series.x     = xs;
+    series.y.reserve(traj.size());
     for (auto const &p : traj) {
-      temps << p.temp;
-      refs << p.tempRef;
+      series.y << value(p);
     }
-    m_plot->graph(0)->setData(xs, temps, true);
-    m_plot->graph(1)->setData(xs, refs, true);
-    m_plot->graph(2)->data()->clear();
-  } else {
-    QVector<double> ys;
-    ys.reserve(traj.size());
-    for (auto const &p : traj) {
-      ys << p.u;
-    }
-    m_plot->graph(2)->setData(xs, ys, true);
+    return series;
+  };
+
+  QVector<ChartSeries> series;
+  switch (m_channelCombo->currentIndex()) {
+    case 0:
+      series << makeSeries(tr("Temperature, °C"), QColor(40, 100, 200), 2, [](auto const &p) { return p.temp; });
+      series << makeSeries(tr("Setpoint, °C"), QColor(140, 140, 140), 1, [](auto const &p) { return p.tempRef; });
+      break;
+    case 1:
+      series << makeSeries(tr("Error, °C"), QColor(220, 120, 0), 2, [](auto const &p) { return p.error; });
+      break;
+    case 2:
+      series << makeSeries(tr("Control (u)"), QColor(200, 60, 60), 2, [](auto const &p) { return p.u; });
+      break;
+    default:
+      series << makeSeries(tr("Predicted ΔT, °C"), QColor(130, 60, 200), 2, [](auto const &p) { return p.predDelta; });
+      break;
   }
 
-  m_plot->rescaleAxes();
-  m_plot->replot();
+  m_chart->setSeries(series, 0.0);
+  m_chart->resetView(); // follow the growing trajectory while animating
 }
 
 void AiSimulatorWidget::updateStatTiles(ai::SimMetrics const &metrics) {

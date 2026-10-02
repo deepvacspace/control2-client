@@ -5,6 +5,8 @@
 #include <array>
 #include <vector>
 
+#include "modelenvelope.h"
+
 namespace deepvaccontrol {
 
 // The trained PPO "advisor" policy: a small MLP (foresight's
@@ -37,6 +39,9 @@ public:
   double kdMax() const;
   double mpcHoldS() const;
   double dtS() const;
+  // Temperature range the policy was trained on (temp_min / temp_max) and
+  // its PID bounds.
+  ai::ModelEnvelope envelope() const;
 
   // obs, in this exact order (see foresight advisor/train_policy_ppo.py::VecTwinEnv::_obs):
   //   0: (temp - targetTemp) / scale                  scale = max(|tempMin|,|tempMax|,1e-6)

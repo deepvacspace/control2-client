@@ -126,6 +126,18 @@ bool offerOfflineAdvisorBeforeStart(ResHolder *resHolder, ProgramModel *program,
 
   int const totalSteps = std::max(1, static_cast<int>(std::ceil(scenario.params.durationS / scenario.params.dtS)))
                          * ai::CEM_ITERATIONS;
+  // Outside the twin's validated range a "recommendation" is extrapolation: don't give one.
+  QString const outside =
+    model.envelope().checkScenario(scenario.params.startTemp, scenario.params.targetTemp, scenario.params.durationS);
+  if (!outside.isEmpty()) {
+    QMessageBox::StandardButton const choice = QMessageBox::warning(
+      parent, QObject::tr("AI Advisor"),
+      outside + QObject::tr(".\n\nThe AI Advisor cannot give a reliable recommendation for this experiment. "
+                            "Start it with the current PID settings?"),
+      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    return QMessageBox::Yes == choice;
+  }
+
   QProgressDialog progress(QObject::tr("Computing optimal Temperature PID parameters with the digital twin..."),
                            QString(), 0, totalSteps, parent);
   progress.setWindowTitle(QObject::tr("AI Advisor"));
