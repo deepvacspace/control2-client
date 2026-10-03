@@ -59,9 +59,11 @@ OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent
     setStatusText(message, true);
     updateRunButtonEnabled();
   });
-  connect(m_pidGuard, &ai::ManualPidGuard::pendingRestoreSent, this, [this](QString const &reason) {
-    setStatusText(tr("Restored the manual PID the AI Advisor had replaced (%1)").arg(reason), true);
-  });
+  connect(m_pidGuard, &ai::ManualPidGuard::recoveredPreviousSession, this,
+          [this](QString const &reason, bool jobMayBeRunning) {
+            setStatusText(tr("Restored the manual PID the AI Advisor had replaced (%1)").arg(reason), true);
+            ai::notifyRecoveredSession(this, m_pidGuard, reason, jobMayBeRunning);
+          });
   if (m_resHolder->users) {
     connect(m_resHolder->users, &AccessManager::userSelected, this, &OfflineAdvisorWidget::onAccessChanged);
   }

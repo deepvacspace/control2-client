@@ -1,5 +1,7 @@
 #include "aiwidget.h"
 
+#include "assistantwidget.h"
+
 #include <QApplication>
 #include <QPalette>
 #include <QTabWidget>
@@ -63,6 +65,14 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   auto *offlineAdvisorWidget = new OfflineAdvisorWidget(resHolder, this);
   prepareAiTabPage(offlineAdvisorWidget);
   m_tabWidget->addTab(offlineAdvisorWidget, tr("Offline advisor"));
+
+  m_assistantWidget = new assistant::AssistantWidget(resHolder, this);
+  prepareAiTabPage(m_assistantWidget);
+  m_tabWidget->addTab(m_assistantWidget, tr("Assistant"));
+}
+
+void AiWidget::setAnalysis(DataAnalysisWidget *analysis, std::function<void()> showPage) {
+  m_assistantWidget->setAnalysis(analysis, std::move(showPage));
 }
 
 } // namespace deepvaccontrol

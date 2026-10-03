@@ -61,6 +61,7 @@ void MainWindow::initGui() {
   m_graphWidget      = new GraphWidget(m_resHolder, this);
   m_dataAnalysisWidget = new DataAnalysisWidget(m_resHolder, this);
   m_aiWidget         = new AiWidget(m_resHolder, this);
+  m_aiWidget->setAnalysis(m_dataAnalysisWidget, [this] { selectWidgetWindow(m_stackedWidget->indexOf(m_dataAnalysisWidget)); });
   auto *userWidget   = new UserWidget(m_resHolder->logger, m_resHolder->users, this);
   auto *systemWidget = new SystemWidget(m_resHolder, this);
 

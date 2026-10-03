@@ -25,7 +25,7 @@ public:
 
   // Operating range the twin was validated for: the metadata's optional
   // "valid_range" object (temp_min, temp_max, max_duration_s, kp_min ...
-  // kd_max), otherwise the foresight training envelope (-5 ... 26 degC,
+  // kd_max), otherwise the chamber's validated range (-70 ... 100 degC,
   // 20 min horizon, ChamberTwinSim's PID bounds).
   ai::ModelEnvelope const &envelope() const;
 

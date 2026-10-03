@@ -55,6 +55,8 @@ bool GruOnnxModel::load(QString const &onnxPath, QString const &metadataPath) {
 
   QJsonObject const range = obj.value("valid_range").toObject();
   m_envelope              = ai::ModelEnvelope{};
+  m_envelope.tempMin      = -70.0;
+  m_envelope.tempMax      = 100.0;
   m_envelope.maxDurationS = 1200.0;
   m_envelope.tempMin      = range.value("temp_min").toDouble(m_envelope.tempMin);
   m_envelope.tempMax      = range.value("temp_max").toDouble(m_envelope.tempMax);

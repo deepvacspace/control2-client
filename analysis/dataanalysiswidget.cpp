@@ -1,6 +1,8 @@
 #include "dataanalysiswidget.h"
 
 #include <QDateTime>
+#include <QDir>
+#include <QRegularExpression>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLineEdit>
@@ -14,6 +16,7 @@
 #include "analysisrunpage.h"
 #include "collabmanager.h"
 #include "constants.h"
+#include "experimentreport.h"
 #include "dialogs/messagedialog.h"
 #include "experimentrecorder.h"
 #include "graph/daterangedialog.h"
@@ -150,6 +153,47 @@ DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
       m_library->refresh();
     });
   }
+}
+
+ExperimentLibrary *DataAnalysisWidget::library() const {
+  return m_library;
+}
+
+AnalysisNotesStore *DataAnalysisWidget::notes() const {
+  return m_notes;
+}
+
+void DataAnalysisWidget::ensureScanned() {
+  if (!m_scanned) {
+    m_scanned = true;
+    m_library->refresh();
+  }
+}
+
+QString DataAnalysisWidget::showRun(ExperimentRun const &run, QStringList const &channels, double from, double to,
+                                    QVector<ExperimentRun> const &compare) {
+  openRun(run);
+  AnalysisRunPage *page = m_editor->page(run.key);
+  return page ? page->applyView(channels, from, to, compare) : tr("Could not open %1").arg(run.title);
+}
+
+QString DataAnalysisWidget::writeReport(ExperimentRun const &run, QVector<ExperimentRun> const &compare, bool pdf, QString &path) {
+  openRun(run);
+  AnalysisRunPage *page = m_editor->page(run.key);
+  if (!page) {
+    return tr("Could not open %1").arg(run.title);
+  }
+  if (QString const error = page->applyView({}, qQNaN(), qQNaN(), compare); !error.isEmpty()) {
+    return error;
+  }
+  QString name = run.title;
+  name.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]+")), QStringLiteral("_"));
+  QDir const folder(QDir(deepvaccontrol::EXPORT_DIR).absoluteFilePath(QStringLiteral("reports")));
+  QDir().mkpath(folder.absolutePath());
+  path = folder.filePath(QStringLiteral("%1_%2.%3").arg(name, QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"), pdf ? "pdf" : "html"));
+  ExperimentReportData const report = page->buildReport();
+  bool const ok{pdf ? experimentreport::writePdf(path, report) : experimentreport::writeHtml(path, report)};
+  return ok ? QString{} : tr("Could not write %1").arg(path);
 }
 
 void DataAnalysisWidget::showEvent(QShowEvent *event) {

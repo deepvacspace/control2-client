@@ -25,6 +25,17 @@ class DataAnalysisWidget : public QWidget {
 public:
   explicit DataAnalysisWidget(ResHolder *resHolder, QWidget *parent = nullptr);
 
+  // shared with the assistant (read-only analysis tools)
+  [[nodiscard]] ExperimentLibrary  *library() const;
+  [[nodiscard]] AnalysisNotesStore *notes() const;
+  // scans the recorded experiments if the page has never been shown
+  void ensureScanned();
+  // opens (or focuses) the run's tab with the given view; returns an error text or empty
+  QString showRun(ExperimentRun const &run, QStringList const &channels, double from, double to,
+                  QVector<ExperimentRun> const &compare);
+  // writes an experiment report of the run (and comparison) into the export folder
+  QString writeReport(ExperimentRun const &run, QVector<ExperimentRun> const &compare, bool pdf, QString &path);
+
 protected:
   void showEvent(QShowEvent *event) override;
 

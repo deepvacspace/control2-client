@@ -9,7 +9,8 @@
 #include "analysischart.h"
 #include "derivedvariablesstore.h"
 #include "experimentlibrary.h"
-#include "runanalysis.h"
+#include "experimentanalysis.h"
+#include "experimentreport.h"
 
 class QCheckBox;
 class QComboBox;
@@ -24,6 +25,7 @@ class QTableWidget;
 namespace deepvaccontrol {
 
 class AnalysisNotesStore;
+class ComparisonPanel;
 class LineEditNum;
 struct ResHolder;
 
@@ -43,6 +45,14 @@ public:
   [[nodiscard]] QString        title() const;
   [[nodiscard]] AnalysisChart *chart() const;
 
+  // loads the run now if the page has not done it yet; false when it cannot be read
+  bool ensureLoaded();
+  // channels by state name (unknown ones ignored), time range in elapsed s (NaN = whole run),
+  // other runs overlaid (compare mode); returns an error text or empty
+  QString applyView(QStringList const &channels, double from, double to, QVector<ExperimentRun> const &compare);
+  // configuration, stages, KPIs, events, anomalies, charts and the comparison (needs the run loaded)
+  [[nodiscard]] ExperimentReportData buildReport();
+
 private:
   void buildUi();
   QWidget *buildNotesPanel();
@@ -51,12 +61,20 @@ private:
   void     refreshRegions();
   void     refreshBands();
   void     refreshEvents();
-  // statistics panel: selected range (core::computeStats + core::analyseRun of the slice) and run KPIs / stages
+  // statistics panel: selected range (core::computeStats + core::analyseRun of the slice), run KPIs / stages
+  // (core::analyseExperiment), anomalies and the comparison with other runs
   QWidget *buildStatisticsPanel();
   void     refreshRangeStatistics();
   void     refreshRangeKpis(double from, double to); // control KPIs + stages of the visible range (core::analyseRun)
   void     computeRunAnalysis();
   void     refreshStages();
+  void     refreshAnomalies();
+  // comparison panel / aligned compare chart
+  void     refreshComparison();
+  [[nodiscard]] core::ExperimentAnalysis analyse(ExperimentData const &data) const;
+  [[nodiscard]] double          compareOffset(ExperimentData const &data) const;     // alignment shift of a compared run
+  [[nodiscard]] QVector<double> comparedElapsed(ExperimentData const &data) const;   // elapsed + alignment shift
+  void     exportReport(bool pdf);
   [[nodiscard]] int channelIndex(QString const &name) const;
   void     refreshStats();
   void     refreshRulesList();
@@ -109,6 +127,8 @@ private:
   QHash<int, QColor>                                     m_colorOverrides;
   QStringList                                            m_compareKeys;
   QHash<QString, std::shared_ptr<ExperimentData const>> m_compareData;
+  QHash<QString, core::ExperimentAnalysis>               m_compareAnalyses;
+  QHash<QString, double>                                 m_compareOffsets; // run key -> alignment shift, s
 
   AnalysisChart  *m_chart{nullptr};
   QLabel         *m_titleLabel{nullptr};
@@ -136,8 +156,12 @@ private:
   QLabel         *m_kpiLabel{nullptr};
   QTableWidget   *m_stagesTable{nullptr};
   QCheckBox      *m_stagesCheck{nullptr};
+  QLabel         *m_anomalyLabel{nullptr};
+  QTableWidget   *m_anomalyTable{nullptr};
+  QCheckBox      *m_anomaliesCheck{nullptr};
+  ComparisonPanel *m_comparisonPanel{nullptr};
   QTimer         *m_statisticsTimer{nullptr};
-  std::optional<core::RunAnalysis> m_analysis;
+  std::optional<core::ExperimentAnalysis> m_analysis;
   QComboBox      *m_ruleChannelCombo{nullptr};
   QLineEdit      *m_ruleLoEdit{nullptr};
   QLineEdit      *m_ruleHiEdit{nullptr};

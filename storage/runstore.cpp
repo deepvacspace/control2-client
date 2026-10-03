@@ -10,7 +10,7 @@
 #include <QTimeZone>
 #include <cmath>
 
-#include "runanalysis.h"
+#include "experimentanalysis.h"
 #include "sqlitedb.h"
 
 namespace deepvaccontrol::storage {
@@ -156,7 +156,7 @@ QByteArray jsonString(QString const &text) {
   return array.mid(1, array.size() - 2);
 }
 
-// KPIs of a run with temp / temp_ref; summary is the JSON stored in summary_json
+// KPIs and structured analysis of a run with temp / temp_ref; summary is the JSON stored in summary_json
 bool analyse(QStringList const &columns, QVector<double> const &times, QVector<QVector<double>> const &values, StoredRun &run,
              QString &summary) {
   auto column = [&](QString const &name) {
@@ -173,15 +173,20 @@ bool analyse(QStringList const &columns, QVector<double> const &times, QVector<Q
   for (double const t : times) {
     elapsed.push_back(t - times.first());
   }
-  core::RunAnalysis const analysis = core::analyseRun(elapsed, temp, reference, column("interval"), column("cycle_cur"));
-  if (analysis.overall.samples == 0) {
+  core::ExperimentInput input;
+  input.times = elapsed;
+  for (qsizetype c{0}; (c < columns.size()) && (c < values.size()); ++c) {
+    input.channels.insert(columns[c], values[c]);
+  }
+  core::ExperimentAnalysis const analysis = core::analyseExperiment(input);
+  if (!analysis.hasControl) {
     return false;
   }
-  run.mae         = analysis.overall.mae;
-  run.cost        = analysis.cost;
-  run.tailMae     = analysis.overall.tailMae;
-  run.overshoot   = analysis.overshoot;
-  run.settleTimeS = analysis.settlingTimeS;
+  run.mae         = analysis.run.overall.mae;
+  run.cost        = analysis.run.cost;
+  run.tailMae     = analysis.run.overall.tailMae;
+  run.overshoot   = analysis.run.overshoot;
+  run.settleTimeS = analysis.run.settlingTimeS;
   summary         = QString::fromUtf8(QJsonDocument(analysis.toJson()).toJson(QJsonDocument::Compact));
   return true;
 }
@@ -471,7 +476,9 @@ int RunStore::backfillKpis() {
   {
     ScopedDb db(RUNS_DB);
     ensureSchema(db);
-    QSqlQuery q = db.query("SELECT key FROM runs WHERE summary_json NOT LIKE '%\"kpis\"%' AND columns_json LIKE '%\"temp_ref\"%'");
+    // runs without the current structured analysis (stage details, anomalies, configuration)
+    QString const current = QStringLiteral("%\"analysis_version\":%1,%").arg(core::EXPERIMENT_ANALYSIS_VERSION);
+    QSqlQuery     q       = db.query("SELECT key FROM runs WHERE summary_json NOT LIKE ? AND columns_json LIKE '%\"temp_ref\"%'", {current});
     while (q.next()) {
       keys.push_back(q.value(0).toString());
     }

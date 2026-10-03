@@ -76,10 +76,11 @@ public:
 
   static QString makeRunUid(QString const &chamberRef, double start, double end);
 
-  // KPIs (core::analyseRun on temp / temp_ref, stages from interval / cycle_cur) into mae, cost, tail_mae,
-  // overshoot, settle_time_s and summary_json; returns false when the run has no temp / temp_ref
+  // KPIs into mae, cost, tail_mae, overshoot, settle_time_s and the structured analysis
+  // (core::analyseExperiment: stages with details, steady states, saturation, P/I/D, anomalies,
+  // configuration) into summary_json; returns false when the run has no temp / temp_ref
   static bool recomputeKpis(QString const &key);
-  // computes them for stored runs that have none yet (older runs); returns how many were updated
+  // computes them for stored runs analysed by an older version (or never); returns how many were updated
   static int backfillKpis();
   static QString formatTime(double epochSec);
 };

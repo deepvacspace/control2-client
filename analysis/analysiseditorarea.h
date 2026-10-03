@@ -23,6 +23,7 @@ public:
   explicit AnalysisEditorArea(QWidget *parent = nullptr);
 
   bool                            focusPage(QString const &key);
+  [[nodiscard]] AnalysisRunPage  *page(QString const &key) const;
   void                            addPage(AnalysisRunPage *page);
   [[nodiscard]] int               pageCount() const;
   [[nodiscard]] CrosshairSyncHub *syncHub() const;

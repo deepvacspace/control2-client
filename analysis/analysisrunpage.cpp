@@ -26,6 +26,9 @@
 #include <cmath>
 
 #include "analysisnotesstore.h"
+#include "comparisonpanel.h"
+#include "experimentinput.h"
+#include "experimentreport.h"
 #include "seriesstats.h"
 #include "derivedexpression.h"
 #include "derivedvariablesdialog.h"
@@ -142,6 +145,10 @@ AnalysisRunPage::AnalysisRunPage(ResHolder          *resHolder,
     if (runKey.isEmpty() || (runKey == m_run.key)) { // empty: changed by a sync
       refreshBands();
       refreshRulesList();
+      if (m_data) {
+        computeRunAnalysis(); // limit violations
+        refreshEvents();
+      }
     }
   });
 
@@ -217,6 +224,9 @@ void AnalysisRunPage::buildUi() {
   exportMenu->addAction(tr("Chart PNG"), this, &AnalysisRunPage::exportChartPng);
   exportMenu->addAction(tr("Experiment CSV"), this, &AnalysisRunPage::exportRunCsv);
   exportMenu->addAction(tr("Comparison CSV"), this, &AnalysisRunPage::exportComparisonCsv);
+  exportMenu->addSeparator();
+  exportMenu->addAction(tr("Experiment report (HTML)…"), this, [this] { exportReport(false); });
+  exportMenu->addAction(tr("Experiment report (PDF)…"), this, [this] { exportReport(true); });
   exportMenu->addSeparator();
   exportMenu->addAction(tr("Save to experiment database…"), this, &AnalysisRunPage::saveToDatabase)
     ->setEnabled(m_run.storeKey.isEmpty());
@@ -301,7 +311,10 @@ void AnalysisRunPage::buildUi() {
   m_stagesCheck = new QCheckBox(tr("Stages"), this);
   m_stagesCheck->setToolTip(tr("Show the automatic ramp / setpoint / hold stages"));
   connect(m_stagesCheck, &QCheckBox::toggled, this, &AnalysisRunPage::refreshStages);
-  controls->addWidget(makeGroup({m_eventsCheck, m_stagesCheck}));
+  m_anomaliesCheck = new QCheckBox(tr("Anomalies"), this);
+  m_anomaliesCheck->setToolTip(tr("Mark the detected anomalies on the chart"));
+  connect(m_anomaliesCheck, &QCheckBox::toggled, this, &AnalysisRunPage::refreshEvents);
+  controls->addWidget(makeGroup({m_eventsCheck, m_stagesCheck, m_anomaliesCheck}));
 
   // compare mode: reference line, by default the run's own setpoint channel
   m_setpointCheck = new QCheckBox(tr("Setpoint"), this);
@@ -334,6 +347,11 @@ void AnalysisRunPage::buildUi() {
   m_statisticsTimer->setInterval(250);
   connect(m_statisticsTimer, &QTimer::timeout, this, &AnalysisRunPage::refreshRangeStatistics);
   connect(m_chart, &AnalysisChart::viewRangeChanged, m_statisticsTimer, qOverload<>(&QTimer::start));
+  connect(m_comparisonPanel, &ComparisonPanel::alignmentChanged, this, [this] {
+    refreshChart();
+    m_chart->resetView();
+    updateTimeControls();
+  });
 }
 
 QWidget *AnalysisRunPage::buildNotesPanel() {
@@ -410,7 +428,55 @@ QWidget *AnalysisRunPage::buildNotesPanel() {
   return panel;
 }
 
+bool AnalysisRunPage::ensureLoaded() {
+  if (!m_data) {
+    load();
+  }
+  return static_cast<bool>(m_data);
+}
+
+QString AnalysisRunPage::applyView(QStringList const &channels, double from, double to, QVector<ExperimentRun> const &compare) {
+  if (!ensureLoaded()) {
+    return tr("Could not read %1").arg(m_run.title);
+  }
+  // overlays first: compare mode shows the first selected channel of every run
+  for (QString const &key : QStringList(m_compareKeys)) {
+    if (std::none_of(compare.cbegin(), compare.cend(), [&](ExperimentRun const &run) { return run.key == key; })) {
+      if (auto run = m_library->findRun(key)) {
+        setCompareRun(*run, false);
+      }
+    }
+  }
+  QVector<int> selection;
+  for (QString const &name : channels) {
+    if (int const index{channelIndex(name)}; index >= 0) {
+      selection.push_back(index);
+    }
+  }
+  if (!selection.isEmpty()) {
+    setSelectedChannels(selection);
+  }
+  for (ExperimentRun const &run : compare) {
+    if (run.key != m_run.key) {
+      setCompareRun(run, true);
+    }
+  }
+  if (std::isfinite(from) || std::isfinite(to)) {
+    double const lower{std::isfinite(from) ? from : 0.0};
+    double const upper{std::isfinite(to) ? to : m_run.duration()};
+    double const margin{std::max(30.0, 0.05 * (upper - lower))};
+    m_chart->setTimeRange(std::max(0.0, lower - margin), upper + margin);
+  } else {
+    m_chart->resetView();
+  }
+  updateTimeControls();
+  return {};
+}
+
 void AnalysisRunPage::load() {
+  if (m_data) {
+    return; // already loaded (ensureLoaded)
+  }
   QString error;
   m_data = m_library->load(m_run, &error);
   if (!m_data) {
@@ -615,6 +681,7 @@ void AnalysisRunPage::refreshChart() {
   m_chart->beginUpdate();
 
   QVector<ChartSeries> series;
+  refreshComparison();
   if (compareMode()) {
     int const          channel{compareChannel()};
     ChannelInfo const &info = m_channels.value(channel);
@@ -627,7 +694,7 @@ void AnalysisRunPage::refreshChart() {
       ChartSeries item;
       item.label   = label;
       item.color   = COMPARE_COLORS[series.size() % COMPARE_COLORS.size()];
-      item.x       = elapsed(data);
+      item.x       = comparedElapsed(data);
       item.y       = std::move(values);
       item.logAxis = info.scientific;
       series.push_back(item);
@@ -806,13 +873,15 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
   m_kpiLabel->setWordWrap(true);
   m_kpiLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
   m_stagesTable = makeTable({tr("#"), tr("Stage"), tr("Interval"), tr("Cycle"), tr("Start"), tr("Duration"), tr("Setpoint"),
-                             tr("MAE"), tr("Overshoot"), tr("Settling"), tr("Rise / fall"), tr("Steady-state error")},
-                            1,
+                             tr("MAE"), tr("Overshoot"), tr("Settling"), tr("Rise / fall"), tr("Steady-state error"),
+                             tr("Steady after"), tr("Steady"), tr("Rate ref / value, /min"), tr("Lag"), tr("Saturated"),
+                             tr("P / I / D"), tr("Kp / Ki / Kd")},
+                            18,
                             kpiPage);
   m_stagesTable->setToolTip(tr("Tap a stage to zoom to it"));
   connect(m_stagesTable, &QTableWidget::cellClicked, this, [this](int row) {
-    if (m_analysis && (row >= 0) && (row < m_analysis->stages.size())) {
-      core::Segment const &segment = m_analysis->stages[row].segment;
+    if (m_analysis && (row >= 0) && (row < m_analysis->run.stages.size())) {
+      core::Segment const &segment = m_analysis->run.stages[row].segment;
       m_chart->setTimeRange(segment.start, std::max(segment.end, segment.start + 1.0));
       updateTimeControls();
     }
@@ -820,8 +889,30 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
   kpiLay->addWidget(m_kpiLabel);
   kpiLay->addWidget(m_stagesTable);
 
+  auto *anomalyPage = new QWidget(panel);
+  auto *anomalyLay  = new QVBoxLayout(anomalyPage);
+  anomalyLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  m_anomalyLabel = new QLabel(anomalyPage);
+  m_anomalyLabel->setWordWrap(true);
+  m_anomalyTable = makeTable({tr("Severity"), tr("Type"), tr("Channel"), tr("Start"), tr("Duration"), tr("Detail")}, 5, anomalyPage);
+  m_anomalyTable->setToolTip(tr("Tap an anomaly to zoom to it"));
+  connect(m_anomalyTable, &QTableWidget::cellClicked, this, [this](int row) {
+    if (m_analysis && (row >= 0) && (row < m_analysis->anomalies.size())) {
+      core::Anomaly const &anomaly = m_analysis->anomalies[row];
+      double const         margin{std::max(60.0, 0.5 * (anomaly.end - anomaly.start))};
+      m_chart->setTimeRange(std::max(0.0, anomaly.start - margin), anomaly.end + margin);
+      updateTimeControls();
+    }
+  });
+  anomalyLay->addWidget(m_anomalyLabel);
+  anomalyLay->addWidget(m_anomalyTable);
+
+  m_comparisonPanel = new ComparisonPanel(panel);
+
   panel->addTab(rangePage, tr("Selected range"));
   panel->addTab(kpiPage, tr("KPIs && stages"));
+  panel->addTab(anomalyPage, tr("Anomalies"));
+  panel->addTab(m_comparisonPanel, tr("Comparison"));
   return panel;
 }
 
@@ -844,7 +935,7 @@ void AnalysisRunPage::refreshRangeStatistics() {
     rows.push_back({m_run.title, m_elapsed, channelSeries(*m_data, channel)});
     for (QString const &key : std::as_const(m_compareKeys)) {
       if (auto data = m_compareData.value(key)) {
-        rows.push_back({data->run.title, elapsed(*data), channelSeries(*data, channel)});
+        rows.push_back({data->run.title, comparedElapsed(*data), channelSeries(*data, channel)});
       }
     }
   } else {
@@ -897,7 +988,7 @@ void AnalysisRunPage::refreshRangeKpis(double from, double to) {
   QStringList lines;
   for (auto const &[title, data] : runs) {
     // the visible slice of this run
-    QVector<double> const times = (data == m_data) ? m_elapsed : elapsed(*data);
+    QVector<double> const times = (data == m_data) ? m_elapsed : comparedElapsed(*data);
     QVector<double> const columns[4]{channelSeries(*data, temp), channelSeries(*data, reference),
                                      channelSeries(*data, channelIndex("interval")), channelSeries(*data, channelIndex("cycle_cur"))};
     QVector<double>       sliceTimes;
@@ -947,44 +1038,60 @@ void AnalysisRunPage::refreshRangeKpis(double from, double to) {
   m_rangeKpiLabel->setText(lines.join(QStringLiteral("<br>")));
 }
 
+core::ExperimentAnalysis AnalysisRunPage::analyse(ExperimentData const &data) const {
+  QStringList names;
+  for (ChannelInfo const &channel : m_library->channels(data)) {
+    names << channel.name;
+  }
+  // rules are per run: the page's own rules apply to its own run only
+  return core::analyseExperiment(
+    experimentInput(data, names, (data.run.key == m_run.key) ? m_notes->rules(m_run.key) : QVector<AnalysisNotesStore::Rule>{}));
+}
+
 void AnalysisRunPage::computeRunAnalysis() {
-  m_analysis.reset();
-  int const temp{channelIndex("temp")};
-  int const reference{channelIndex("temp_ref")};
-  if ((temp < 0) || (reference < 0)) {
-    m_kpiLabel->setText(tr("KPIs need the channels temp and temp_ref."));
-    m_stagesTable->setRowCount(0);
-    refreshStages();
-    return;
-  }
-  auto column = [this](QString const &name) {
-    int const index{channelIndex(name)};
-    return (index >= 0) ? m_data->states[index] : QVector<double>{};
-  };
-  m_analysis = core::analyseRun(m_elapsed, m_data->states[temp], m_data->states[reference], column("interval"),
-                                column("cycle_cur"));
-  if (m_analysis->overall.samples == 0) {
-    m_analysis.reset();
-    m_kpiLabel->setText(tr("No setpoint (temp_ref) was recorded in this experiment, so there are no KPIs or stages."));
+  m_analysis = analyse(*m_baseData);
+  refreshAnomalies();
+
+  core::ExperimentAnalysis const &a = *m_analysis;
+  if (!a.hasControl) {
+    m_kpiLabel->setText(channelIndex("temp") < 0 || channelIndex("temp_ref") < 0
+                          ? tr("KPIs need the channels temp and temp_ref.")
+                          : tr("No setpoint (temp_ref) was recorded in this experiment, so there are no KPIs or stages."));
     m_stagesTable->setRowCount(0);
     refreshStages();
     return;
   }
 
-  core::ControlKpis const &k = m_analysis->overall;
-  m_kpiLabel->setText(tr("<b>Run</b> (temp vs temp_ref, %1 samples): MAE %2 · RMSE %3 · max |error| %4 · worst step overshoot %5 · "
-                         "worst step undershoot %6 · settling of the last setpoint %7 · tail MAE %8 · tail std %9. "
-                         "Rise / fall time and steady-state error per setpoint below.")
-                        .arg(k.samples)
-                        .arg(statText(k.mae), statText(k.rmse), statText(k.maxAbsError), statText(m_analysis->overshoot),
-                             statText(m_analysis->undershoot), secondsText(m_analysis->settlingTimeS), statText(k.tailMae),
-                             statText(k.tailStd)));
+  core::ControlKpis const &k = a.run.overall;
+  core::RunConfig const   &c = a.config;
+  QStringList              setpoints;
+  for (double const setpoint : c.setpoints) {
+    setpoints << statText(setpoint, 2);
+  }
+  double const steadyShare{core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
+  m_kpiLabel->setText(
+    tr("<b>Run</b> (temp vs temp_ref, %1 samples): MAE %2 · RMSE %3 · max |error| %4 · worst step overshoot %5 · "
+       "worst step undershoot %6 · settling of the last setpoint %7 · tail MAE %8 · tail std %9.")
+      .arg(k.samples)
+      .arg(statText(k.mae), statText(k.rmse), statText(k.maxAbsError), statText(a.run.overshoot), statText(a.run.undershoot),
+           secondsText(a.run.settlingTimeS), statText(k.tailMae), statText(k.tailStd))
+    + QStringLiteral("<br>")
+    + tr("<b>Control</b>: steady %1 of the time · output saturated %2 (windup %3) · P / I / D share %4 · "
+         "<b>configuration</b>: Kp %5, Ki %6, Kd %7%8 · setpoints %9 · %10 anomalies (%11 warning or worse).")
+        .arg(analysistext::percent(steadyShare), analysistext::percent(a.saturation.fraction), secondsText(a.saturation.windupS),
+             analysistext::pidShares(a.pid), statText(c.kp), statText(c.ki), statText(c.kd),
+             c.gainSets > 1 ? tr(" (%1 gain sets)").arg(c.gainSets) : QString(),
+             setpoints.isEmpty() ? QStringLiteral("—") : setpoints.join(QStringLiteral(" → ")))
+        .arg(a.anomalies.size())
+        .arg(a.anomalyCount(core::Anomaly::Severity::WARNING)));
 
-  m_stagesTable->setRowCount(static_cast<int>(m_analysis->stages.size()));
-  for (int r{0}; r < m_analysis->stages.size(); ++r) {
-    core::StageAnalysis const &stage = m_analysis->stages[r];
+  m_stagesTable->setRowCount(static_cast<int>(a.run.stages.size()));
+  for (int r{0}; r < a.run.stages.size(); ++r) {
+    core::StageAnalysis const &stage = a.run.stages[r];
+    core::StageDetail const   &d     = a.stageDetails.value(r);
     core::Segment const       &s     = stage.segment;
     bool const                 step{s.kind == core::Segment::Kind::SETPOINT};
+    bool const                 ramp{s.kind == core::Segment::Kind::RAMP};
     QString const              setpoint = (std::fabs(s.referenceEnd - s.referenceStart) < 0.05)
                                             ? statText(s.referenceEnd, 2)
                                             : QStringLiteral("%1 → %2").arg(statText(s.referenceStart, 2), statText(s.referenceEnd, 2));
@@ -1000,7 +1107,15 @@ void AnalysisRunPage::computeRunAnalysis() {
                             step ? statText(stage.kpis.overshoot) : QStringLiteral("—"),
                             step ? secondsText(stage.kpis.settlingTimeS) : QStringLiteral("—"),
                             step ? secondsText(transitionTime) : QStringLiteral("—"),
-                            step ? statText(stage.kpis.steadyStateError) : QStringLiteral("—")};
+                            step ? statText(stage.kpis.steadyStateError) : QStringLiteral("—"),
+                            secondsText(d.timeToSteadyS),
+                            analysistext::percent(d.steadyFraction),
+                            ramp ? QStringLiteral("%1 / %2").arg(statText(d.referenceRatePerMin, 3), statText(d.valueRatePerMin, 3))
+                                 : QStringLiteral("—"),
+                            ramp ? secondsText(d.trackingLagS) : QStringLiteral("—"),
+                            analysistext::percent(d.saturation.fraction),
+                            analysistext::pidShares(d.pid),
+                            QStringLiteral("%1 / %2 / %3").arg(statText(d.kp), statText(d.ki), statText(d.kd))};
     for (int c{0}; c < cells.size(); ++c) {
       auto *item = new QTableWidgetItem(cells[c]);
       if (c == 1) {
@@ -1012,13 +1127,87 @@ void AnalysisRunPage::computeRunAnalysis() {
   refreshStages();
 }
 
+void AnalysisRunPage::refreshAnomalies() {
+  QVector<core::Anomaly> const anomalies = m_analysis ? m_analysis->anomalies : QVector<core::Anomaly>{};
+  m_anomalyLabel->setText(anomalies.isEmpty()
+                            ? tr("No anomalies detected (variable rules, spikes, flat signals, missing data, oscillation, "
+                                 "setpoints not reached, long output saturation).")
+                            : tr("%1 anomalies: %2 critical, %3 warnings.")
+                                .arg(anomalies.size())
+                                .arg(m_analysis->anomalyCount(core::Anomaly::Severity::CRITICAL))
+                                .arg(m_analysis->anomalyCount(core::Anomaly::Severity::WARNING)
+                                     - m_analysis->anomalyCount(core::Anomaly::Severity::CRITICAL)));
+  m_anomalyTable->setRowCount(static_cast<int>(anomalies.size()));
+  for (int r{0}; r < anomalies.size(); ++r) {
+    core::Anomaly const &anomaly = anomalies[r];
+    QStringList const    cells{analysistext::severityName(anomaly.severity), analysistext::anomalyName(anomaly.kind), anomaly.channel,
+                            ExperimentLibrary::formatDuration(anomaly.start), ExperimentLibrary::formatDuration(anomaly.end - anomaly.start),
+                            anomaly.detail};
+    for (int c{0}; c < cells.size(); ++c) {
+      auto *item = new QTableWidgetItem(cells[c]);
+      if (c == 0) {
+        item->setForeground(analysistext::severityColor(anomaly.severity));
+      }
+      m_anomalyTable->setItem(r, c, item);
+    }
+  }
+}
+
+void AnalysisRunPage::refreshComparison() {
+  m_compareOffsets.clear();
+  if (!m_data || !m_analysis) {
+    return;
+  }
+  int const            channel{compareChannel()};
+  QVector<ComparedRun> runs;
+  auto                 add = [&](ExperimentData const &data, core::ExperimentAnalysis const *analysis) {
+    ComparedRun run;
+    run.title     = data.run.title;
+    run.run       = data.run;
+    run.analysis  = analysis;
+    run.times     = elapsed(data);
+    run.temp      = channelSeries(data, channelIndex("temp"));
+    run.reference = channelSeries(data, channelIndex("temp_ref"));
+    run.signal    = channelSeries(data, channel);
+    runs.push_back(run);
+  };
+  add(*m_data, &*m_analysis);
+  QStringList keys{m_run.key};
+  for (QString const &key : std::as_const(m_compareKeys)) {
+    if (auto data = m_compareData.value(key); data && m_compareAnalyses.contains(key)) {
+      add(*data, &m_compareAnalyses[key]);
+      keys << key;
+    }
+  }
+  m_comparisonPanel->setRuns(compareMode() ? runs : QVector<ComparedRun>{}, m_channels.value(channel).label);
+  QVector<double> const offsets = m_comparisonPanel->offsets();
+  for (int k{0}; (k < keys.size()) && (k < offsets.size()); ++k) {
+    m_compareOffsets.insert(keys[k], offsets[k]);
+  }
+}
+
+double AnalysisRunPage::compareOffset(ExperimentData const &data) const {
+  return m_compareOffsets.value(data.run.key, 0.0);
+}
+
+QVector<double> AnalysisRunPage::comparedElapsed(ExperimentData const &data) const {
+  QVector<double> times  = elapsed(data);
+  double const    offset = compareOffset(data);
+  if (offset != 0.0) {
+    for (double &time : times) {
+      time += offset;
+    }
+  }
+  return times;
+}
+
 void AnalysisRunPage::refreshStages() {
   if (!m_analysis || compareMode() || !m_stagesCheck->isChecked()) {
     m_chart->setStages({});
     return;
   }
   QVector<ChartRegion> regions;
-  for (core::StageAnalysis const &stage : std::as_const(m_analysis->stages)) {
+  for (core::StageAnalysis const &stage : std::as_const(m_analysis->run.stages)) {
     core::Segment const &s = stage.segment;
     QString              label = stageName(s.kind);
     if (s.interval >= 0) {
@@ -1030,13 +1219,21 @@ void AnalysisRunPage::refreshStages() {
 }
 
 void AnalysisRunPage::refreshEvents() {
-  if (!m_data || compareMode() || !m_eventsCheck->isChecked()) {
+  if (!m_data || compareMode()) {
     m_chart->setEvents({});
     return;
   }
   QVector<ChartEvent> events;
-  for (ExperimentEvent const &event : m_library->events(m_run.start, m_run.end)) {
-    events.push_back({event.time - m_run.start, event.msg, eventColor(event.type)});
+  if (m_eventsCheck->isChecked()) {
+    for (ExperimentEvent const &event : m_library->events(m_run.start, m_run.end)) {
+      events.push_back({event.time - m_run.start, event.msg, eventColor(event.type)});
+    }
+  }
+  if (m_anomaliesCheck->isChecked() && m_analysis) {
+    for (core::Anomaly const &anomaly : m_analysis->anomalies) {
+      events.push_back({anomaly.start, QStringLiteral("⚠ %1: %2").arg(analysistext::anomalyName(anomaly.kind), anomaly.detail),
+                        analysistext::severityColor(anomaly.severity)});
+    }
   }
   m_chart->setEvents(events);
 }
@@ -1272,6 +1469,9 @@ void AnalysisRunPage::setCompareRun(ExperimentRun const &run, bool compared) {
       }
       m_compareData.insert(run.key, data);
     }
+    if (!m_compareAnalyses.contains(run.key)) {
+      m_compareAnalyses.insert(run.key, analyse(*m_compareData.value(run.key)));
+    }
     if (!m_compareKeys.contains(run.key)) {
       m_compareKeys.push_back(run.key);
     }
@@ -1495,6 +1695,79 @@ void AnalysisRunPage::exportComparisonCsv() {
     out.flush();
     return file.commit();
   });
+}
+
+void AnalysisRunPage::exportReport(bool pdf) {
+  if (!m_data || !m_analysis) {
+    return;
+  }
+  ExperimentReportData const report = buildReport();
+  askExportPath(pdf ? "pdf" : "html", [report, pdf](QString const &path) {
+    return pdf ? experimentreport::writePdf(path, report) : experimentreport::writeHtml(path, report);
+  });
+}
+
+ExperimentReportData AnalysisRunPage::buildReport() {
+  ExperimentReportData report;
+  report.run         = m_run;
+  report.analysis    = &*m_analysis;
+  report.events      = m_library->events(m_run.start, m_run.end);
+  report.annotations = m_notes->annotations(m_run.start, m_run.end, m_run.key);
+  report.rules       = m_notes->rules(m_run.key);
+  report.author      = m_resHolder->users->getCurrentUserName();
+
+  int const width{1600};
+  int const height{700};
+  // the chart as currently shown (in compare mode: the aligned comparison)
+  report.charts.push_back({compareMode() ? tr("Comparison of %1, aligned on %2").arg(m_channels.value(compareChannel()).label,
+                                                                                      m_comparisonPanel->alignmentText())
+                                         : tr("Chart as shown"),
+                           m_chart->renderImage(width, height)});
+  // process and control charts of this run with its stages
+  auto stagedChart = [&](QStringList const &names, QString const &caption) {
+    QVector<ChartSeries> series;
+    for (QString const &name : names) {
+      int const index{channelIndex(name)};
+      if ((index < 0) || (index >= m_data->states.size())) {
+        continue;
+      }
+      ChartSeries item;
+      item.label = m_channels[index].label;
+      item.color = channelColor(index);
+      item.x     = m_elapsed;
+      item.y     = m_data->states[index];
+      series.push_back(item);
+    }
+    if (series.isEmpty()) {
+      return;
+    }
+    AnalysisChart chart;
+    chart.resize(width, height);
+    chart.beginUpdate();
+    chart.setSeries(series, m_run.start);
+    QVector<ChartRegion> stages;
+    for (core::StageAnalysis const &stage : std::as_const(m_analysis->run.stages)) {
+      core::Segment const &segment = stage.segment;
+      stages.push_back({segment.start, std::max(segment.end, segment.start + 1.0), stageName(segment.kind), stageColor(segment.kind)});
+    }
+    chart.setStages(stages);
+    QVector<ChartEvent> markers;
+    for (core::Anomaly const &anomaly : m_analysis->anomalies) {
+      if (anomaly.severity >= core::Anomaly::Severity::WARNING) {
+        markers.push_back({anomaly.start, analysistext::anomalyName(anomaly.kind), analysistext::severityColor(anomaly.severity)});
+      }
+    }
+    chart.setEvents(markers);
+    chart.endUpdate();
+    chart.resetView();
+    report.charts.push_back({caption, chart.renderImage(width, height)});
+  };
+  stagedChart({"temp", "temp_ref"}, tr("Temperature and setpoint with stages and anomalies (warning or worse)"));
+  stagedChart({"temp_u", "temp_u_p", "temp_u_i", "temp_u_d"}, tr("Control output and its P / I / D terms"));
+  if (compareMode()) {
+    report.comparisonHtml = m_comparisonPanel->html();
+  }
+  return report;
 }
 
 void AnalysisRunPage::saveToDatabase() {

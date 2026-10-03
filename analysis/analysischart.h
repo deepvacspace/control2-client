@@ -83,6 +83,8 @@ public:
   [[nodiscard]] QPair<double, double> dataXRange() const;
   [[nodiscard]] QPair<double, double> viewXRange() const;
   bool                       exportPng(QString const &path);
+  // the chart as an image of the given size (reports), independent of the widget's own size
+  [[nodiscard]] QImage       renderImage(int width, int height);
 
   void setSyncHub(CrosshairSyncHub *hub);
   void showSyncCrosshair(double x, double y);

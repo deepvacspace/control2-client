@@ -320,6 +320,11 @@ bool AnalysisChart::exportPng(QString const &path) {
   return m_plot->savePng(path, 1600, 900, 1.0);
 }
 
+QImage AnalysisChart::renderImage(int width, int height) {
+  hideHover();
+  return m_plot->toPixmap(width, height, 1.0).toImage();
+}
+
 void AnalysisChart::setSyncHub(CrosshairSyncHub *hub) {
   if (m_syncHub) {
     m_syncHub->unregisterChart(this);

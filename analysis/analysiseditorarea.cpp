@@ -130,6 +130,18 @@ bool AnalysisEditorArea::focusPage(QString const &key) {
   return false;
 }
 
+AnalysisRunPage *AnalysisEditorArea::page(QString const &key) const {
+  for (QTabWidget *group : m_groups) {
+    for (int i{0}; i < group->count(); ++i) {
+      auto *candidate = qobject_cast<AnalysisRunPage *>(group->widget(i));
+      if (candidate && (candidate->key() == key)) {
+        return candidate;
+      }
+    }
+  }
+  return nullptr;
+}
+
 void AnalysisEditorArea::addPage(AnalysisRunPage *page) {
   QTabWidget *group = m_groups.contains(m_activeGroup) ? m_activeGroup : m_groups.first();
   page->chart()->setSyncHub(m_syncHub);

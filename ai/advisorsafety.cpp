@@ -5,6 +5,9 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QSaveFile>
 #include <algorithm>
 #include <cmath>
@@ -203,6 +206,10 @@ ManualPidGuard::Result ManualPidGuard::restore(bool stopJob, QString const &reas
   return m_restorePid ? Result::PENDING : Result::NOTHING;
 }
 
+void ManualPidGuard::stopJob(QString const &reason) {
+  restore(true, reason);
+}
+
 void ManualPidGuard::restoreNow(bool stopJob, QString const &reason) {
   if (!m_armed && !m_pending && !m_awaitingEcho && !stopJob) {
     return;
@@ -252,7 +259,8 @@ bool ManualPidGuard::send() {
   logAction(m_resHolder, m_stopJob ? tr("AI Advisor: manual PID restored and chamber stopped (%1)").arg(m_reason)
                                    : tr("AI Advisor: manual PID restored (%1)").arg(m_reason));
   if (m_fromJournal) {
-    emit pendingRestoreSent(m_reason);
+    m_fromJournal = false;
+    emit recoveredPreviousSession(m_reason, m_journalJobRunning);
   }
   return true;
 }
@@ -360,13 +368,40 @@ void ManualPidGuard::loadJournal() {
   m_snapshot    = snapshot;
   m_pending     = true;
   m_restorePid  = true;
-  m_fromJournal = true;
-  m_stopJob     = journal.value("stop_job").toBool(true);
+  m_fromJournal       = true;
+  m_journalJobRunning = journal.value("stop_job").toBool(true);
+  m_stopJob           = false; // restore the gains only -- stopping the job is the user's call
   m_reason      = journal.value("reason").toString(tr("previous session ended with AI Advisor gains on the chamber"));
   logAction(m_resHolder, tr("AI Advisor: previous session left advisor PID on the chamber, manual PID will be restored"));
   if (isOnline(m_resHolder)) {
     send();
   }
+}
+
+void notifyRecoveredSession(QWidget *parent, ManualPidGuard *guard, QString const &reason, bool jobMayBeRunning) {
+  auto *box = new QMessageBox(parent);
+  box->setAttribute(Qt::WA_DeleteOnClose);
+  box->setIcon(QMessageBox::Warning);
+  box->setWindowTitle(QObject::tr("AI Advisor"));
+  box->setText(QObject::tr("The application closed unexpectedly while the AI Advisor was controlling the chamber (%1).").arg(reason));
+  if (!jobMayBeRunning) {
+    box->setInformativeText(QObject::tr("The manual Temperature PID has been restored."));
+    box->setStandardButtons(QMessageBox::Ok);
+    box->open();
+    return;
+  }
+  box->setInformativeText(QObject::tr("The manual Temperature PID has been restored. The experiment the AI Advisor started "
+                                      "may still be running on the chamber. Do you want to stop it?"));
+  QPushButton *stop = box->addButton(QObject::tr("Stop the experiment"), QMessageBox::DestructiveRole);
+  box->addButton(QObject::tr("Keep it running"), QMessageBox::RejectRole);
+  box->setDefaultButton(stop);
+  QPointer<ManualPidGuard> guardPtr{guard};
+  QObject::connect(box, &QMessageBox::buttonClicked, box, [box, stop, guardPtr](QAbstractButton *button) {
+    if ((button == stop) && guardPtr) {
+      guardPtr->stopJob(QObject::tr("stopped by the user after an unexpected close"));
+    }
+  });
+  box->open();
 }
 
 } // namespace deepvaccontrol::ai

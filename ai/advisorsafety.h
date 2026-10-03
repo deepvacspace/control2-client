@@ -10,6 +10,8 @@
 #include "accessmanager.h"
 #include "modelenvelope.h"
 
+class QWidget;
+
 namespace deepvaccontrol {
 struct ResHolder;
 
@@ -61,13 +63,19 @@ public:
   // kept pending like the gains when the chamber is offline.
   Result restore(bool stopJob, QString const &reason);
 
+  // Stops the chamber job (now, or on the next connection).
+  void stopJob(QString const &reason);
+
   // Last-chance restore on destruction / app close: sends and flushes.
   void restoreNow(bool stopJob, QString const &reason);
 
 signals:
   void restoreConfirmed();
   void restoreFailed(QString const &message);
-  void pendingRestoreSent(QString const &reason);
+  // A journal from a previous session (crash / forced close) was replayed:
+  // the manual PID is back. jobMayBeRunning: the advisor's job was still
+  // running then -- the user decides whether to stop it (stopJob()).
+  void recoveredPreviousSession(QString const &reason, bool jobMayBeRunning);
 
 private:
   void   onAppStateChanged();
@@ -91,10 +99,16 @@ private:
   bool        m_restorePid{false}; // the outstanding request includes the PID table (not only "stop")
   bool        m_sentOnce{false};   // the outstanding request reached the chamber at least once
   bool        m_fromJournal{false};
+  bool        m_journalJobRunning{false}; // the recovered session still had the advisor's job running
   int         m_attempts{0};
   QString     m_reason;
   QTimer      m_confirmTimer;
 };
+
+// Tells the user the previous session ended with the AI Advisor in control
+// (crash / forced close), that the manual PID has been restored, and -- if
+// the advisor's job may still be running -- asks whether to stop it.
+void notifyRecoveredSession(QWidget *parent, ManualPidGuard *guard, QString const &reason, bool jobMayBeRunning);
 
 } // namespace ai
 } // namespace deepvaccontrol
