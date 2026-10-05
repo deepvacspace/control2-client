@@ -13,6 +13,7 @@
 #include "constants.h"
 #include "forceoutlistwidget.h"
 #include "syslistwidget.h"
+#include "theme.h"
 namespace deepvaccontrol {
 namespace {
 char const SYSTEM_TAB_PAGE_OBJECT_NAME[]{"systemTabPage"};
@@ -163,7 +164,7 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   mainLay->setContentsMargins(0, 0, 0, 0);
 
   m_tabWidget = new QTabWidget(this);
-  m_tabWidget->setStyleSheet(systemTabStyleSheet());
+  m_tabWidget->setStyleSheet(theme::flatTabStyleSheet());
   mainLay->addWidget(m_tabWidget);
 
   // 0 - список
@@ -198,7 +199,7 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   connect(osWidget, &SysOsWidget::switchAppMaximizedClicked, this, &SystemWidget::switchAppMaximizedClicked);
   connect(osWidget, &SysOsWidget::prepareToCloseApp, this, &SystemWidget::prepareToCloseApp);
   connect(osWidget, &SysOsWidget::appearanceChanged, this, [this] {
-    m_tabWidget->setStyleSheet(systemTabStyleSheet());
+    m_tabWidget->setStyleSheet(theme::flatTabStyleSheet());
   });
 }
 

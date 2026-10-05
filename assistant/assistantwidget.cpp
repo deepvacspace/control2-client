@@ -87,7 +87,7 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
   m_runCombo->setToolTip(tr("Questions are about this run unless you name another one"));
   m_statusDot = new QLabel(QStringLiteral("●"), this); // model state; details in the tooltip
   contextRow->addWidget(m_statusDot);
-  contextRow->addWidget(new QLabel(tr("Run:"), this));
+  contextRow->addWidget(new QLabel(tr("Experiment:"), this));
   contextRow->addWidget(m_runCombo, 1);
   struct Quick {
     QString label;
@@ -111,7 +111,7 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
   auto *inputRow = new QHBoxLayout;
   m_input        = new QLineEdit(this);
   m_input->setMinimumHeight(36 * utils::ssf());
-  m_input->setPlaceholderText(tr("Ask about your experiments, e.g. \"Compare #12 and #15 during the final stabilization stage\""));
+  m_input->setPlaceholderText(tr("Ask about your experiments"));
   connect(m_input, &QLineEdit::returnPressed, this, [this] { send(m_input->text()); });
   m_sendBtn = makeButton(tr("Send"), this);
   connect(m_sendBtn, &QPushButton::clicked, this, [this] { send(m_input->text()); });
@@ -225,7 +225,7 @@ void AssistantWidget::showEvent(QShowEvent *event) {
 void AssistantWidget::refreshRunCombo() {
   QString const current = m_runCombo->currentData().toString();
   m_runCombo->clear();
-  m_runCombo->addItem(tr("Latest run"), QString());
+  m_runCombo->addItem(tr("Latest experiment"), QString());
   if (!m_tools) {
     return;
   }

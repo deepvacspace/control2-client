@@ -107,7 +107,7 @@ void MainWindow::initGui() {
 
   // connect(statusBar, &StatusBar::mouseReleased, this, &MainWindow::displayLogViewer);
 
-  auto *lightBtn = new LightButton(m_resHolder->tcpGate, m_resHolder->states->getSysValue("outputs"), this);
+  auto *lightBtn = new LightButton(m_resHolder, this);
   m_menu->addWidget(lightBtn);
 
   auto *powerBtn = new PowerButton(m_resHolder, this);

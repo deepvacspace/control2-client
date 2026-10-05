@@ -3,22 +3,24 @@
 
 #include <QPushButton>
 
-#include "gatetcp.h"
-#include "systemvalue.h"
+#include "resholder.h"
 
 namespace deepvaccontrol {
 class LightButton : public QPushButton {
   Q_OBJECT
 public:
-  explicit LightButton(GateTcp *gate, SystemValue *sysVal, QWidget *parent = nullptr);
+  // off and disabled unless a light output is configured ("monitor") and the chamber is online
+  explicit LightButton(ResHolder *resHolder, QWidget *parent = nullptr);
 
 protected:
   // footer card: lamp, label and an on / off switch
   void paintEvent(QPaintEvent *event) override;
 
 private:
-  GateTcp     *m_gate;
-  SystemValue *m_sysVal;
+  void         updateAvailability();
+  ResHolder   *m_resHolder;
+  SystemValue *m_sysVal{nullptr};
+  int          m_bit{-1}; // light output bit, -1 when no light is configured
   bool         m_enabled{false};
 };
 } // namespace deepvaccontrol

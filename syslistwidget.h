@@ -6,9 +6,12 @@
 
 #include "resholder.h"
 
+class QTableWidget;
+
 namespace deepvaccontrol {
 /**
- * @brief List of states + output indicators
+ * @brief System -> States: every value received from the PLC (name, current value, unit) and the state of
+ * the outputs configured in "monitor"
  */
 class SysListWidget : public QWidget {
   Q_OBJECT
@@ -18,9 +21,16 @@ public:
   void updateList();
 
 private:
+  struct Output {
+    SystemValue *value{nullptr};
+    int          bit{0};
+    QLabel      *badge{nullptr};
+  };
+
   ResHolder       *m_resHolder;
   SystemValueList *m_states;
-  QList<QLabel *>  m_values;
+  QTableWidget    *m_table{nullptr};
+  QVector<Output>  m_outputs;
 };
 } // namespace deepvaccontrol
 

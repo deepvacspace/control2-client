@@ -110,6 +110,8 @@ QFrame#pageCard { background: %1; border: %4px solid %3; border-radius: %19px; }
 QFrame#cardDivider { background: %3; border: none; }
 QLabel#cardTitle { font-weight: bold; }
 QLabel[muted="true"] { color: %16; }
+QPushButton#primaryButton { background: %8; color: white; border: none; font-weight: bold; }
+QPushButton#primaryButton:disabled { background: %14; color: %10; }
 QPushButton#startButton { background: %22; color: #052e16; border: none; font-weight: bold; }
 QPushButton#startButton:disabled { background: %14; color: %10; }
 QPushButton[outline="true"] { background: transparent; color: %13; border: %4px solid %13; }
@@ -162,6 +164,24 @@ void stylePlot(QCustomPlot *plot) {
     plot->legend->setTextColor(c.text);
   }
   plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+QString flatTabStyleSheet() {
+  Colors const &c = colors();
+  return QStringLiteral(R"(
+QTabWidget::pane { border: none; border-top: %1px solid %2; top: -%1px; }
+QTabBar::tab { background: transparent; color: %3; border: none; border-bottom: %4px solid transparent;
+  padding: %5px %6px; margin-right: %7px; }
+QTabBar::tab:hover { color: %8; }
+QTabBar::tab:selected { color: %8; font-weight: bold; border-bottom: %4px solid %9; }
+)")
+    .arg(px(1))
+    .arg(c.border.name(), c.muted.name())
+    .arg(px(2))
+    .arg(px(6))
+    .arg(px(12))
+    .arg(px(4))
+    .arg(c.text.name(), c.accent.name());
 }
 
 QString adaptStyleSheet(QString qss) {

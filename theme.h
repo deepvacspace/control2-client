@@ -39,6 +39,8 @@ void apply(bool dark);
 
 // colours of a QCustomPlot (background, axes, grid, legend)
 void stylePlot(QCustomPlot *plot);
+// flat tab bar: plain labels, the selected one underlined (System and Settings pages)
+[[nodiscard]] QString flatTabStyleSheet();
 // light colours of the resource style sheets (res/styles) replaced by the current theme
 [[nodiscard]] QString adaptStyleSheet(QString qss);
 

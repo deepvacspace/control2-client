@@ -11,6 +11,7 @@
 #include "datawidget.h"
 #include "constants.h"
 #include "settingslistwidget.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -72,10 +73,7 @@ void SettingsWidget::initGui() {
   mainLay->setSpacing(3 * utils::ssf());
 
   auto *tabWidget = new QTabWidget(this);
-  tabWidget->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss")
-                             .arg(40 * utils::ssf())
-                             .arg(100 * utils::ssf())
-                             .arg(100 * utils::ssf()));
+  tabWidget->setStyleSheet(theme::flatTabStyleSheet());
   mainLay->addWidget(tabWidget);
 
   // 1 - general plc settings
@@ -90,6 +88,12 @@ void SettingsWidget::initGui() {
   for (int i{0U}; i < pidListVariant.size(); ++i) {
     QVariantMap pidVariantMap = pidListVariant[i].toMap();
     auto       *pidWidget     = new PidWidget(pidVariantMap, this);
+    if (m_resHolder->states->contains("temp")) {
+      pidWidget->setCurrentValue(m_resHolder->states->getSysValue("temp"));
+    }
+    if (m_resHolder->states->contains("temp_ref")) {
+      pidWidget->setSetpointValue(m_resHolder->states->getSysValue("temp_ref")); // selects the band on the PLC
+    }
     tabWidget->addTab(pidWidget, pidVariantMap["label"].toString());
     m_pidWidgets.push_back(pidWidget);
   }
@@ -142,11 +146,14 @@ void SettingsWidget::initGui() {
 
   auto *sendBtn = new QPushButton(tr("Загрузить настройки в ПЛК"), this);
   auto *getBtn  = new QPushButton(tr("Получить настройки из ПЛК"), this);
-  sendBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT);
-  getBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT);
+  sendBtn->setObjectName("primaryButton");
+  for (QPushButton *button : {getBtn, sendBtn}) {
+    button->setFixedSize(190 * utils::ssf(), 32 * utils::ssf());
+  }
 
-  btnsLay->addWidget(sendBtn);
   btnsLay->addWidget(getBtn);
+  btnsLay->addWidget(sendBtn);
+  btnsLay->addStretch();
 
   connect(sendBtn, &QPushButton::clicked, this, &SettingsWidget::commitSettings);
   connect(getBtn, &QPushButton::clicked, this, [this] {

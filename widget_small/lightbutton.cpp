@@ -7,25 +7,48 @@
 #include "utils.h"
 
 namespace deepvaccontrol {
-LightButton::LightButton(GateTcp *gate, SystemValue *sysVal, QWidget *parent)
-    : QPushButton{parent}, m_gate{gate}, m_sysVal{sysVal} {
+LightButton::LightButton(ResHolder *resHolder, QWidget *parent) : QPushButton{parent}, m_resHolder{resHolder} {
+  // the configured light output, if any
+  for (QVariant const &entry : m_resHolder->settings->settingsMap().value("monitor").toList()) {
+    QVariantMap const item  = entry.toMap();
+    QString const     label = item.value("label").toString().toLower();
+    QString const     name  = item.value("name").toString().isEmpty() ? QStringLiteral("outputs") : item.value("name").toString();
+    if (((label == QLatin1String("light")) || label.contains(QLatin1String("chamber light"))) && m_resHolder->states->contains(name)) {
+      m_bit    = item.value("bit").toInt();
+      m_sysVal = m_resHolder->states->getSysValue(name);
+      break;
+    }
+  }
   setText(tr("Свет"));
   setFocusPolicy(Qt::NoFocus);
   setFixedSize(92 * utils::ssf(), 34 * utils::ssf());
 
   connect(this, &QPushButton::clicked, this, [this] {
-    m_gate->sendPair("light", static_cast<float>(!m_enabled));
+    m_resHolder->tcpGate->sendPair("light", static_cast<float>(!m_enabled));
   });
 
-  connect(m_sysVal, &SystemValue::valueChanged, this, [this](float value) {
-    bool const newValue{utils::getBitOfFloat(value, 6)}; // "outputs"
-    if (newValue == m_enabled) {
-      return;
-    }
+  if (m_sysVal) {
+    connect(m_sysVal, &SystemValue::valueChanged, this, [this](float value) {
+      bool const newValue{isEnabled() && utils::getBitOfFloat(value, static_cast<quint8>(m_bit))};
+      if (newValue == m_enabled) {
+        return;
+      }
+      m_enabled = newValue;
+      update();
+    });
+  }
+  connect(m_resHolder->status, &StatusManager::appStateChanged, this, &LightButton::updateAvailability);
+  updateAvailability();
+}
 
-    m_enabled = newValue;
-    update();
-  });
+void LightButton::updateAvailability() {
+  bool const available{m_sysVal && (m_resHolder->status->getAppState() == StatusManager::AppState::ONLINE)};
+  setEnabled(available);
+  setToolTip(m_sysVal ? (available ? QString() : tr("The chamber is not online")) : tr("No chamber light is configured"));
+  if (!available && m_enabled) {
+    m_enabled = false;
+  }
+  update();
 }
 
 void LightButton::paintEvent(QPaintEvent *) {
@@ -57,6 +80,9 @@ void LightButton::paintEvent(QPaintEvent *) {
   // switch
   QRectF const track(box.right() - 30 * s, box.center().y() - 6 * s, 22 * s, 12 * s);
   p.setBrush(m_enabled ? c.active : c.border);
+  if (!isEnabled()) {
+    p.setOpacity(0.45);
+  }
   p.drawRoundedRect(track, 6 * s, 6 * s);
   p.setBrush(Qt::white);
   p.drawEllipse(QPointF(m_enabled ? track.right() - 6 * s : track.left() + 6 * s, track.center().y()), 4.5 * s, 4.5 * s);
