@@ -7,7 +7,7 @@
 #include "cyclewidget.h"
 #include "programgraph.h"
 #include "programmodel.h"
-#include "programtablewidget.h"
+#include "intervallistview.h"
 #include "resholder.h"
 
 namespace deepvaccontrol {
@@ -34,7 +34,7 @@ private:
 
   ResHolder             *m_resHolder;
   ProgramModel          *m_model;
-  ProgramTableWidget    *m_tableWidget;
+  IntervalListView      *m_tableWidget;
   ProgramGraph          *m_programGraph;
   CycleWidget           *m_cycleWidget;
   QVector<QPushButton *> m_buttons;
@@ -49,6 +49,8 @@ private:
   QPushButton           *m_saveLibraryBtn{nullptr};
   QLabel                *m_programLabel{nullptr}; // name of the library program being edited
   QLabel                *m_runStatus{nullptr};
+  QLabel                *m_libraryBadge{nullptr};
+  QLabel                *m_dutLabel{nullptr};
 
   qint64      m_libraryId{-1};
   QString     m_libraryName;

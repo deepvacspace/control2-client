@@ -7,6 +7,9 @@
 #include "app.h"
 #include "uilanguage.h"
 #include "theme.h"
+#ifdef DEEPVACCONTROL_HAVE_OPENSSL
+#include <openssl/crypto.h>
+#endif
 #include "utils.h"
 
 static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QTranslator &translator) {
@@ -33,6 +36,11 @@ static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QT
 }
 
 int main(int argc, char *argv[]) {
+#ifdef DEEPVACCONTROL_HAVE_OPENSSL
+  // OpenSSL's own atexit clean-up races with the unloading of Qt's OpenSSL TLS plugin and crashed the
+  // process on exit now and then; the operating system frees everything at exit anyway
+  OPENSSL_init_crypto(OPENSSL_INIT_NO_ATEXIT, nullptr);
+#endif
   QApplication a(argc, argv);
   QApplication::setApplicationName(QStringLiteral("Deepvac Control"));
 #ifdef DEEPVACCONTROL_VERSION

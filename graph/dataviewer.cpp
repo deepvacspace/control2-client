@@ -61,7 +61,7 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   m_cursor->setLayer("cursor");
   m_cursor->setAntialiased(false);
 
-  m_cursor->setPen(QPen(Qt::black, 1, Qt::DashLine));
+  m_cursor->setPen(QPen(theme::colors().muted, 1, Qt::DashLine));
 
   m_plot->addLayer(textLayerName, m_plot->layer("legend"), QCustomPlot::limBelow);
   m_plot->layer(textLayerName)->setMode(QCPLayer::lmBuffered);
@@ -73,7 +73,7 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   m_textItem->position->setCoords(0.98, 0.0);
   m_textItem->setColor(QColor{128, 128, 128, 160});
   theme::stylePlot(m_plot);
-  m_textItem->setBrush(QBrush(QColor{255, 255, 255, 200}));
+  m_textItem->setBrush(QBrush(QColor(theme::colors().panel.red(), theme::colors().panel.green(), theme::colors().panel.blue(), 200)));
   {
     QFont font;
     font.setBold(true);
@@ -161,12 +161,18 @@ void DataViewer::onRenderTick() {
 
 void DataViewer::setStyles(QVariantList const &stateListVariant) {
   m_legendController.setStyles(stateListVariant);
+  if (m_compactLegend) {
+    m_legendController.compactLayout(3);
+  }
   m_stateListVariant = stateListVariant;
   applyStyles();
 }
 
 void DataViewer::setStyle(int index, QVariantMap stateMapVariant) {
   m_legendController.setStyle(index, stateMapVariant);
+  if (m_compactLegend) {
+    m_legendController.compactLayout(3);
+  }
   applyStyle(index, stateMapVariant, false); // this replot graphs and legend
 }
 
@@ -255,6 +261,25 @@ void DataViewer::setControlMode(ControlMode const mode) {
   emit controlModeChanged(m_controlMode);
 }
 
+void DataViewer::setCompactLegend(bool compact) {
+  m_compactLegend = compact;
+  QCPLegend *legend = m_plot->legend;
+  if (compact && (legend->layout() == m_plot->axisRect()->insetLayout())) {
+    m_plot->axisRect()->insetLayout()->take(legend);
+    m_plot->axisRect()->insetLayout()->simplify();
+    m_plot->plotLayout()->addElement(1, 0, legend);
+    m_plot->plotLayout()->setRowStretchFactor(1, 0.001);
+    legend->setBrush(Qt::NoBrush);
+    legend->setBorderPen(Qt::NoPen);
+    legend->setLayer("legend");
+  }
+  if (compact) {
+    m_legendController.compactLayout(3);
+  }
+  setCursorMode(m_cursorMode);
+  m_plot->replot();
+}
+
 void DataViewer::setCursorMode(CursorMode mode) {
   m_cursorMode = mode;
   bool const cursorVis{CursorMode::LEGEND_CURSOR == m_cursorMode};
@@ -272,8 +297,8 @@ void DataViewer::setCursorMode(CursorMode mode) {
   }
 
   m_plot->layer("cursor")->setVisible(cursorVis);
-  m_legendController.setVisible(legendVis);
-  m_legendController.setValueVisible(cursorVis);
+  m_legendController.setVisible(legendVis || m_compactLegend);
+  m_legendController.setValueVisible(cursorVis && !m_compactLegend);
 
   m_plot->layer("cursor")->replot();
   m_plot->layer("legend")->replot();

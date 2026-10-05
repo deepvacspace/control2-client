@@ -1,7 +1,7 @@
 #include "cyclewidget.h"
 
+#include <QHBoxLayout>
 #include <QPushButton>
-#include <QVBoxLayout>
 
 #include "cycledialog.h"
 #include "utils.h"
@@ -12,17 +12,19 @@ CycleWidget::CycleWidget(QWidget *parent) : QWidget{parent}, m_intervalNumber{0U
 }
 
 void CycleWidget::initGui() {
-  auto *mainLay = new QVBoxLayout(this);
+  auto *mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
 
   m_text = new QLabel(tr("нет"), this);
-  m_text->setAlignment(Qt::AlignCenter);
+  QFont font = m_text->font();
+  font.setBold(true);
+  font.setPointSizeF(font.pointSizeF() * 1.15);
+  m_text->setFont(font);
   auto *editBtn = new QPushButton(tr("Изменить"), this);
-  editBtn->setFixedHeight(50 * utils::ssf());
+  editBtn->setFixedSize(80 * utils::ssf(), 26 * utils::ssf());
 
-  mainLay->addWidget(m_text);
+  mainLay->addWidget(m_text, 1);
   mainLay->addWidget(editBtn);
-  mainLay->setAlignment(m_text, Qt::AlignCenter);
 
   connect(editBtn, &QPushButton::clicked, this, [this] {
     auto *cycleDialog = new CycleDialog(m_params, m_intervalNumber, this);

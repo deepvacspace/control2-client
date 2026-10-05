@@ -2,6 +2,7 @@
 #define GRAPHWIDGET_H
 
 #include <QPushButton>
+#include <QTimer>
 #include <QWidget>
 
 #include "dataviewer.h"
@@ -19,6 +20,11 @@ public:
 
 private:
   void              exportData();
+  // time and values in the read-out box: at the cursor (cursor on) or the latest values
+  void              updateReadout(double cursorKey = std::numeric_limits<double>::quiet_NaN());
+  void              updateDayButton();
+  QPushButton      *m_readoutBtn{nullptr};
+  QPushButton      *m_dayBtn{nullptr};
   ResHolder        *m_resHolder;
   DataViewer       *m_dataViewer;
   GraphStyleEditor *m_styleEditor;

@@ -78,11 +78,17 @@ RunDetailsButton::RunDetailsButton(ResHolder *resHolder, QWidget *parent) : QPus
   refresh();
 }
 
+void RunDetailsButton::setPlainCaption(bool plain) {
+  m_plainCaption = plain;
+  refresh();
+}
+
 void RunDetailsButton::refresh() {
   core::RunMetadata const metadata = m_resHolder->recorder ? m_resHolder->recorder->nextRunMetadata() : core::RunMetadata{};
   // long DUT names are shortened in the middle so a serial number at the end stays readable
   QString const dut = fontMetrics().elidedText(metadata.dut, Qt::ElideMiddle, width() - static_cast<int>(10 * utils::ssf()));
-  setText(metadata.dut.isEmpty() ? tr("Run\ndetails…") : tr("DUT\n%1").arg(dut));
+  setText((metadata.dut.isEmpty() || m_plainCaption) ? (m_plainCaption ? tr("Run details…") : tr("Run\ndetails…"))
+                                                      : tr("DUT\n%1").arg(dut));
   setToolTip(metadata.isEmpty() ? tr("DUT, operator, purpose and tags recorded with the next runs")
                                 : tr("Next runs are recorded with:\nDUT: %1\nOperator: %2\nPurpose: %3\nTags: %4")
                                     .arg(metadata.dut, metadata.operatorName.isEmpty() ? tr("(logged-in user)") : metadata.operatorName,

@@ -102,7 +102,8 @@ QSize CustomLegendItem::minimumOuterSizeHint() const {
     return result;
   }
   QFontMetrics const fontMetrics{getFont()};
-  QSize const        iconSize{mParentLegend->iconSize()};
+  // same (scaled) icon width as draw() uses, so the label is not cut by the next item
+  QSize const        iconSize{static_cast<int>(mParentLegend->iconSize().width() * utils::ssf()), mParentLegend->iconSize().height()};
   QRect const        textRect{fontMetrics.boundingRect(0, 0, 0, iconSize.height(), Qt::TextDontClip, m_label)};
   size_t const       totalTextPadding{m_value_visibility ? (m_value_paddding + m_label_paddding) : 0U};
 
@@ -195,12 +196,9 @@ void DataViewerLegend::setStyle(int index, QVariantMap const &stateMapVariant) {
 }
 
 void DataViewerLegend::setValues(QDateTime const &timeStamp, QVector<double> const &values) {
-  // skip firest time element
-  for (int i{1U}; i < values.size(); ++i) {
-    CustomLegendItem *legendItem = qobject_cast<CustomLegendItem *>(m_legend->elementAt(i));
-    if (legendItem) {
-      legendItem->setValue(values[i - 1]);
-    }
+  // by channel, independent of the items' positions in the legend grid
+  for (size_t i{0U}; (i < m_legendElements.size()) && (i < static_cast<size_t>(values.size())); ++i) {
+    m_legendElements[i]->setValue(values[static_cast<int>(i)]);
   }
   m_timeValue->setText(timeStamp.toString("hh:mm:ss"));
 }
@@ -230,6 +228,22 @@ void DataViewerLegend::setValueVisible(bool visible) {
   }
 
   m_plot->layer("legend")->replot();
+}
+
+void DataViewerLegend::compactLayout(int columns) {
+  for (auto *element : m_legendElements) {
+    m_legend->take(element);
+  }
+  m_legend->simplify();
+  int cell{0};
+  for (bool visiblePass : {true, false}) {
+    for (auto *element : m_legendElements) {
+      if (element->visible() == visiblePass) {
+        m_legend->addElement(cell / columns, cell % columns, element);
+        ++cell;
+      }
+    }
+  }
 }
 
 void DataViewerLegend::updateTimePosition() {

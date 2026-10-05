@@ -35,9 +35,12 @@ class RunDetailsButton : public QPushButton {
   Q_OBJECT
 public:
   explicit RunDetailsButton(ResHolder *resHolder, QWidget *parent = nullptr);
+  // caption always "Run details…" (the DUT is shown next to the button)
+  void setPlainCaption(bool plain);
 
 private:
   void refresh();
+  bool m_plainCaption{false};
 
   ResHolder *m_resHolder;
 };

@@ -57,6 +57,9 @@ public:
   CursorMode getCursorMode() const;
 
   void moveView(double addX, double addY);
+
+  // legend as one row under the plot with the channel names only, always shown (values are shown elsewhere)
+  void setCompactLegend(bool compact);
   void zoomView(double mulX, double mulY);
 
 signals:
@@ -110,6 +113,7 @@ private:
   QPointF     m_pointPress;
   QPointF     m_pointRelease;
 
+  bool         m_compactLegend{false};
   bool         m_useLogAxis;
   QVector<int> m_logAxisDataIndexes;
 

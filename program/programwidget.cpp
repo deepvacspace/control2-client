@@ -1,5 +1,6 @@
 #include "programwidget.h"
 
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 
@@ -14,6 +15,7 @@
 #include "intervaleditdialog.h"
 #include "offlineadvisorstart.h"
 #include "programlibrarydialog.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -84,7 +86,7 @@ ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
     }
   });
 
-  connect(m_tableWidget, &ProgramTableWidget::doubleClicked, this, &ProgramWidget::openIntervalEditDialog);
+  connect(m_tableWidget, &QTableWidget::cellDoubleClicked, this, &ProgramWidget::openIntervalEditDialog);
   connect(m_programGraph, &ProgramGraph::intervalDoubleClicked, this, &ProgramWidget::openIntervalEditDialog);
 
   connect(m_libraryBtn, &QPushButton::clicked, this, &ProgramWidget::openLibrary);
@@ -134,104 +136,150 @@ void ProgramWidget::openIntervalEditDialog() {
 }
 
 void ProgramWidget::initGui() {
-  auto *mainLay = new QHBoxLayout(this);
+  double const ssf{utils::ssf()};
+  auto        *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->setSpacing(3 * utils::ssf());
+  mainLay->setSpacing(10 * ssf);
 
-  m_programGraph = new ProgramGraph(this);
-  m_tableWidget  = new ProgramTableWidget(this);
-  m_cycleWidget  = new CycleWidget(this);
+  auto makeCard = [this, ssf](QString const &title) {
+    auto *card = new QFrame(this);
+    card->setObjectName("pageCard");
+    auto *lay = new QVBoxLayout(card);
+    lay->setContentsMargins(14 * ssf, 8 * ssf, 14 * ssf, 10 * ssf);
+    lay->setSpacing(6 * ssf);
+    if (!title.isEmpty()) {
+      auto *label = new QLabel(title, card);
+      label->setObjectName("cardTitle");
+      lay->addWidget(label);
+    }
+    return card;
+  };
+  auto button = [this, ssf](QString const &text, int width) {
+    auto *btn = new QPushButton(text, this);
+    btn->setFixedSize(width * ssf, 26 * ssf);
+    return btn;
+  };
 
-  auto *rightLay = new QVBoxLayout();
-  rightLay->addWidget(m_programGraph);
-  rightLay->addWidget(m_tableWidget);
-
-  auto *intervalButtonsLay = new QHBoxLayout();
-  rightLay->addLayout(intervalButtonsLay);
-
-  rightLay->setStretch(0, 10);
-
-  m_startBtn = new QPushButton(tr("Пуск"), this);
-  m_startBtn->setFont(QFont("MS Shell Dlg 2", 12 * utils::ssf(), 75));
-  m_startDelayedBtn = new QPushButton(tr("Отлож.\nпуск"), this);
-  m_startDelayedBtn->setFont(QFont("MS Shell Dlg 2", 12 * utils::ssf(), 75));
-
-  m_saveBtn = new QPushButton(this);
-  m_loadBtn = new QPushButton(this);
-
-  m_saveBtn->setIcon(QIcon(":/imgs/save.png"));
-  m_loadBtn->setIcon(QIcon(":/imgs/open.png"));
-
-  m_saveBtn->setIconSize(QSize(30 * utils::ssf(), 30 * utils::ssf()));
-  m_loadBtn->setIconSize(QSize(30 * utils::ssf(), 30 * utils::ssf()));
-
-  m_newBtn    = new QPushButton(tr("Новый"), this);
-  m_editBtn   = new QPushButton(tr("Редактировать"), this);
-  m_deleteBtn = new QPushButton(tr("Удалить"), this);
-
-  m_libraryBtn     = new QPushButton(tr("Library…"), this);
-  m_saveLibraryBtn = new QPushButton(tr("Save to\nlibrary…"), this);
+  // ---- title (program name) and file / library actions
+  m_programLabel = new QLabel(this);
+  {
+    QFont font = m_programLabel->font();
+    font.setBold(true);
+    m_programLabel->setFont(font);
+  }
+  m_libraryBadge = new QLabel(this);
+  m_saveBtn        = button(tr("Save file"), 76);
+  m_loadBtn        = button(tr("Open file"), 76);
+  m_libraryBtn     = button(tr("Library…"), 76);
+  m_saveLibraryBtn = button(tr("Save to library…"), 110);
+  m_saveBtn->setToolTip(tr("Save the program to a file (also on a USB drive)"));
+  m_loadBtn->setToolTip(tr("Open a program file"));
   m_libraryBtn->setToolTip(tr("Open a saved program (also those shared by paired computers)"));
   m_saveLibraryBtn->setToolTip(tr("Save this program by name, with a label per interval"));
 
-  m_programLabel = new QLabel(this);
-  m_programLabel->setWordWrap(true);
-  m_programLabel->setAlignment(Qt::AlignCenter);
-  m_programLabel->setFixedWidth(100 * utils::ssf());
-  m_runStatus = new QLabel(this);
-  m_runStatus->setWordWrap(true);
-  m_runStatus->setAlignment(Qt::AlignCenter);
-  m_runStatus->setFixedWidth(100 * utils::ssf());
+  // ---- program profile
+  auto *graphCard = makeCard({});
+  m_programGraph  = new ProgramGraph(graphCard);
+  graphCard->layout()->addWidget(m_programGraph);
+  mainLay->addWidget(graphCard, 7);
 
-  m_buttons << m_startBtn << m_newBtn << m_editBtn << m_deleteBtn << m_startDelayedBtn << m_libraryBtn << m_saveLibraryBtn;
-  for (auto &btn : m_buttons) {
-    btn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
-  }
-  for (auto &btn : {m_saveBtn, m_loadBtn}) {
-    btn->setFixedSize(45 * utils::ssf(), 45 * utils::ssf());
-  }
+  // ---- intervals
+  auto *bottomLay = new QHBoxLayout();
+  bottomLay->setSpacing(10 * ssf);
+  mainLay->addLayout(bottomLay, 3);
 
-  auto *btnsLay = new QVBoxLayout();
-  mainLay->addLayout(btnsLay);
-
-  auto *saveLoadLay = new QHBoxLayout();
-  saveLoadLay->addWidget(m_saveBtn);
-  saveLoadLay->addWidget(m_loadBtn);
-
-  auto label1 = new QLabel(tr("Программа"), this);
-  auto label2 = new QLabel(tr("Цикл"), this);
-  {
-    QFont font1 = label1->font();
-    font1.setBold(true);
-    for (QLabel *item : {label1, label2}) {
-      item->setFont(font1);
-    }
-  }
-
-  mainLay->addLayout(rightLay);
-
-  btnsLay->addWidget(m_startBtn);
-  btnsLay->addWidget(m_startDelayedBtn);
-  btnsLay->addWidget(new RunDetailsButton(m_resHolder, this));
-  btnsLay->addWidget(m_runStatus);
-  btnsLay->addSpacing(30 * utils::ssf());
-  btnsLay->addWidget(label2);
-  btnsLay->addWidget(m_cycleWidget);
-  btnsLay->addStretch();
-  btnsLay->addWidget(label1);
-  btnsLay->addWidget(m_programLabel);
-  btnsLay->addWidget(m_libraryBtn);
-  btnsLay->addWidget(m_saveLibraryBtn);
-  btnsLay->addLayout(saveLoadLay);
-
+  // compact cards so the program graph keeps most of the height
+  auto *intervalsCard = makeCard(tr("Intervals"));
+  auto *intervalsLay  = static_cast<QVBoxLayout *>(intervalsCard->layout());
+  auto *titleRow      = static_cast<QLabel *>(intervalsLay->itemAt(0)->widget());
+  intervalsLay->removeWidget(titleRow);
+  auto *intervalsTop = new QHBoxLayout();
+  intervalsTop->setSpacing(10 * ssf);
+  intervalsTop->addWidget(titleRow);
+  intervalsTop->addSpacing(6 * ssf);
+  intervalsTop->addWidget(m_programLabel);
+  intervalsTop->addWidget(m_libraryBadge);
+  intervalsTop->addStretch();
+  intervalsLay->addLayout(intervalsTop);
+  m_tableWidget       = new IntervalListView(intervalsCard);
+  intervalsLay->addWidget(m_tableWidget, 1);
+  m_newBtn    = button(tr("Новый"), 70);
+  m_editBtn   = button(tr("Редактировать"), 70);
+  m_deleteBtn = button(tr("Удалить"), 70);
+  m_deleteBtn->setProperty("outline", true);
+  auto *intervalButtonsLay = new QHBoxLayout();
+  intervalButtonsLay->setSpacing(8 * ssf);
   intervalButtonsLay->addWidget(m_newBtn);
   intervalButtonsLay->addWidget(m_editBtn);
   intervalButtonsLay->addWidget(m_deleteBtn);
   intervalButtonsLay->addStretch();
-
-  for (QLabel *item : {label1, label2}) {
-    btnsLay->setAlignment(item, Qt::AlignCenter);
+  for (QPushButton *btn : {m_saveBtn, m_loadBtn, m_libraryBtn, m_saveLibraryBtn}) {
+    intervalButtonsLay->addWidget(btn);
   }
+  intervalsLay->addLayout(intervalButtonsLay);
+  bottomLay->addWidget(intervalsCard, 62);
+
+  // ---- cycle, run details, start
+  auto *runCard = makeCard(tr("Цикл"));
+  auto *runLay  = static_cast<QVBoxLayout *>(runCard->layout());
+  m_cycleWidget = new CycleWidget(runCard);
+  runLay->addWidget(m_cycleWidget);
+  auto *divider = new QFrame(runCard);
+  divider->setObjectName("cardDivider");
+  divider->setFixedHeight(qMax(1, static_cast<int>(1 * ssf)));
+  runLay->addWidget(divider);
+  auto *detailsTitle = new QLabel(tr("Run details"), runCard);
+  detailsTitle->setProperty("muted", true);
+  runLay->addWidget(detailsTitle);
+  m_dutLabel = new QLabel(runCard);
+  m_dutLabel->setObjectName("dutField");
+  auto *detailsBtn = new RunDetailsButton(m_resHolder, runCard);
+  detailsBtn->setPlainCaption(true);
+  detailsBtn->setFixedSize(110 * ssf, 26 * ssf);
+  auto *detailsRow = new QHBoxLayout();
+  detailsRow->setSpacing(8 * ssf);
+  detailsRow->addWidget(m_dutLabel, 1);
+  detailsRow->addWidget(detailsBtn);
+  runLay->addLayout(detailsRow);
+  m_runStatus = new QLabel(runCard);
+  m_runStatus->setWordWrap(true);
+  runLay->addWidget(m_runStatus);
+  runLay->addStretch();
+  m_startBtn = new QPushButton(tr("Пуск"), runCard);
+  m_startBtn->setObjectName("startButton");
+  m_startDelayedBtn = new QPushButton(tr("Отлож.\nпуск").replace('\n', ' '), runCard);
+  for (QPushButton *btn : {m_startBtn, m_startDelayedBtn}) {
+    btn->setFixedHeight(32 * ssf);
+    QFont font = btn->font();
+    font.setBold(true);
+    font.setPointSizeF(QWidget::font().pointSizeF() * 1.1);
+    btn->setFont(font);
+  }
+  auto *startLay = new QHBoxLayout();
+  startLay->setSpacing(10 * ssf);
+  startLay->addWidget(m_startBtn, 1);
+  startLay->addWidget(m_startDelayedBtn, 1);
+  runLay->addLayout(startLay);
+  bottomLay->addWidget(runCard, 38);
+
+  m_buttons << m_startBtn << m_newBtn << m_editBtn << m_deleteBtn << m_startDelayedBtn << m_libraryBtn << m_saveLibraryBtn;
+
+  theme::Colors const &c = theme::colors();
+  m_dutLabel->setStyleSheet(QStringLiteral("QLabel#dutField { background: %1; border: %2px solid %3; border-radius: %4px; padding: %5px %6px; }")
+                              .arg(c.panelAlt.name())
+                              .arg(qMax(1, static_cast<int>(1 * ssf)))
+                              .arg(c.border.name())
+                              .arg(static_cast<int>(3 * ssf))
+                              .arg(static_cast<int>(3 * ssf))
+                              .arg(static_cast<int>(8 * ssf)));
+  auto updateDut = [this] {
+    core::RunMetadata const metadata = m_resHolder->recorder ? m_resHolder->recorder->nextRunMetadata() : core::RunMetadata{};
+    m_dutLabel->setText(metadata.dut.isEmpty() ? tr("DUT: not set") : tr("DUT: %1").arg(metadata.dut));
+  };
+  if (m_resHolder->recorder) {
+    connect(m_resHolder->recorder, &ExperimentRecorder::nextRunMetadataChanged, this, updateDut);
+  }
+  updateDut();
 }
 
 void ProgramWidget::handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel) {
@@ -337,9 +385,28 @@ void ProgramWidget::setLibraryProgram(qint64 id, QString const &name, QStringLis
 }
 
 void ProgramWidget::updateProgramLabel() {
-  m_programLabel->setText(m_libraryName.isEmpty() ? QString{}
-                                                  : (m_libraryModified ? tr("%1\n(modified)").arg(m_libraryName) : m_libraryName));
+  theme::Colors const &c = theme::colors();
+  m_programLabel->setText(m_libraryName);
   m_programLabel->setVisible(!m_libraryName.isEmpty());
+  m_programLabel->setStyleSheet(QStringLiteral("border-bottom: %1px solid %2; padding-bottom: %3px;")
+                                  .arg(qMax(1, static_cast<int>(2 * utils::ssf())))
+                                  .arg(m_libraryName.isEmpty() ? QStringLiteral("transparent") : c.accent.name())
+                                  .arg(static_cast<int>(1 * utils::ssf())));
+  QColor const badgeColor = m_libraryModified ? c.warning : c.ready;
+  m_libraryBadge->setText(m_libraryModified ? tr("LIBRARY · MODIFIED") : tr("LIBRARY"));
+  m_libraryBadge->setStyleSheet(QStringLiteral("color: %1; border: %2px solid %1; border-radius: %3px; padding: %4px %5px; font-weight: bold;")
+                                  .arg(badgeColor.name())
+                                  .arg(qMax(1, static_cast<int>(1 * utils::ssf())))
+                                  .arg(static_cast<int>(3 * utils::ssf()))
+                                  .arg(static_cast<int>(1 * utils::ssf()))
+                                  .arg(static_cast<int>(6 * utils::ssf())));
+  QFont small = font();
+  small.setPointSizeF(font().pointSizeF() * 0.8);
+  m_libraryBadge->setFont(small);
+  m_libraryBadge->setVisible(!m_libraryName.isEmpty());
+  if (m_tableWidget) {
+    m_tableWidget->setLabels(m_labels);
+  }
 }
 
 void ProgramWidget::updateRunStatus() {

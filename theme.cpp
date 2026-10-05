@@ -106,6 +106,14 @@ QScrollBar::handle { background: %3; border-radius: %21px; min-height: %20px; mi
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 QSplitter::handle { background: %3; }
+QFrame#pageCard { background: %1; border: %4px solid %3; border-radius: %19px; }
+QFrame#cardDivider { background: %3; border: none; }
+QLabel#cardTitle { font-weight: bold; }
+QLabel[muted="true"] { color: %16; }
+QPushButton#startButton { background: %22; color: #052e16; border: none; font-weight: bold; }
+QPushButton#startButton:disabled { background: %14; color: %10; }
+QPushButton[outline="true"] { background: transparent; color: %13; border: %4px solid %13; }
+QPushButton[outline="true"]:disabled { color: %10; border-color: %3; }
 )");
   return qss.arg(c.panel.name(), c.text.name(), c.border.name())
     .arg(px(1))
@@ -119,7 +127,8 @@ QSplitter::handle { background: %3; }
     .arg(px(2))
     .arg(px(8))
     .arg(px(9))
-    .arg(px(4.5));
+    .arg(px(4.5))
+    .arg(c.active.name());
 }
 
 void apply(bool dark) {
@@ -259,6 +268,28 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
     p.drawRoundedRect(QRectF(pt(0.1, 0.16), pt(0.9, 0.7)), s * 0.05, s * 0.05);
     p.drawLine(pt(0.5, 0.7), pt(0.5, 0.86));
     p.drawLine(pt(0.32, 0.86), pt(0.68, 0.86));
+  } else if (kind == "plus") {
+    p.drawLine(pt(0.5, 0.2), pt(0.5, 0.8));
+    p.drawLine(pt(0.2, 0.5), pt(0.8, 0.5));
+  } else if (kind == "minus") {
+    p.drawLine(pt(0.2, 0.5), pt(0.8, 0.5));
+  } else if (kind == "up" || kind == "down" || kind == "left" || kind == "right") {
+    QPainterPath path;
+    if (kind == "up") {
+      path.moveTo(pt(0.25, 0.62)); path.lineTo(pt(0.5, 0.36)); path.lineTo(pt(0.75, 0.62));
+    } else if (kind == "down") {
+      path.moveTo(pt(0.25, 0.38)); path.lineTo(pt(0.5, 0.64)); path.lineTo(pt(0.75, 0.38));
+    } else if (kind == "left") {
+      path.moveTo(pt(0.62, 0.25)); path.lineTo(pt(0.36, 0.5)); path.lineTo(pt(0.62, 0.75));
+    } else {
+      path.moveTo(pt(0.38, 0.25)); path.lineTo(pt(0.64, 0.5)); path.lineTo(pt(0.38, 0.75));
+    }
+    p.drawPath(path);
+  } else if (kind == "calendar") {
+    p.drawRoundedRect(QRectF(pt(0.14, 0.2), pt(0.86, 0.86)), s * 0.06, s * 0.06);
+    p.drawLine(pt(0.14, 0.4), pt(0.86, 0.4));
+    p.drawLine(pt(0.34, 0.1), pt(0.34, 0.28));
+    p.drawLine(pt(0.66, 0.1), pt(0.66, 0.28));
   } else if (kind == "power") {
     p.drawArc(QRectF(pt(0.16, 0.2), pt(0.84, 0.88)), 120 * 16, 300 * 16);
     p.drawLine(pt(0.5, 0.1), pt(0.5, 0.5));

@@ -199,26 +199,15 @@ void Manual::initGui() {
   noteLay->setSpacing(2 * ssf);
   auto *noteTitle = new QLabel(tr("AI Advisor enabled"), m_advisorNote);
   noteTitle->setObjectName("advisorNoteTitle");
-  auto *noteText = new QLabel(tr("Start first offers to search suitable PID parameters (Settings → AI)."), m_advisorNote);
-  noteText->setProperty("muted", true);
-  noteText->setWordWrap(true);
   noteLay->addWidget(noteTitle);
-  noteLay->addWidget(noteText);
   controlLay->addWidget(m_advisorNote);
   controlLay->addStretch();
 
   // ---- right: details recorded with the next runs
-  auto *detailsCard = makeCard(tr("Run details"), tr("Stored with every run from now on"));
+  auto *detailsCard = makeCard(tr("Run details"), {});
   auto *detailsLay  = static_cast<QVBoxLayout *>(detailsCard->layout());
   detailsLay->addSpacing(4 * ssf);
   detailsLay->addWidget(new RunDetailsPanel(m_resHolder, detailsCard));
-  auto *detailsHint = new QLabel(tr("Details stay set for the following runs. Edit them after a run in Data analysis → Export → "
-                                    "Edit run details…"),
-                                 detailsCard);
-  detailsHint->setProperty("muted", true);
-  detailsHint->setProperty("small", true);
-  detailsHint->setWordWrap(true);
-  detailsLay->addWidget(detailsHint);
   detailsLay->addStretch();
   mainLay->addWidget(detailsCard, 1);
 

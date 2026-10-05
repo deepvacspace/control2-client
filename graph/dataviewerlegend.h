@@ -64,6 +64,8 @@ public:
   void setVisible(bool value);
   void setValueVisible(bool visible);
   void updateTimePosition();
+  // visible channels only, `columns` per row (hidden ones after them, so they leave no gaps)
+  void compactLayout(int columns);
 };
 } // namespace deepvaccontrol
 
