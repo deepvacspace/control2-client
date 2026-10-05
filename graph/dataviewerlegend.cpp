@@ -1,5 +1,7 @@
 #include "dataviewerlegend.h"
 
+#include "theme.h"
+
 #include "utils.h"
 namespace deepvaccontrol {
 CustomLegendItem::CustomLegendItem(QCPLegend *parent, QString const &label, QPen const &iconPen)
@@ -141,7 +143,7 @@ DataViewerLegend::DataViewerLegend(QCustomPlot *plot) : m_plot{plot}, m_valueVis
 
 void DataViewerLegend::setStyles(QVariantList const &stateListVariant) {
   auto brush = m_legend->brush();
-  brush.setColor(QColor(255, 255, 255, 240));
+  brush.setColor(QColor(theme::colors().panel.red(), theme::colors().panel.green(), theme::colors().panel.blue(), 240));
   m_legend->setBrush(brush);
 
   quint16 const statesCount = static_cast<quint16>(stateListVariant.size());

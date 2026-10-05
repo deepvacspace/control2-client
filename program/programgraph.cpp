@@ -1,5 +1,8 @@
 #include "programgraph.h"
 
+#include "theme.h"
+#include <QTimer>
+
 #include "constants.h"
 #include "utils.h"
 
@@ -66,6 +69,7 @@ void ProgramGraph::selectInterval(int index) {
 
 void ProgramGraph::initGui() {
   m_plot = new QCustomPlot(this);
+  QTimer::singleShot(0, m_plot, [plot = m_plot] { theme::stylePlot(plot); });
 
   for (int i{0}; i < m_paramOrder.size(); ++i) {
     m_plot->addGraph();

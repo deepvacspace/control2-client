@@ -1,5 +1,7 @@
 #include "syslistwidget.h"
 
+#include "theme.h"
+
 #include <QGridLayout>
 
 #include "indicatorbool.h"
@@ -30,7 +32,7 @@ SysListWidget::SysListWidget(ResHolder *resHolder, QWidget *parent)
     statesListLay->addWidget(nameLabel, i, 0);
     statesListLay->addWidget(valueLabel, i, 1);
 
-    QColor const backgroudColor{i % 2 ? QColor(220, 220, 220) : QColor(240, 240, 240)};
+    QColor const backgroudColor{i % 2 ? theme::colors().panel : theme::colors().panelAlt};
     nameLabel->setStyleSheet("QWidget{background-color:" + backgroudColor.name() + "}");
     valueLabel->setStyleSheet("QWidget{background-color:" + backgroudColor.name() + "}");
   }

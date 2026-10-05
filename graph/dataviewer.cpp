@@ -1,5 +1,7 @@
 #include "dataviewer.h"
 
+#include "theme.h"
+
 #include <QHBoxLayout>
 
 #include "utils.h"
@@ -69,7 +71,8 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   m_textItem->setPositionAlignment(Qt::AlignRight | Qt::AlignTop);
   m_textItem->position->setType(QCPItemPosition::ptAxisRectRatio);
   m_textItem->position->setCoords(0.98, 0.0);
-  m_textItem->setColor(QColor{0, 0, 0, 127});
+  m_textItem->setColor(QColor{128, 128, 128, 160});
+  theme::stylePlot(m_plot);
   m_textItem->setBrush(QBrush(QColor{255, 255, 255, 200}));
   {
     QFont font;

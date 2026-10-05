@@ -1,5 +1,7 @@
 #include "indicatorbool.h"
 
+#include "theme.h"
+
 #include <QHBoxLayout>
 
 #include "utils.h"
@@ -36,7 +38,9 @@ void IndicatorBool::updateGui() {
   }
 
   bool const boolState{m_sysVal->getBitOfFloat(m_bitIndex)};
-  setStyleSheet(boolState ? "background-color: #ffde21;" : "background-color: #cecece;");
+  theme::Colors const &c = theme::colors();
+  setStyleSheet(boolState ? QStringLiteral("background-color: %1; color: %2;").arg(c.active.darker(theme::isDark() ? 160 : 100).name(), c.text.name())
+                          : QStringLiteral("background-color: %1; color: %2;").arg(c.panelAlt.name(), c.muted.name()));
   m_label->setText(boolState ? m_textOn : m_textOff);
 }
 } // namespace deepvaccontrol

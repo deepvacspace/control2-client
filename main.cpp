@@ -6,6 +6,7 @@
 
 #include "app.h"
 #include "uilanguage.h"
+#include "theme.h"
 #include "utils.h"
 
 static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QTranslator &translator) {
@@ -63,7 +64,7 @@ int main(int argc, char *argv[]) {
 
   // Style and sizes
   a.setStyle(QStyleFactory::create("fusion"));
-  a.setPalette(deepvaccontrol::utils::lightPalette());
+  deepvaccontrol::theme::apply(true); // navy application design (System -> OS switches to light)
 
   if (!windowedMode) {
     auto        *screen = a.primaryScreen();

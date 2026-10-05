@@ -1,5 +1,7 @@
 #include "offlineadvisorwidget.h"
 
+#include "theme.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFrame>
@@ -229,6 +231,7 @@ QWidget *OfflineAdvisorWidget::buildChartCard() {
 
   m_plot->addGraph(); // 3: median baseline
   m_plot->graph(3)->setPen(QPen(QColor(40, 170, 90), 2, Qt::DotLine));
+  theme::stylePlot(m_plot);
   m_plot->graph(3)->setName(tr("Median baseline"));
 
   m_plot->legend->setVisible(true);

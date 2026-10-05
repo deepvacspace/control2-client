@@ -11,6 +11,7 @@
 #include "collabmanager.h"
 #include "dialogs/messagedialog.h"
 #include "experimentrecorder.h"
+#include "headerbar.h"
 #include "lightbutton.h"
 #include "powerbutton.h"
 #include "statusbar.h"
@@ -32,22 +33,21 @@ MainWindow::MainWindow(ResHolder *resHolder, bool windowMode, QWidget *parent)
 void MainWindow::initGui() {
   auto *mainWidget = new QWidget(this);
   setCentralWidget(mainWidget);
+  // an explicit minimum: hiding / showing the header or menu re-lays the window out, and the pages' combined
+  // minimum must not resize a full-screen window beyond the screen
+  mainWidget->setMinimumSize(1, 1);
 
   // stackedWidgetMenuLay / status bar
   auto *mainLay = new QVBoxLayout(mainWidget);
   mainLay->setContentsMargins(2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf());
   mainLay->setSpacing(0);
 
-  // stackedWidget | menu
-  auto *stackedWidgetMenuLay = new QHBoxLayout();
-  stackedWidgetMenuLay->setContentsMargins(2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf());
-  stackedWidgetMenuLay->setSpacing(2 * utils::ssf());
-  mainLay->addLayout(stackedWidgetMenuLay);
-
+  // header / pages / footer menu
+  mainLay->setContentsMargins(0, 0, 0, 0);
+  auto *pagesLay = new QHBoxLayout();
+  pagesLay->setContentsMargins(10 * utils::ssf(), 8 * utils::ssf(), 10 * utils::ssf(), 8 * utils::ssf());
   m_stackedWidget = new QStackedWidget(this);
-
-  stackedWidgetMenuLay->addWidget(m_stackedWidget);
-  stackedWidgetMenuLay->addWidget(m_menu);
+  pagesLay->addWidget(m_stackedWidget);
 
   // saves every finished chamber job to the experiment database (Deepvac Insight format)
   m_resHolder->recorder = new ExperimentRecorder(m_resHolder, this);
@@ -67,20 +67,20 @@ void MainWindow::initGui() {
 
   // accessSelectWidget            = new AccessSelectWidget2(&accessManager, this);
 
-  auto addWidgetToStacked = [this](QWidget *widget, QString const &label) {
+  auto addWidgetToStacked = [this](QWidget *widget, QString const &label, QString const &icon) {
     m_stackedWidget->addWidget(widget);
-    m_menu->addItem(label);
+    m_menu->addItem(label, icon);
   };
 
-  addWidgetToStacked(m_head, tr("Главная"));
-  addWidgetToStacked(m_manual, tr("Ручное\nуправление"));
-  addWidgetToStacked(m_programWidget, tr("Программное\nуправление"));
-  addWidgetToStacked(m_graphWidget, tr("График"));
-  addWidgetToStacked(m_dataAnalysisWidget, tr("Data\nanalysis"));
-  addWidgetToStacked(m_aiWidget, tr("AI"));
-  addWidgetToStacked(m_settingsWidget, tr("Настройки"));
-  addWidgetToStacked(userWidget, tr("Пользователи"));
-  addWidgetToStacked(systemWidget, tr("Система"));
+  addWidgetToStacked(m_head, tr("Главная"), "home");
+  addWidgetToStacked(m_manual, tr("Ручное\nуправление"), "manual");
+  addWidgetToStacked(m_programWidget, tr("Программное\nуправление"), "program");
+  addWidgetToStacked(m_graphWidget, tr("График"), "chart");
+  addWidgetToStacked(m_dataAnalysisWidget, tr("Data\nanalysis"), "analysis");
+  addWidgetToStacked(m_aiWidget, tr("AI"), "ai");
+  addWidgetToStacked(m_settingsWidget, tr("Настройки"), "settings");
+  addWidgetToStacked(userWidget, tr("Пользователи"), "users");
+  addWidgetToStacked(systemWidget, tr("Система"), "system");
 
   selectWidgetWindow(0);
 
@@ -88,8 +88,10 @@ void MainWindow::initGui() {
     m_stackedWidget->setCurrentIndex(indexSelected);
   });
 
-  auto *statusBar = new StatusBar(m_resHolder, this);
-  mainLay->addWidget(statusBar);
+  // the header carries what the former status bar showed
+  mainLay->addWidget(new HeaderBar(m_resHolder, this));
+  mainLay->addLayout(pagesLay, 1);
+  mainLay->addWidget(m_menu);
 
   connect(m_resHolder->hard_status,
           &HardwareStatus::statusChanged,

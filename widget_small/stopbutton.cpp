@@ -6,6 +6,7 @@
 namespace deepvaccontrol {
 StopButton::StopButton(QWidget *parent) : QPushButton{parent} {
   setText(tr("Стоп"));
+  setObjectName("stopButton"); // red in the application style sheet
   setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
   setFont(QFont("MS Shell Dlg 2", 12 * utils::ssf(), 75));
   // setEnabled(false);

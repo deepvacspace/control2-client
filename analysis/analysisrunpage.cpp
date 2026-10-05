@@ -13,6 +13,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSaveFile>
 #include <QSignalBlocker>
 #include <QHeaderView>
@@ -87,6 +88,24 @@ constexpr int MAX_COMPARE_MENU_RUNS{40};
 int buttonHeight() {
   return static_cast<int>(40 * utils::ssf());
 }
+
+// Holds a wrapping (flow) layout and keeps its minimum height equal to the wrapped rows, so splitters and box
+// layouts that ignore height-for-width still leave room for every row.
+class FlowBox : public QWidget {
+public:
+  using QWidget::QWidget;
+
+protected:
+  void resizeEvent(QResizeEvent *event) override {
+    QWidget::resizeEvent(event);
+    if (layout() && layout()->hasHeightForWidth()) {
+      int const needed{layout()->heightForWidth(width())};
+      if (needed != minimumHeight()) {
+        setMinimumHeight(needed);
+      }
+    }
+  }
+};
 
 QPushButton *makeButton(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
@@ -250,7 +269,7 @@ void AnalysisRunPage::buildUi() {
   m_chart = new AnalysisChart(this);
   m_chart->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   // the panels below share the height with the chart (splitter), so it may get smaller than elsewhere
-  m_chart->setMinimumHeight(150 * utils::ssf());
+  m_chart->setMinimumHeight(120 * utils::ssf());
   connect(m_chart, &AnalysisChart::annotationDrawn, this, &AnalysisRunPage::onAnnotationDrawn);
 
   // plot controls, grouped so a group never breaks across rows
@@ -344,7 +363,9 @@ void AnalysisRunPage::buildUi() {
   auto *chartLay  = new QVBoxLayout(chartArea);
   chartLay->setContentsMargins(0, 0, 0, 0);
   chartLay->addWidget(m_chart, 1);
-  chartLay->addLayout(controls);
+  auto *controlsBox = new FlowBox(chartArea);
+  controlsBox->setLayout(controls);
+  chartLay->addWidget(controlsBox);
   auto *panels    = new QWidget(splitter);
   auto *panelsLay = new QVBoxLayout(panels);
   panelsLay->setContentsMargins(0, 0, 0, 0);

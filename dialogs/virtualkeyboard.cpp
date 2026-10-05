@@ -1,5 +1,7 @@
 #include "virtualkeyboard.h"
 
+#include "theme.h"
+
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -18,7 +20,7 @@ VirtualKeyboard::VirtualKeyboard(QString const &title, Language lang, QWidget *p
   m_textLine = new QLineEdit(this);
   m_textLine->setFont(font);
   m_textLine->setStyleSheet("QLabel {border: 1px solid black;"
-                            "background-color: white;}");
+                            "background-color: " + theme::colors().panelAlt.name() + ";}");
 
   auto *mainLay = new QVBoxLayout(this);
 

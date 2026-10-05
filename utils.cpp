@@ -1,6 +1,8 @@
 #include "utils.h"
 
 #include <QApplication>
+
+#include "theme.h"
 #include <QColor>
 #include <QFile>
 #include <QJsonObject>
@@ -96,7 +98,7 @@ QString readStyleFromFile(QString const &filepath) {
     text = file.readAll();
     file.close();
   }
-  return (text);
+  return theme::adaptStyleSheet(text);
 }
 
 QPalette lightPalette() {
@@ -140,11 +142,11 @@ QPalette darkPalette() {
 }
 
 bool isDarkMode() {
-  return QApplication::palette().color(QPalette::Window).lightness() < 128;
+  return theme::isDark();
 }
 
 void applyDarkMode(bool enabled) {
-  QApplication::setPalette(enabled ? darkPalette() : lightPalette());
+  theme::apply(enabled);
 }
 
 int nLampToLux(int i) {

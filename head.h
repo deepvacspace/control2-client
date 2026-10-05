@@ -3,13 +3,16 @@
 
 #include <QLabel>
 #include <QPushButton>
-#include <QVBoxLayout>
 #include <QWidget>
 
 #include "resholder.h"
 #include "stopbutton.h"
 
 namespace deepvaccontrol {
+class ChamberView;
+class ControlBar;
+
+// Home page: live chamber sketch, chamber status and temperature, test time and program position.
 class Head : public QWidget {
   Q_OBJECT
 public:
@@ -18,21 +21,31 @@ public:
   // Lazy setup all type of connection between components
   void setupGuiAndLogic();
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 private:
   void       handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
   void       initBaseGui();
+  void       restyle();
   void       updateGui();
   ResHolder *m_resHolder;
 
-  QVBoxLayout *m_mainLay;
-  QHBoxLayout *m_visLay;
-
-  QLabel *m_curWorkTimeLabel;
-  QLabel *m_intervalLabel;
-  QLabel *m_cycleLabel;
+  ChamberView *m_chamber{nullptr};
+  QLabel      *m_statusDot{nullptr};
+  QLabel      *m_statusText{nullptr};
+  QLabel      *m_tempValue{nullptr};
+  QLabel      *m_tempUnit{nullptr};
+  QLabel      *m_setpointValue{nullptr};
+  QLabel      *m_outputValue{nullptr};
+  ControlBar  *m_outputBar{nullptr};
+  QLabel      *m_curWorkTimeLabel{nullptr};
+  QLabel      *m_intervalLabel{nullptr};
+  QLabel      *m_cycleLabel{nullptr};
+  QWidget     *m_intervalBox{nullptr};
+  QWidget     *m_cycleBox{nullptr};
 
   StopButton  *m_stopBtn;
-
   QPushButton *m_nextIntervalBtn;
 
   AccessManager::AccessLevel m_accessLevel;

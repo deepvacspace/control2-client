@@ -1,5 +1,7 @@
 #include "aiadvisorwidget.h"
 
+#include "theme.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFrame>
@@ -252,6 +254,7 @@ QWidget *AiAdvisorWidget::buildChartCard() {
 
   m_plot->addGraph(); // 3: CEM baseline (filled in only after the comparison runs)
   m_plot->graph(3)->setPen(QPen(QColor(40, 170, 90), 2, Qt::DotLine));
+  theme::stylePlot(m_plot);
   m_plot->graph(3)->setName(tr("CEM baseline"));
 
   m_plot->legend->setVisible(true);

@@ -1,5 +1,7 @@
 #include "alarmsinglewidget.h"
 
+#include "theme.h"
+
 #include <QHBoxLayout>
 
 #include "utils.h"
@@ -31,12 +33,14 @@ AlarmSingleWidget::AlarmSingleWidget(QString const &label,
 void AlarmSingleWidget::updateStatusColors() {
   bool const conditionStatus{utils::getBitOfFloat(m_statusValue->getValue(), m_index)};
 
-  QString const stateColor{conditionStatus ? QColor(230, 230, 0).name() : QColor(240, 240, 240).name()};
+  theme::Colors const &c = theme::colors();
+  auto                 tint = [](QColor const &color) { return QColor(color.red(), color.green(), color.blue(), 60).name(QColor::HexArgb); };
+  QString const stateColor{conditionStatus ? c.warning.name() : c.panelAlt.name()};
   curState->setStyleSheet("background-color:" + stateColor + ";");
 
-  QString boxColor{conditionStatus == getPosition() ? QColor(255, 221, 221).name() : QColor(221, 255, 221).name()};
+  QString boxColor{conditionStatus == getPosition() ? tint(c.danger) : tint(c.active)};
   if (!getActive()) {
-    boxColor = QColor::fromRgb(230, 230, 230).name();
+    boxColor = c.panelAlt.name();
   }
   box->setStyleSheet("background-color:" + boxColor + ";");
 }

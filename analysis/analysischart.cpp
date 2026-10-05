@@ -7,6 +7,7 @@
 
 #include "crosshairsynchub.h"
 #include "experimentlibrary.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -114,6 +115,7 @@ AnalysisChart::AnalysisChart(QWidget *parent) : QWidget{parent}, m_plot{new QCus
   m_plot->legend->setWrap(3);
   m_plot->legend->setFillOrder(QCPLegend::foColumnsFirst);
   m_plot->legend->setVisible(true);
+  theme::stylePlot(m_plot);
 
   m_plot->selectionRect()->setPen(QPen(QColor("#2563eb"), 1, Qt::DashLine));
   m_plot->selectionRect()->setBrush(QBrush(QColor(37, 99, 235, 40)));
