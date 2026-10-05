@@ -229,7 +229,8 @@ void DataAnalysisWidget::populateTree() {
       item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
       item->setTextAlignment(2, Qt::AlignRight | Qt::AlignVCenter);
       item->setData(0, RUN_KEY_ROLE, run.key);
-      item->setToolTip(0, QStringLiteral("%1\n%2").arg(run.title, run.chamber));
+      item->setToolTip(0, run.details.isEmpty() ? QStringLiteral("%1\n%2").arg(run.title, run.chamber)
+                                                : QStringLiteral("%1\n%2\n%3").arg(run.title, run.chamber, run.details));
       if (run.key == selectedKey) {
         selected = item;
       }

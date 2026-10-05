@@ -16,6 +16,7 @@
 
 #include "accessmanager.h"
 #include "actionmanager.h"
+#include "experimentrecorder.h"
 #include "confdialog.h"
 #include "constants.h"
 #include "experimentsyncserver.h"
@@ -426,6 +427,11 @@ bool AiAdvisorWidget::startChamberJob(double targetTemp) {
     }
   }
 
+  if (m_resHolder->recorder) {
+    m_resHolder->recorder->setNextJob(ExperimentRecorder::JobInfo{
+      QStringLiteral("ai_advisor"), tr("AI Advisor"), {}, model.programVariant(),
+      QJsonObject{{"target_temp", targetTemp}, {"duration_s", m_targetDurationS}, {"model", "ppo_advisor"}}});
+  }
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, model.makeSendData());
   if (m_resHolder->actions) {
     m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("AI Advisor started the chamber"));
@@ -668,12 +674,12 @@ void AiAdvisorWidget::runExperiment() {
     setStatusText(tr("No valid manual Temperature PID table to fall back to - cannot run"), true);
     return;
   }
+  m_targetDurationS = durationS; // before the job is sent: recorded in the run's configuration snapshot
   if (!startChamberJob(m_targetTemp)) {
     m_pidGuard->restore(false, tr("chamber could not be started"));
     setStatusText(tr("Failed to start the chamber"), true);
     return;
   }
-  m_targetDurationS = durationS;
 
   m_currentParams             = ai::SimParams{};
   m_currentParams.startTemp   = m_startTemp;

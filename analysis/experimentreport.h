@@ -22,6 +22,9 @@ struct ExperimentReportData {
   QString                                 author;
   QVector<QPair<QString, QImage>>         charts;         // caption, image
   QString                                 comparisonHtml; // ComparisonPanel::html(), empty without a comparison
+  QJsonObject                             manifest;       // core::RunManifest JSON (configuration, events, channels, ...)
+  bool                                    manifestStored{false};
+  int                                     integrity{2};   // storage::RunStore::Integrity
 };
 
 namespace experimentreport {

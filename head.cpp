@@ -176,14 +176,14 @@ void Head::updateGui() {
     qint32 const cycleCur{static_cast<qint32>(states->getSysValue("cycle_cur")->getValue())};
     qint32 const cycleCount{static_cast<qint32>(states->getSysValue("cycle_total")->getValue())};
 
-    m_intervalLabel->setText(tr("Текущий интервал: ") + QString("%1 из %2").arg(intervalCur).arg(intervalCount));
+    m_intervalLabel->setText(tr("Текущий интервал: ") + tr("%1 из %2").arg(intervalCur).arg(intervalCount));
     bool nextIntervalEnable = (intervalCur < intervalCount) || (cycleCur < cycleCount);
     m_nextIntervalBtn->setVisible(nextIntervalEnable);
 
     m_cycleLabel->setVisible(cycleCount > 1);
 
     if (m_cycleLabel->isVisible()) {
-      m_cycleLabel->setText(tr("Текущий цикл: ") + QString("%1 из %2").arg(cycleCur).arg(cycleCount));
+      m_cycleLabel->setText(tr("Текущий цикл: ") + tr("%1 из %2").arg(cycleCur).arg(cycleCount));
     }
   } else {
     m_cycleLabel->setVisible(false);

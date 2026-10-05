@@ -3,6 +3,7 @@
 
 #include <QColor>
 #include <QHash>
+#include <QJsonObject>
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
@@ -27,6 +28,7 @@ struct ExperimentRun {
   bool        custom{false}; // user defined time range instead of a detected experiment
   QString     storeKey;      // run saved in the experiment database (storage::RunStore)
   QString     chamber;       // database runs: chamber it was recorded on
+  QString     details;       // database runs: DUT, operator, purpose, tags, job (searchable)
 
   [[nodiscard]] double duration() const {
     return end - start;
@@ -38,6 +40,7 @@ struct ExperimentData {
   QVector<double>          times;  // epoch sec
   QVector<QVector<double>> states; // [channel][sample]
   QStringList              channelNames; // database runs: state name of each channel (else settings order)
+  QJsonObject              manifest;     // database runs: core::RunManifest JSON (configuration, events, ...), empty otherwise
 };
 
 struct ExperimentEvent {

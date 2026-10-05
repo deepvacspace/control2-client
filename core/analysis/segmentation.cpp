@@ -6,6 +6,8 @@ namespace deepvaccontrol::core {
 
 namespace {
 constexpr double RAMP_WINDOW_S{120.0}; // reference drift is measured over this centred window
+constexpr int    RAMP_NEIGHBOURS{3};   // samples on each side searched for similar reference changes
+constexpr double RAMP_INCREMENT_RATIO{3.0}; // "similar": within this factor of each other
 
 int toInt(QVector<double> const &values, int i) {
   return ((i < values.size()) && std::isfinite(values[i])) ? static_cast<int>(std::lround(values[i])) : -1;
@@ -57,12 +59,27 @@ QVector<Segment> segmentExperiment(QVector<double> const &times, QVector<double>
   bool const            haveReference{std::isfinite(ref[0])};
 
   // reference drift without its steps, to tell ramps from steps
+  QVector<double> delta(n, 0.0);
+  for (qsizetype i{1}; i < n; ++i) {
+    delta[i] = haveReference ? ref[i] - ref[i - 1] : 0.0;
+  }
+  // a change of the reference is a step unless it is part of a ramp: a fast ramp moves more than the
+  // tolerance per sample, but then nearby samples change by a similar amount in the same direction
+  auto rampIncrement = [&](qsizetype i) {
+    double const size{std::fabs(delta[i])};
+    for (qsizetype k{std::max<qsizetype>(1, i - RAMP_NEIGHBOURS)}; (k <= i + RAMP_NEIGHBOURS) && (k < n); ++k) {
+      double const other{std::fabs(delta[k])};
+      if ((k != i) && (delta[k] * delta[i] > 0.0) && (other * RAMP_INCREMENT_RATIO >= size) && (other <= size * RAMP_INCREMENT_RATIO)) {
+        return true;
+      }
+    }
+    return false;
+  };
   QVector<bool>   jump(n, false);
   QVector<double> drift(n, 0.0);
   for (qsizetype i{1}; i < n; ++i) {
-    double const delta{haveReference ? ref[i] - ref[i - 1] : 0.0};
-    jump[i]  = std::fabs(delta) >= options.referenceTolerance;
-    drift[i] = drift[i - 1] + (jump[i] ? 0.0 : delta);
+    jump[i]  = (std::fabs(delta[i]) >= options.referenceTolerance) && !rampIncrement(i);
+    drift[i] = drift[i - 1] + (jump[i] ? 0.0 : delta[i]);
   }
   QVector<bool> ramping(n, false);
   if (haveReference) {

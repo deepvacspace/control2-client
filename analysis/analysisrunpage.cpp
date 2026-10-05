@@ -17,8 +17,10 @@
 #include <QSignalBlocker>
 #include <QHeaderView>
 #include <QSpinBox>
+#include <QSplitter>
 #include <QTableWidget>
 #include <QTabWidget>
+#include <QTextBrowser>
 #include <QTextStream>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -29,6 +31,8 @@
 #include "comparisonpanel.h"
 #include "experimentinput.h"
 #include "experimentreport.h"
+#include "rundetailsdialog.h"
+#include "runrecord.h"
 #include "seriesstats.h"
 #include "derivedexpression.h"
 #include "derivedvariablesdialog.h"
@@ -228,6 +232,9 @@ void AnalysisRunPage::buildUi() {
   exportMenu->addAction(tr("Experiment report (HTML)…"), this, [this] { exportReport(false); });
   exportMenu->addAction(tr("Experiment report (PDF)…"), this, [this] { exportReport(true); });
   exportMenu->addSeparator();
+  exportMenu->addAction(tr("Run bundle (JSON)…"), this, &AnalysisRunPage::exportBundle)->setEnabled(!m_run.storeKey.isEmpty());
+  exportMenu->addSeparator();
+  exportMenu->addAction(tr("Edit run details…"), this, &AnalysisRunPage::editRunDetails)->setEnabled(!m_run.storeKey.isEmpty());
   exportMenu->addAction(tr("Save to experiment database…"), this, &AnalysisRunPage::saveToDatabase)
     ->setEnabled(m_run.storeKey.isEmpty());
   m_exportBtn->setMenu(exportMenu);
@@ -242,8 +249,9 @@ void AnalysisRunPage::buildUi() {
   // chart
   m_chart = new AnalysisChart(this);
   m_chart->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  // the panels below share the height with the chart (splitter), so it may get smaller than elsewhere
+  m_chart->setMinimumHeight(150 * utils::ssf());
   connect(m_chart, &AnalysisChart::annotationDrawn, this, &AnalysisRunPage::onAnnotationDrawn);
-  root->addWidget(m_chart, 1);
 
   // plot controls, grouped so a group never breaks across rows
   auto makeGroup = [this](std::initializer_list<QWidget *> widgets) {
@@ -327,18 +335,43 @@ void AnalysisRunPage::buildUi() {
   controls->addWidget(m_setpointGroup);
   connect(m_setpointCheck, &QCheckBox::toggled, this, &AnalysisRunPage::refreshSetpoint);
   connect(m_setpointEdit, &LineEditNum::userEditingFinished, this, &AnalysisRunPage::refreshSetpoint);
-  root->addLayout(controls);
+
+  // chart and its controls above, rules / notes and statistics below: a splitter shares the height
+  // (on a small screen the panels would otherwise squeeze the chart into the controls)
+  auto *splitter = new QSplitter(Qt::Vertical, this);
+  splitter->setChildrenCollapsible(false);
+  auto *chartArea = new QWidget(splitter);
+  auto *chartLay  = new QVBoxLayout(chartArea);
+  chartLay->setContentsMargins(0, 0, 0, 0);
+  chartLay->addWidget(m_chart, 1);
+  chartLay->addLayout(controls);
+  auto *panels    = new QWidget(splitter);
+  auto *panelsLay = new QVBoxLayout(panels);
+  panelsLay->setContentsMargins(0, 0, 0, 0);
+  splitter->addWidget(chartArea);
+  splitter->addWidget(panels);
+  splitter->setStretchFactor(0, 3);
+  splitter->setStretchFactor(1, 2);
+  panels->setVisible(false);
+  root->addWidget(splitter, 1);
 
   m_notesPanel = buildNotesPanel();
   m_notesPanel->setVisible(false);
-  root->addWidget(m_notesPanel);
-  connect(notesBtn, &QPushButton::toggled, m_notesPanel, &QWidget::setVisible);
+  panelsLay->addWidget(m_notesPanel);
 
   m_statisticsPanel = buildStatisticsPanel();
   m_statisticsPanel->setVisible(false);
-  root->addWidget(m_statisticsPanel);
-  connect(statisticsBtn, &QPushButton::toggled, this, [this](bool visible) {
+  panelsLay->addWidget(m_statisticsPanel, 1);
+  auto showPanels = [this, panels] {
+    panels->setVisible(!m_notesPanel->isHidden() || !m_statisticsPanel->isHidden());
+  };
+  connect(notesBtn, &QPushButton::toggled, this, [this, showPanels](bool visible) {
+    m_notesPanel->setVisible(visible);
+    showPanels();
+  });
+  connect(statisticsBtn, &QPushButton::toggled, this, [this, showPanels](bool visible) {
     m_statisticsPanel->setVisible(visible);
+    showPanels();
     refreshRangeStatistics();
   });
   // follow zoom / pan, without recomputing on every intermediate step
@@ -489,6 +522,7 @@ void AnalysisRunPage::load() {
   m_baseData = m_data;
   m_elapsed  = elapsed(*m_data);
   applyDerived();
+  loadRecord();
 
   // channel selection: saved one, else the ones visible on the main graph
   QStringList const saved = m_notes->channels(m_run.key);
@@ -667,11 +701,33 @@ QColor AnalysisRunPage::channelColor(int index) const {
 
 void AnalysisRunPage::refreshStats() {
   m_titleLabel->setText((m_run.custom ? tr("Range %1") : tr("Experiment %1")).arg(m_run.title));
-  m_statsLabel->setText(tr("%1 → %2   ·   duration %3   ·   %4 samples")
-                          .arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.start)).toString("yyyy-MM-dd HH:mm:ss"),
-                               QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.end)).toString("yyyy-MM-dd HH:mm:ss"),
-                               ExperimentLibrary::formatDuration(m_run.duration()))
-                          .arg(m_run.samples));
+  QString stats = tr("%1 → %2   ·   duration %3   ·   %4 samples")
+                    .arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.start)).toString("yyyy-MM-dd HH:mm:ss"),
+                         QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.end)).toString("yyyy-MM-dd HH:mm:ss"),
+                         ExperimentLibrary::formatDuration(m_run.duration()))
+                    .arg(m_run.samples);
+  core::RunMetadata const &details = m_manifest.metadata;
+  QStringList              about;
+  if (!details.dut.isEmpty()) {
+    about << tr("DUT %1").arg(details.dut);
+  }
+  if (!details.purpose.isEmpty()) {
+    about << details.purpose;
+  }
+  if (!details.operatorName.isEmpty()) {
+    about << tr("operator %1").arg(details.operatorName);
+  }
+  if (!details.tags.isEmpty()) {
+    about << QStringLiteral("#") + details.tags.join(QStringLiteral(" #"));
+  }
+  if (!about.isEmpty()) {
+    stats += QStringLiteral("   ·   ") + about.join(QStringLiteral("   ·   "));
+  }
+  if (m_manifestStored && (m_integrity != 2)) {
+    stats += QStringLiteral("   ·   ") + (m_integrity == 0 ? tr("✓ integrity verified") : tr("⚠ integrity check failed"));
+  }
+  m_statsLabel->setText(stats);
+  m_statsLabel->setToolTip(m_manifestStored ? runrecord::integrityText(m_integrity) : QString());
 }
 
 void AnalysisRunPage::refreshChart() {
@@ -832,7 +888,7 @@ QTableWidget *makeTable(QStringList const &headers, int stretchColumn, QWidget *
   table->verticalHeader()->setVisible(false);
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
-  table->setFixedHeight(170 * utils::ssf());
+  table->setMinimumHeight(90 * utils::ssf());
   return table;
 }
 } // namespace
@@ -909,10 +965,33 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
 
   m_comparisonPanel = new ComparisonPanel(panel);
 
+  auto *eventsPage = new QWidget(panel);
+  auto *eventsLay  = new QVBoxLayout(eventsPage);
+  eventsLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  m_eventsLabel = new QLabel(eventsPage);
+  m_eventsLabel->setWordWrap(true);
+  m_eventsTable = makeTable({tr("Time"), tr("Event"), tr("Source"), tr("Details")}, 3, eventsPage);
+  m_eventsTable->setToolTip(tr("Tap an event to zoom to it"));
+  connect(m_eventsTable, &QTableWidget::cellClicked, this, [this](int row) {
+    if ((row >= 0) && (row < m_manifest.events.size())) {
+      double const at{m_manifest.events[row].time - m_run.start};
+      m_chart->setTimeRange(std::max(0.0, at - 120.0), at + 120.0);
+      updateTimeControls();
+    }
+  });
+  eventsLay->addWidget(m_eventsLabel);
+  eventsLay->addWidget(m_eventsTable);
+
+  m_recordView = new QTextBrowser(panel);
+  m_recordView->setMinimumHeight(90 * utils::ssf());
+  m_recordView->setOpenLinks(false);
+
   panel->addTab(rangePage, tr("Selected range"));
   panel->addTab(kpiPage, tr("KPIs && stages"));
   panel->addTab(anomalyPage, tr("Anomalies"));
   panel->addTab(m_comparisonPanel, tr("Comparison"));
+  panel->addTab(eventsPage, tr("Events"));
+  panel->addTab(m_recordView, tr("Run record"));
   return panel;
 }
 
@@ -1169,6 +1248,7 @@ void AnalysisRunPage::refreshComparison() {
     run.temp      = channelSeries(data, channelIndex("temp"));
     run.reference = channelSeries(data, channelIndex("temp_ref"));
     run.signal    = channelSeries(data, channel);
+    run.manifest  = data.manifest;
     runs.push_back(run);
   };
   add(*m_data, &*m_analysis);
@@ -1225,8 +1305,15 @@ void AnalysisRunPage::refreshEvents() {
   }
   QVector<ChartEvent> events;
   if (m_eventsCheck->isChecked()) {
-    for (ExperimentEvent const &event : m_library->events(m_run.start, m_run.end)) {
-      events.push_back({event.time - m_run.start, event.msg, eventColor(event.type)});
+    if (!m_manifest.events.isEmpty()) {
+      // typed events of the run (captured live and from the recorded signals)
+      for (core::RunEvent const &event : std::as_const(m_manifest.events)) {
+        events.push_back({event.time - m_run.start, event.message, runrecord::eventColor(event.type)});
+      }
+    } else {
+      for (ExperimentEvent const &event : m_library->events(m_run.start, m_run.end)) {
+        events.push_back({event.time - m_run.start, event.msg, eventColor(event.type)});
+      }
     }
   }
   if (m_anomaliesCheck->isChecked() && m_analysis) {
@@ -1714,6 +1801,9 @@ ExperimentReportData AnalysisRunPage::buildReport() {
   report.events      = m_library->events(m_run.start, m_run.end);
   report.annotations = m_notes->annotations(m_run.start, m_run.end, m_run.key);
   report.rules       = m_notes->rules(m_run.key);
+  report.manifest    = m_manifest.toJson();
+  report.manifestStored = m_manifestStored;
+  report.integrity   = m_integrity;
   report.author      = m_resHolder->users->getCurrentUserName();
 
   int const width{1600};
@@ -1768,6 +1858,153 @@ ExperimentReportData AnalysisRunPage::buildReport() {
     report.comparisonHtml = m_comparisonPanel->html();
   }
   return report;
+}
+
+void AnalysisRunPage::loadRecord() {
+  m_manifest       = core::RunManifest::fromJson(m_baseData->manifest);
+  m_manifestStored = m_manifest.isValid();
+  m_integrity      = 2;
+  if (m_manifestStored) {
+    m_integrity = static_cast<int>(storage::RunStore::verify(m_run.storeKey));
+  } else {
+    // no manifest (recorded files, older runs): the events visible in the signals, derived now
+    m_manifest = core::RunManifest{};
+    QHash<QString, QVector<double>> channels;
+    QVector<ChannelInfo> const      infos = m_library->channels(*m_baseData);
+    for (qsizetype c{0}; (c < infos.size()) && (c < m_baseData->states.size()); ++c) {
+      channels.insert(infos[c].name, m_baseData->states[c]);
+    }
+    m_manifest.events = core::detectEvents(m_baseData->times, channels,
+                                           core::alarmLabels(m_resHolder->settings->settingsMap().value("alarms").toList()));
+    QVariantList states;
+    QStringList  names;
+    for (ChannelInfo const &info : infos) {
+      names << info.name;
+    }
+    m_manifest.channels = core::channelMetadata(m_resHolder->settings->settingsMap().value("states").toList(), names);
+  }
+  refreshRecord();
+}
+
+void AnalysisRunPage::refreshRecord() {
+  m_eventsLabel->setText(m_manifestStored
+                           ? tr("%1 events recorded with the run: captured live by the application (job, operator, PLC alarms, "
+                                "PID table writes) and from the recorded signals (setpoint, gains, PID band, status, program, alarm bits).")
+                               .arg(m_manifest.events.size())
+                           : tr("%1 events derived now from the recorded signals (this run has no manifest, so no live events or "
+                                "configuration snapshot).")
+                               .arg(m_manifest.events.size()));
+  m_eventsTable->setRowCount(static_cast<int>(m_manifest.events.size()));
+  for (int r{0}; r < m_manifest.events.size(); ++r) {
+    core::RunEvent const &event = m_manifest.events[r];
+    QStringList const     cells{ExperimentLibrary::formatDuration(std::max(0.0, event.time - m_run.start)), runrecord::eventTypeName(event.type),
+                            event.source == QLatin1String("app") ? tr("live") : tr("signal"), event.message};
+    for (int c{0}; c < cells.size(); ++c) {
+      auto *item = new QTableWidgetItem(cells[c]);
+      if (c == 1) {
+        item->setForeground(runrecord::eventColor(event.type));
+      }
+      m_eventsTable->setItem(r, c, item);
+    }
+  }
+  m_recordView->setHtml(recordHtml());
+  refreshStats();
+}
+
+QString AnalysisRunPage::recordHtml() const {
+  auto esc   = [](QString const &text) { return text.toHtmlEscaped(); };
+  auto table = [&esc](QStringList const &columns, QVector<QStringList> const &rows) {
+    QString html = QStringLiteral("<table border='1' cellspacing='0' cellpadding='3'><tr>");
+    for (QString const &column : columns) {
+      html += QStringLiteral("<th bgcolor='#e2e8f0'>%1</th>").arg(esc(column));
+    }
+    html += QStringLiteral("</tr>");
+    for (QStringList const &row : rows) {
+      html += QStringLiteral("<tr>");
+      for (QString const &value : row) {
+        html += QStringLiteral("<td>%1</td>").arg(esc(value));
+      }
+      html += QStringLiteral("</tr>");
+    }
+    return html + QStringLiteral("</table>");
+  };
+  QJsonObject const &configuration = m_manifest.configuration;
+  QString            html;
+  html += QStringLiteral("<h4>%1</h4>").arg(tr("Identity"));
+  if (m_manifestStored) {
+    html += QStringLiteral("<p>%1: %2<br>%3: %4 (%5)<br>%6: %7 %8<br>%9</p>")
+              .arg(tr("Run uid"), esc(m_manifest.runUid), tr("Chamber"), esc(m_manifest.chamber), esc(m_manifest.chamberRef),
+                   tr("Recorded by"), esc(m_manifest.appName), esc(m_manifest.appVersion))
+              .arg(tr("Time resolution %1 s · %2 samples").arg(m_manifest.timeResolutionS).arg(m_manifest.sampleCount));
+  } else {
+    html += QStringLiteral("<p>%1</p>").arg(esc(tr("Not saved in the experiment database: no manifest. Save it (Export ▾) to keep its record.")));
+  }
+  core::RunMetadata const &details = m_manifest.metadata;
+  html += QStringLiteral("<h4>%1</h4><p>%2: %3<br>%4: %5<br>%6: %7<br>%8: %9</p>")
+            .arg(tr("Run details"), tr("DUT"), esc(details.dut.isEmpty() ? QStringLiteral("—") : details.dut), tr("Operator"),
+                 esc(details.operatorName.isEmpty() ? QStringLiteral("—") : details.operatorName), tr("Purpose"),
+                 esc(details.purpose.isEmpty() ? QStringLiteral("—") : details.purpose), tr("Tags"),
+                 esc(details.tags.isEmpty() ? QStringLiteral("—") : details.tags.join(QStringLiteral(", "))));
+  if (!details.notes.isEmpty()) {
+    html += QStringLiteral("<p>%1</p>").arg(esc(details.notes));
+  }
+  html += QStringLiteral("<h4>%1</h4><p>%2<br>%3: %4<br>%5: %6</p>")
+            .arg(tr("Configuration snapshot"), esc(runrecord::capturedText(configuration)), tr("Job"), esc(runrecord::jobText(configuration)),
+                 tr("User"), esc(configuration.value("user").toObject().value("name").toString(QStringLiteral("—"))));
+  if (QVector<QStringList> const program = runrecord::programRows(configuration); !program.isEmpty()) {
+    html += QStringLiteral("<p><b>%1</b></p>").arg(tr("Program sent to the PLC")) + table(runrecord::programColumns(), program);
+  }
+  if (QVector<QStringList> const pid = runrecord::pidRows(configuration); !pid.isEmpty()) {
+    html += QStringLiteral("<p><b>%1</b></p>").arg(tr("PID table")) + table(runrecord::pidColumns(), pid);
+  }
+  if (configuration.contains("plc_settings")) {
+    html += QStringLiteral("<p><b>%1</b>: %2</p>").arg(tr("Calibration"), esc(runrecord::calibrationSummary(configuration)));
+  }
+  QVector<QStringList> channels;
+  for (core::ChannelMeta const &channel : m_manifest.channels) {
+    channels.push_back({channel.name, channel.label, channel.unit, channel.quantity, channel.role});
+  }
+  html += QStringLiteral("<h4>%1</h4>").arg(tr("Channels")) + table({tr("Name"), tr("Description"), tr("Unit"), tr("Quantity"), tr("Role")}, channels);
+  html += QStringLiteral("<h4>%1</h4><p>%2<br>SHA-256 %3</p>")
+            .arg(tr("Integrity"), esc(runrecord::integrityText(m_integrity)),
+                 esc(m_manifest.samplesSha256.isEmpty() ? QStringLiteral("—") : m_manifest.samplesSha256));
+  return html;
+}
+
+void AnalysisRunPage::exportBundle() {
+  if (m_run.storeKey.isEmpty()) {
+    return;
+  }
+  askExportPath("json", [this](QString const &path) {
+    QString           error;
+    QJsonObject const bundle = storage::RunStore::bundle(m_run.storeKey, &error);
+    if (bundle.isEmpty()) {
+      return false;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+      return false;
+    }
+    file.write(QJsonDocument(bundle).toJson(QJsonDocument::Indented));
+    return file.commit();
+  });
+}
+
+void AnalysisRunPage::editRunDetails() {
+  if (m_run.storeKey.isEmpty()) {
+    return;
+  }
+  RunDetailsDialog dialog(m_manifest.metadata, tr("Run details: %1").arg(m_run.title), this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  if (!storage::RunStore::updateMetadata(m_run.storeKey, dialog.metadata())) {
+    (new MessageDialog(tr("Run details"), tr("This run has no manifest yet; it gets one at the next start of the application.")))->open();
+    return;
+  }
+  m_manifest.metadata = dialog.metadata();
+  refreshRecord();
+  m_library->refresh(); // searchable details in the browser
 }
 
 void AnalysisRunPage::saveToDatabase() {

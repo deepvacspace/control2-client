@@ -250,7 +250,7 @@ void IntervalEditDialog::initGui() {
 
   //    mainLay->setSizeConstraint(QLayout::SetFixedSize);
   this->adjustSize(); // NOTE to avoid "setGeometry: Unable to set geometry"
-  this->setWindowTitle("Редактирование интервала");
+  this->setWindowTitle(tr("Редактирование интервала"));
   this->setMinimumWidth(400);
 }
 

@@ -16,6 +16,7 @@
 
 #include "accessmanager.h"
 #include "actionmanager.h"
+#include "experimentrecorder.h"
 #include "advisorcem.h"
 #include "confdialog.h"
 #include "constants.h"
@@ -346,6 +347,11 @@ bool OfflineAdvisorWidget::startChamberJob(double targetTemp) {
     }
   }
 
+  if (m_resHolder->recorder) {
+    m_resHolder->recorder->setNextJob(ExperimentRecorder::JobInfo{
+      QStringLiteral("offline_advisor"), tr("AI Advisor"), {}, model.programVariant(),
+      QJsonObject{{"target_temp", targetTemp}, {"duration_s", m_targetDurationS}, {"model", "gru_rollout CEM search"}}});
+  }
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, model.makeSendData());
   if (m_resHolder->actions) {
     m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("AI Advisor started the chamber"));

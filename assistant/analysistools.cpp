@@ -8,6 +8,7 @@
 #include "analysisnotesstore.h"
 #include "comparison.h"
 #include "experimentinput.h"
+#include "runrecord.h"
 #include "runstore.h"
 #include "seriesstats.h"
 
@@ -457,6 +458,11 @@ void AnalysisTools::registerTools(ToolRegistry &registry) {
                 [this](QJsonObject const &a) { return listRuns(a); }});
   registry.add({"get_run_summary", "Summary of one run: configuration, KPIs, stages, anomalies.", schema({{"run", run}}, {"run"}),
                 [this](QJsonObject const &a) { return runSummary(a); }});
+  registry.add({"get_run_details", "Run details (DUT, operator, purpose, tags), job and program, PID table, calibration, app version and integrity, as recorded.",
+                schema({{"run", run}}, {"run"}), [this](QJsonObject const &a) { return runDetails(a); }});
+  registry.add({"get_events", "Events of a run: setpoint changes, ramps, PID changes, alarms, status, operator actions.",
+                schema({{"run", run}, {"type", property("string", "optional filter, e.g. alarm, setpoint, pid, operator, status")}}, {"run"}),
+                [this](QJsonObject const &a) { return events(a); }});
   registry.add({"list_channels", "Channels recorded in a run.", schema({{"run", run}}, {"run"}),
                 [this](QJsonObject const &a) { return listChannels(a); }});
   registry.add({"get_statistics", "Statistics of channels over a run, stage or time range.",
@@ -504,7 +510,8 @@ QJsonObject AnalysisTools::listRuns(QJsonObject const &args) const {
   int                          matched{0};
   for (qsizetype i{all.size() - 1}; i >= 0; --i) {
     ExperimentRun const &run = all[i];
-    if (!query.isEmpty() && !run.title.contains(query, Qt::CaseInsensitive) && !dateTime(run.start).contains(query)) {
+    if (!query.isEmpty() && !run.title.contains(query, Qt::CaseInsensitive) && !dateTime(run.start).contains(query)
+        && !run.details.contains(query, Qt::CaseInsensitive)) {
       continue;
     }
     if (++matched > limit) {
@@ -520,6 +527,12 @@ QJsonObject AnalysisTools::listRuns(QJsonObject const &args) const {
         item.insert("mae", num(stored->mae));
         item.insert("overshoot", num(stored->overshoot));
         item.insert("settling_time_s", seconds(stored->settleTimeS));
+        if (!stored->manifest.metadata.dut.isEmpty()) {
+          item.insert("dut", stored->manifest.metadata.dut);
+        }
+        if (!stored->manifest.metadata.purpose.isEmpty()) {
+          item.insert("purpose", stored->manifest.metadata.purpose);
+        }
       }
     }
     list.push_back(item);
@@ -528,8 +541,8 @@ QJsonObject AnalysisTools::listRuns(QJsonObject const &args) const {
   QVector<QStringList> rows;
   for (QJsonValue const &value : std::as_const(list)) {
     QJsonObject const item = value.toObject();
-    rows.push_back({item.value("run").toString(), item.value("title").toString(), item.value("start").toString(),
-                    item.value("duration").toString(),
+    rows.push_back({item.value("run").toString(), item.value("title").toString(), item.value("dut").toString(QStringLiteral("—")),
+                    item.value("start").toString(), item.value("duration").toString(),
                     item.contains("mae") ? fmt(item.value("mae").toDouble(core::NaN), DEG, 3) : QStringLiteral("—"),
                     item.contains("overshoot") ? fmt(item.value("overshoot").toDouble(core::NaN), DEG, 3) : QStringLiteral("—")});
   }
@@ -538,7 +551,7 @@ QJsonObject AnalysisTools::listRuns(QJsonObject const &args) const {
                                     .arg(all.size())
                                     .arg(query.isEmpty() ? QString() : QStringLiteral(", %1 matching '%2'").arg(matched).arg(query))
                                     .arg(list.size())},
-                                 {"Run", "Title", "Start", "Duration", "MAE", "Overshoot"}, rows));
+                                 {"Run", "Title", "DUT", "Start", "Duration", "MAE", "Overshoot"}, rows));
   return result;
 }
 
@@ -1150,6 +1163,32 @@ QJsonObject AnalysisTools::compareRuns(QJsonObject const &args) {
       facts << QStringLiteral("Different %1: %2.").arg(row.label, values.join(QStringLiteral(", ")));
     }
   }
+  // recorded configuration snapshots: differences as they were set, not inferred from the signals
+  struct Snapshot {
+    char const *label;
+    QString (*get)(QJsonObject const &configuration);
+  };
+  static Snapshot const snapshots[]{
+    {"program", [](QJsonObject const &c) { return c.value("job").toObject().contains("program") ? runrecord::programSummary(c) : QString(); }},
+    {"PID table (Kp/Ki/Kd per band)", [](QJsonObject const &c) { return c.contains("plc_settings") ? runrecord::pidSummary(c) : QString(); }},
+    {"calibration", [](QJsonObject const &c) { return c.contains("plc_settings") ? runrecord::calibrationSummary(c) : QString(); }},
+  };
+  for (Snapshot const &snapshot : snapshots) {
+    QStringList values;
+    bool        complete{true};
+    for (LoadedPtr const &one : std::as_const(loaded)) {
+      QString const value = snapshot.get(one->data->manifest.value("configuration").toObject());
+      complete            = complete && !value.isEmpty();
+      values << value;
+    }
+    if (complete && std::any_of(values.cbegin(), values.cend(), [&](QString const &v) { return v != values.first(); })) {
+      QStringList labelled;
+      for (qsizetype k{0}; k < values.size(); ++k) {
+        labelled << QStringLiteral("%1 %2").arg(runId(loaded[k]->run), values[k]);
+      }
+      facts << QStringLiteral("Different %1 (recorded): %2.").arg(QString::fromLatin1(snapshot.label), labelled.join(QStringLiteral("; ")));
+    }
+  }
   if (loaded.size() == 2) {
     facts << QStringLiteral("%1 is better on %2 KPIs, %3 on %4; the rest are practically equal or not rated.")
                .arg(runId(loaded[1]->run))
@@ -1226,6 +1265,91 @@ QJsonObject AnalysisTools::rankRuns(QJsonObject const &args) const {
   QJsonObject result{{"metric", QString::fromLatin1(metric->key)}, {"ranking", list}};
   result.insert("card", makeCard(QStringLiteral("Runs ranked by %1").arg(QString::fromLatin1(metric->key)), facts,
                                  {"Rank", "Run", "Title", "Start", "Cost", "MAE", "Overshoot", "Settling"}, rows));
+  return result;
+}
+
+QJsonObject AnalysisTools::runDetails(QJsonObject const &args) {
+  QString         error;
+  LoadedPtr const loaded = load(referenceOf(args.value("run")), error);
+  if (!loaded) {
+    return QJsonObject{{"error", error}};
+  }
+  core::RunManifest const manifest = core::RunManifest::fromJson(loaded->data->manifest);
+  QJsonObject             result   = runHeader(*loaded);
+  QString const           id       = runId(loaded->run);
+  if (!manifest.isValid()) {
+    result.insert("card", makeCard(QStringLiteral("Run %1 details").arg(id),
+                                   {QStringLiteral("Run %1 has no recorded details: it is not saved in the experiment database "
+                                                   "(or was saved by an older version), so there is no configuration snapshot.").arg(id)}));
+    return result;
+  }
+  auto orDash = [](QString const &value) { return value.isEmpty() ? QStringLiteral("not recorded") : value; };
+  QJsonObject const &configuration = manifest.configuration;
+  int const integrity{static_cast<int>(storage::RunStore::verify(loaded->run.storeKey))};
+  QStringList facts{QStringLiteral("DUT: %1. Operator: %2. Purpose: %3. Tags: %4.")
+                      .arg(orDash(manifest.metadata.dut), orDash(manifest.metadata.operatorName), orDash(manifest.metadata.purpose),
+                           orDash(manifest.metadata.tags.join(QStringLiteral(", ")))),
+                    QStringLiteral("Job: %1; configuration %2.").arg(runrecord::jobText(configuration), runrecord::capturedText(configuration)),
+                    QStringLiteral("Program: %1.").arg(runrecord::programSummary(configuration)),
+                    QStringLiteral("Calibration: %1.").arg(runrecord::calibrationSummary(configuration)),
+                    QStringLiteral("Recorded by %1 %2 at %3 s resolution; %4 events.")
+                      .arg(manifest.appName, orDash(manifest.appVersion))
+                      .arg(manifest.timeResolutionS)
+                      .arg(manifest.events.size()),
+                    QStringLiteral("Integrity: %1.").arg(runrecord::integrityText(integrity))};
+  if (!manifest.metadata.notes.isEmpty()) {
+    facts << QStringLiteral("Notes: %1").arg(manifest.metadata.notes);
+  }
+  result.insert("details", manifest.metadata.toJson());
+  result.insert("card", makeCard(QStringLiteral("Run %1 details").arg(id), facts, runrecord::pidColumns(), runrecord::pidRows(configuration)));
+  return result;
+}
+
+QJsonObject AnalysisTools::events(QJsonObject const &args) {
+  QString         error;
+  LoadedPtr const loaded = load(referenceOf(args.value("run")), error);
+  if (!loaded) {
+    return QJsonObject{{"error", error}};
+  }
+  core::RunManifest manifest = core::RunManifest::fromJson(loaded->data->manifest);
+  bool const        recorded{manifest.isValid()};
+  if (!recorded) {
+    QHash<QString, QVector<double>> channels;
+    for (qsizetype c{0}; (c < loaded->names.size()) && (c < loaded->data->states.size()); ++c) {
+      channels.insert(loaded->names[c], loaded->data->states[c]);
+    }
+    manifest.events = core::detectEvents(loaded->data->times, channels);
+  }
+  QString const        filter = args.value("type").toString().trimmed().toLower();
+  QVector<QStringList> rows;
+  QJsonArray           list;
+  QMap<QString, int>   counts;
+  for (core::RunEvent const &event : std::as_const(manifest.events)) {
+    if (!filter.isEmpty() && !event.type.contains(filter) && !runrecord::eventTypeName(event.type).toLower().contains(filter)) {
+      continue;
+    }
+    ++counts[runrecord::eventTypeName(event.type)];
+    if (rows.size() < 60) {
+      double const at{event.time - loaded->data->times.value(0)};
+      rows.push_back({at < 0.5 ? QStringLiteral("0 s") : hms(at), runrecord::eventTypeName(event.type),
+                      event.source == QLatin1String("app") ? QStringLiteral("live") : QStringLiteral("signal"), event.message});
+      list.push_back(QJsonObject{{"after", hms(at)}, {"type", event.type}, {"message", event.message}});
+    }
+  }
+  QStringList summary;
+  for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
+    summary << QStringLiteral("%1 × %2").arg(it.value()).arg(it.key());
+  }
+  QStringList facts{QStringLiteral("Run %1: %2 events%3: %4.")
+                      .arg(runId(loaded->run))
+                      .arg(rows.size() < 60 ? QString::number(rows.size()) : QStringLiteral("60+"))
+                      .arg(filter.isEmpty() ? QString() : QStringLiteral(" matching '%1'").arg(filter))
+                      .arg(summary.isEmpty() ? QStringLiteral("none") : summary.join(QStringLiteral(", ")))};
+  facts << (recorded ? QStringLiteral("Recorded with the run: live events of the application and events from the recorded signals.")
+                     : QStringLiteral("This run has no recorded events; these were derived now from its signals."));
+  QJsonObject result = runHeader(*loaded);
+  result.insert("events", list);
+  result.insert("card", makeCard(QStringLiteral("Events of run %1").arg(runId(loaded->run)), facts, {"After", "Event", "Source", "Details"}, rows));
   return result;
 }
 

@@ -45,8 +45,8 @@ void CycleWidget::updateGui() {
   if (m_params.value("count").toInt() > 0) {
     QString cycles_number_string
       = (m_params.value("count").toInt() == 65535 ? tr("бесконечно")
-                                                  : QString::number(m_params.value("count").toInt()) + " раз(а)");
-    m_text->setText(QString("c %1 по %2\n%3")
+                                                  : tr("%1 раз(а)").arg(m_params.value("count").toInt()));
+    m_text->setText(tr("c %1 по %2\n%3")
                       .arg(m_params.value("start").toInt()+1)
                       .arg(m_params.value("end").toInt()+1)
                       .arg(cycles_number_string));

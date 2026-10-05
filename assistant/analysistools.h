@@ -56,6 +56,8 @@ public:
   QJsonObject anomalies(QJsonObject const &args);
   QJsonObject compareRuns(QJsonObject const &args);
   QJsonObject rankRuns(QJsonObject const &args) const;
+  QJsonObject runDetails(QJsonObject const &args);
+  QJsonObject events(QJsonObject const &args);
   QJsonObject plotRun(QJsonObject const &args);
   QJsonObject generateReport(QJsonObject const &args);
 

@@ -8,8 +8,10 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTimeZone>
+#include <algorithm>
 #include <cmath>
 
+#include "annotationsdb.h"
 #include "experimentanalysis.h"
 #include "sqlitedb.h"
 
@@ -19,7 +21,7 @@ namespace {
 constexpr int    CACHE_VERSION{1}; // Insight's data_service.CACHE_VERSION
 constexpr int    NUMERIC_PROBE_ROWS{50};
 QString const    SELECT_COLUMNS{"key, id, group_name, source, chamber, test_profile, start_time, end_time, samples, "
-                                "duration_s, mae, cost, tail_mae, overshoot, settle_time_s, run_uid, start_epoch, end_epoch"};
+                                "duration_s, mae, cost, tail_mae, overshoot, settle_time_s, run_uid, start_epoch, end_epoch, manifest_json"};
 // Insight's numeric_columns() never treats these as channels
 QSet<QString> const NON_CHANNEL_COLUMNS{"run_id", "timestamp", "start_temp"};
 
@@ -90,6 +92,9 @@ bool ensureSchema(ScopedDb &db) {
   if (!existing.contains("end_epoch")) {
     db.exec("ALTER TABLE runs ADD COLUMN end_epoch REAL");
   }
+  if (!existing.contains("manifest_json")) {
+    db.exec("ALTER TABLE runs ADD COLUMN manifest_json TEXT"); // core::RunManifest, ignored by Insight
+  }
   db.exec("CREATE INDEX IF NOT EXISTS idx_runs_run_uid ON runs(run_uid)");
   db.exec("INSERT OR REPLACE INTO meta(key, value) VALUES('cache_version', ?)", {QString::number(CACHE_VERSION)});
   return true;
@@ -115,7 +120,60 @@ StoredRun rowToRun(QSqlQuery const &q) {
   run.runUid      = q.value("run_uid").toString();
   run.startEpoch  = toDouble(q.value("start_epoch"));
   run.endEpoch    = toDouble(q.value("end_epoch"));
+  if (QString const manifest = q.value("manifest_json").toString(); !manifest.isEmpty()) {
+    run.manifest = core::RunManifest::fromJson(QJsonDocument::fromJson(manifest.toUtf8()).object());
+  }
   return run;
+}
+
+// The manifest of a run being saved: what was captured during the job, plus the events visible in the
+// recorded channels and the integrity part. A run saved without capture (time range saved by hand,
+// imported, older) gets the parts that can be derived: identity, channels by name, signal events.
+core::RunManifest completeManifest(core::RunManifest manifest, QString const &name, QString const &chamber, QString const &runUid,
+                                   QStringList const &columns, QVector<double> const &times, QVector<QVector<double>> const &values,
+                                   QByteArray const &samplesJson) {
+  if (manifest.runUid.isEmpty()) {
+    manifest.runUid = runUid;
+  }
+  if (manifest.name.isEmpty()) {
+    manifest.name = name;
+  }
+  if (manifest.chamber.isEmpty()) {
+    manifest.chamber = chamber;
+  }
+  manifest.start = times.first();
+  manifest.end   = times.last();
+  if (manifest.channels.isEmpty()) {
+    QVariantList states;
+    for (QString const &column : columns) {
+      states.push_back(QVariantMap{{"name", column}});
+    }
+    manifest.channels = core::channelMetadata(states, columns);
+  }
+  if (manifest.configuration.isEmpty()) {
+    manifest.configuration = QJsonObject{{"captured_at_execution", false}};
+  }
+  // events visible in the channels, at their sample times (added once)
+  bool const haveSignalEvents = std::any_of(manifest.events.cbegin(), manifest.events.cend(),
+                                            [](core::RunEvent const &event) { return event.source == QLatin1String("signal"); });
+  if (!haveSignalEvents) {
+    QHash<QString, QVector<double>> channels;
+    for (qsizetype c{0}; (c < columns.size()) && (c < values.size()); ++c) {
+      channels.insert(columns[c], values[c]);
+    }
+    manifest.events += core::detectEvents(times, channels, core::alarmLabels(manifest.configuration.value("alarms").toArray().toVariantList()));
+    core::sortEvents(manifest.events);
+  }
+  bool const fractional = std::any_of(times.cbegin(), times.cend(), [](double t) { return t != std::floor(t); });
+  manifest.timeResolutionS = fractional ? 0.001 : 1.0;
+  manifest.samplesSha256   = core::sha256Hex(samplesJson);
+  manifest.sampleCount     = times.size();
+  manifest.analysisVersion = core::EXPERIMENT_ANALYSIS_VERSION;
+  return manifest;
+}
+
+QString manifestText(core::RunManifest const &manifest) {
+  return QString::fromUtf8(QJsonDocument(manifest.toJson()).toJson(QJsonDocument::Compact));
 }
 
 // Insight's _sanitize_key_component()
@@ -199,8 +257,8 @@ QString insertRun(ScopedDb &db, StoredRun const &run, QStringList const &columns
          samples, duration_s, mae, cost, tail_mae, overshoot, settle_time_s,
          start_time, end_time, columns_json, numeric_columns_json,
          summary_json, bands_json, annotations_json, samples_json, source,
-         chamber, test_profile, cached_at, run_uid, start_epoch, end_epoch
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?))",
+         chamber, test_profile, cached_at, run_uid, start_epoch, end_epoch, manifest_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?))",
     {run.key,
      run.id,
      run.group,
@@ -228,7 +286,8 @@ QString insertRun(ScopedDb &db, StoredRun const &run, QStringList const &columns
      nullable(run.testProfile),
      run.runUid,
      nullable(run.startEpoch),
-     nullable(run.endEpoch)});
+     nullable(run.endEpoch),
+     run.manifest.isValid() ? QVariant(manifestText(run.manifest)) : QVariant()});
   if (q.lastError().isValid()) {
     if (error) {
       *error = q.lastError().text();
@@ -399,6 +458,7 @@ QString RunStore::save(NewRun const &input, QString *error) {
   run.runUid      = input.runUid.isEmpty() ? makeRunUid(input.chamber, run.startEpoch, run.endEpoch) : input.runUid;
   QString summary{QStringLiteral("{}")};
   analyse(input.columns, input.times, input.values, run, summary);
+  run.manifest = completeManifest(input.manifest, run.id, run.chamber, run.runUid, input.columns, input.times, input.values, samplesJson);
   return insertRun(db, run, columns, numeric, samplesJson, error, summary);
 }
 
@@ -466,9 +526,27 @@ bool RunStore::recomputeKpis(QString const &key) {
   }
   ScopedDb db(RUNS_DB);
   ensureSchema(db);
-  return db.exec("UPDATE runs SET mae = ?, cost = ?, tail_mae = ?, overshoot = ?, settle_time_s = ?, summary_json = ? WHERE key = ?",
-                 {nullable(run.mae), nullable(run.cost), nullable(run.tailMae), nullable(run.overshoot), nullable(run.settleTimeS),
-                  summary, key});
+  bool ok = db.exec("UPDATE runs SET mae = ?, cost = ?, tail_mae = ?, overshoot = ?, settle_time_s = ?, summary_json = ? WHERE key = ?",
+                    {nullable(run.mae), nullable(run.cost), nullable(run.tailMae), nullable(run.overshoot), nullable(run.settleTimeS),
+                     summary, key});
+  // runs saved before manifests existed get the derivable part (no configuration snapshot, no live events)
+  QString name, chamber, runUid;
+  bool    missing{false};
+  {
+    QSqlQuery existing = db.query("SELECT id, chamber, run_uid, manifest_json FROM runs WHERE key = ?", {key});
+    if (existing.next()) {
+      name    = existing.value(0).toString();
+      chamber = existing.value(1).toString();
+      runUid  = existing.value(2).toString();
+      missing = existing.value(3).toString().isEmpty();
+    }
+  } // the read must be finished before the same connection writes the row
+  if (missing) {
+    core::RunManifest const manifest =
+      completeManifest({}, name, chamber, runUid, samples.columns, samples.times, samples.values, samplesJson(key));
+    ok = db.exec("UPDATE runs SET manifest_json = ? WHERE key = ?", {manifestText(manifest), key}) && ok;
+  }
+  return ok;
 }
 
 int RunStore::backfillKpis() {
@@ -478,7 +556,9 @@ int RunStore::backfillKpis() {
     ensureSchema(db);
     // runs without the current structured analysis (stage details, anomalies, configuration)
     QString const current = QStringLiteral("%\"analysis_version\":%1,%").arg(core::EXPERIMENT_ANALYSIS_VERSION);
-    QSqlQuery     q       = db.query("SELECT key FROM runs WHERE summary_json NOT LIKE ? AND columns_json LIKE '%\"temp_ref\"%'", {current});
+    QSqlQuery     q       = db.query("SELECT key FROM runs WHERE (summary_json NOT LIKE ? AND columns_json LIKE '%\"temp_ref\"%') "
+                                         "OR manifest_json IS NULL",
+                                         {current});
     while (q.next()) {
       keys.push_back(q.value(0).toString());
     }
@@ -534,7 +614,13 @@ QJsonObject RunStore::metadataJson(StoredRun const &run) {
                      {"chamber", text(run.chamber)},
                      {"test_profile", text(run.testProfile)},
                      {"start_epoch", number(run.startEpoch)},
-                     {"end_epoch", number(run.endEpoch)}};
+                     {"end_epoch", number(run.endEpoch)},
+                     // control-app extensions: integrity and run details
+                     {"sha256", text(run.manifest.samplesSha256)},
+                     {"dut", text(run.manifest.metadata.dut)},
+                     {"operator", text(run.manifest.metadata.operatorName)},
+                     {"purpose", text(run.manifest.metadata.purpose)},
+                     {"tags", QJsonArray::fromStringList(run.manifest.metadata.tags)}};
 }
 
 QString RunStore::importShared(QJsonObject const &metadata, QByteArray const &samplesJsonData, QString *error) {
@@ -551,6 +637,15 @@ QString RunStore::importShared(QJsonObject const &metadata, QByteArray const &sa
     }
     return {};
   }
+  // the manifest recorded on the other computer travels with the samples: their hash must match
+  core::RunManifest const sharedManifest = core::RunManifest::fromJson(metadata.value("manifest").toObject());
+  if (sharedManifest.isValid() && (verify(sharedManifest, samplesJsonData) == Integrity::MODIFIED)) {
+    if (error) {
+      *error = QStringLiteral("The experiment data does not match its content hash (damaged in transfer).");
+    }
+    return {};
+  }
+
   QJsonArray const rows = doc.array();
   QStringList      columns = rows.first().toObject().keys();
   QStringList      numeric;
@@ -597,7 +692,100 @@ QString RunStore::importShared(QJsonObject const &metadata, QByteArray const &sa
   run.startEpoch  = number("start_epoch");
   run.endEpoch    = number("end_epoch");
   run.runUid      = runUid;
+  run.manifest    = sharedManifest;
+  if (!run.manifest.isValid()) {
+    // shared without a manifest (Insight, older version): derivable part, hashed as received
+    QStringList sampleColumns = numeric;
+    QVector<double> times;
+    QVector<QVector<double>> values(sampleColumns.size());
+    for (QJsonValue const &rowValue : rows) {
+      QJsonObject const row = rowValue.toObject();
+      if (!row.value("timestamp").isDouble()) {
+        continue;
+      }
+      times.push_back(row.value("timestamp").toDouble());
+      for (qsizetype c{0}; c < sampleColumns.size(); ++c) {
+        QJsonValue const value = row.value(sampleColumns[c]);
+        values[c].push_back(value.isDouble() ? value.toDouble() : qQNaN());
+      }
+    }
+    if (!times.isEmpty()) {
+      run.manifest = completeManifest({}, run.id, run.chamber, runUid, sampleColumns, times, values, samplesJsonData);
+    }
+  }
   return insertRun(db, run, columns, numeric, samplesJsonData, error);
+}
+
+std::optional<core::RunManifest> RunStore::manifest(QString const &key) {
+  ScopedDb db(RUNS_DB);
+  ensureSchema(db);
+  QSqlQuery q = db.query("SELECT manifest_json FROM runs WHERE key = ?", {key});
+  if (!q.next() || q.value(0).toString().isEmpty()) {
+    return std::nullopt;
+  }
+  return core::RunManifest::fromJson(QJsonDocument::fromJson(q.value(0).toString().toUtf8()).object());
+}
+
+bool RunStore::updateMetadata(QString const &key, core::RunMetadata const &metadata) {
+  std::optional<core::RunManifest> current = manifest(key);
+  if (!current) {
+    return false;
+  }
+  current->metadata = metadata; // the samples are unchanged: their hash stays valid
+  ScopedDb db(RUNS_DB);
+  ensureSchema(db);
+  return db.exec("UPDATE runs SET manifest_json = ? WHERE key = ?", {manifestText(*current), key});
+}
+
+RunStore::Integrity RunStore::verify(core::RunManifest const &manifest, QByteArray const &samples) {
+  if (manifest.samplesSha256.isEmpty()) {
+    return Integrity::UNKNOWN;
+  }
+  return core::sha256Hex(samples) == manifest.samplesSha256 ? Integrity::VERIFIED : Integrity::MODIFIED;
+}
+
+RunStore::Integrity RunStore::verify(QString const &key) {
+  std::optional<core::RunManifest> const stored = manifest(key);
+  return stored ? verify(*stored, samplesJson(key)) : Integrity::UNKNOWN;
+}
+
+QJsonObject RunStore::bundle(QString const &key, QString *error) {
+  ScopedDb db(RUNS_DB);
+  ensureSchema(db);
+  QSqlQuery q = db.query(QStringLiteral("SELECT %1, summary_json, samples_json FROM runs WHERE key = ?").arg(SELECT_COLUMNS), {key});
+  if (!q.next()) {
+    if (error) {
+      *error = QStringLiteral("Run %1 not found").arg(key);
+    }
+    return {};
+  }
+  StoredRun const   run      = rowToRun(q);
+  QByteArray const  samples  = q.value("samples_json").toString().toUtf8();
+  QJsonObject const analysis = QJsonDocument::fromJson(q.value("summary_json").toString().toUtf8()).object();
+  QJsonObject       manifestJson = run.manifest.toJson();
+  QString const     integrity = verify(run.manifest, samples) == Integrity::VERIFIED   ? QStringLiteral("verified")
+                                : verify(run.manifest, samples) == Integrity::MODIFIED ? QStringLiteral("modified")
+                                                                                       : QStringLiteral("unknown");
+  QJsonObject integrityJson = manifestJson.value("integrity").toObject();
+  integrityJson.insert("status_when_exported", integrity);
+  manifestJson.insert("integrity", integrityJson);
+  manifestJson.insert("store", metadataJson(run));
+  manifestJson.insert("analysis", analysis);
+  manifestJson.insert("samples", QJsonDocument::fromJson(samples).array());
+  // annotations and variable rules made on this run (the analysis page keys stored runs as "db:<key>")
+  QString const runKey = QStringLiteral("db:%1").arg(key);
+  QJsonArray    annotations;
+  for (AnnotationRow const &row : AnnotationsDb::annotationsBetween(run.startEpoch, run.endEpoch, runKey)) {
+    annotations.push_back(QJsonObject{{"start", row.t0}, {"end", row.t1}, {"label", row.label}, {"user", row.userName}, {"created_at", row.createdAt}});
+  }
+  QJsonArray rules;
+  for (RuleRow const &row : AnnotationsDb::rules(runKey)) {
+    rules.push_back(QJsonObject{{"channel", row.channel}, {"lo", std::isnan(row.lo) ? QJsonValue() : QJsonValue(row.lo)},
+                                {"hi", std::isnan(row.hi) ? QJsonValue() : QJsonValue(row.hi)}, {"label", row.name}, {"user", row.userName}});
+  }
+  manifestJson.insert("annotations", annotations);
+  manifestJson.insert("variable_rules", rules);
+  return manifestJson;
 }
 
 } // namespace deepvaccontrol::storage

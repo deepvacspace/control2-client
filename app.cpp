@@ -301,7 +301,8 @@ void App::onStateValuesReceive(QVector<float> stateValues) {
 
   QVector<double> valuesDouble{stateValues.cbegin(), stateValues.cend()};
   qint64 const    timestampMs = QDateTime::currentMSecsSinceEpoch();
-  m_dataManager->addPoint(static_cast<double>(timestampMs / 1000), valuesDouble);
+  // millisecond resolution: samples arriving within the same second are all kept
+  m_dataManager->addPoint(static_cast<double>(timestampMs) / 1000.0, valuesDouble);
   m_experimentSyncServer->publishSample(m_states.getNames(), stateValues, timestampMs);
 
   if (m_opcServer && (0 == m_status.getOpcStatus())) {

@@ -182,6 +182,13 @@ void ExperimentLibrary::applySegmentation() {
     run.end      = stored.endEpoch;
     run.samples  = stored.samples;
     run.chamber  = stored.chamber;
+    if (stored.manifest.isValid()) {
+      QJsonObject const job = stored.manifest.configuration.value("job").toObject();
+      run.details = QStringList{stored.manifest.metadata.searchText(), job.value("label").toString(), job.value("test_profile").toString(),
+                                stored.testProfile}
+                      .join(QLatin1Char(' '))
+                      .simplified();
+    }
     if (std::isnan(run.start)) {
       // runs written by Deepvac Insight only carry text times
       run.start = QDateTime::fromString(stored.startTime.chopped(4), "yyyy-MM-dd HH:mm:ss").toSecsSinceEpoch();
@@ -331,6 +338,9 @@ std::shared_ptr<ExperimentData const> ExperimentLibrary::load(ExperimentRun cons
     data->run.samples  = data->times.size();
     data->run.start    = data->times.first();
     data->run.end      = data->times.last();
+    if (auto manifest = storage::RunStore::manifest(run.storeKey)) {
+      data->manifest = manifest->toJson();
+    }
     return data;
   }
 

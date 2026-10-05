@@ -11,6 +11,7 @@
 #include "experimentlibrary.h"
 #include "experimentanalysis.h"
 #include "experimentreport.h"
+#include "runmanifest.h"
 
 class QCheckBox;
 class QComboBox;
@@ -21,6 +22,7 @@ class QListWidget;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
+class QTextBrowser;
 
 namespace deepvaccontrol {
 
@@ -75,6 +77,12 @@ private:
   [[nodiscard]] double          compareOffset(ExperimentData const &data) const;     // alignment shift of a compared run
   [[nodiscard]] QVector<double> comparedElapsed(ExperimentData const &data) const;   // elapsed + alignment shift
   void     exportReport(bool pdf);
+  // self-describing run: manifest, typed events, run record, integrity
+  void     loadRecord();
+  void     refreshRecord();
+  void     exportBundle();
+  void     editRunDetails();
+  [[nodiscard]] QString recordHtml() const;
   [[nodiscard]] int channelIndex(QString const &name) const;
   void     refreshStats();
   void     refreshRulesList();
@@ -160,6 +168,12 @@ private:
   QTableWidget   *m_anomalyTable{nullptr};
   QCheckBox      *m_anomaliesCheck{nullptr};
   ComparisonPanel *m_comparisonPanel{nullptr};
+  QTableWidget   *m_eventsTable{nullptr};
+  QLabel         *m_eventsLabel{nullptr};
+  QTextBrowser   *m_recordView{nullptr};
+  core::RunManifest m_manifest;          // stored run's manifest; for other runs only derived events
+  bool              m_manifestStored{false};
+  int               m_integrity{2};      // storage::RunStore::Integrity
   QTimer         *m_statisticsTimer{nullptr};
   std::optional<core::ExperimentAnalysis> m_analysis;
   QComboBox      *m_ruleChannelCombo{nullptr};

@@ -14,6 +14,8 @@
 
 #include "actionmanager.h"
 #include "experimentinput.h"
+#include "runmanifest.h"
+#include "runrecord.h"
 
 namespace deepvaccontrol::experimentreport {
 
@@ -88,7 +90,8 @@ QString eventType(int type) {
 } // namespace
 
 QString html(ExperimentReportData const &data, bool embedImages) {
-  core::ExperimentAnalysis const *a = data.analysis;
+  core::ExperimentAnalysis const *a        = data.analysis;
+  core::RunManifest const         manifest = core::RunManifest::fromJson(data.manifest);
   QString                         body;
   auto section = [&body](QString const &title) { body += QStringLiteral("<h2>%1</h2>").arg(esc(title)); };
 
@@ -115,6 +118,27 @@ QString html(ExperimentReportData const &data, bool embedImages) {
                                                    .arg(a->anomalies.size() - a->anomalyCount(core::Anomaly::Severity::WARNING))});
   }
   body += facts(summary);
+
+  section(QObject::tr("Run details"));
+  core::RunMetadata const &details = manifest.metadata;
+  auto                     orDash  = [](QString const &value) { return value.isEmpty() ? QStringLiteral("—") : value; };
+  QVector<QPair<QString, QString>> detailFacts{{QObject::tr("DUT"), orDash(details.dut)},
+                                               {QObject::tr("Operator"), orDash(details.operatorName)},
+                                               {QObject::tr("Purpose"), orDash(details.purpose)},
+                                               {QObject::tr("Tags"), orDash(details.tags.join(QStringLiteral(", ")))}};
+  if (!details.notes.isEmpty()) {
+    detailFacts.push_back({QObject::tr("Notes"), details.notes});
+  }
+  if (data.manifestStored) {
+    detailFacts.push_back({QObject::tr("Run uid"), manifest.runUid});
+    detailFacts.push_back({QObject::tr("Recorded by"), QStringLiteral("%1 %2").arg(manifest.appName, manifest.appVersion).trimmed()});
+    detailFacts.push_back({QObject::tr("Time resolution"), QObject::tr("%1 s").arg(manifest.timeResolutionS)});
+    detailFacts.push_back({QObject::tr("Integrity"), runrecord::integrityText(data.integrity)});
+    detailFacts.push_back({QObject::tr("Samples SHA-256"), orDash(manifest.samplesSha256)});
+  } else {
+    detailFacts.push_back({QObject::tr("Record"), QObject::tr("not saved in the experiment database: no manifest, events derived from the signals")});
+  }
+  body += facts(detailFacts);
 
   if (a && a->hasControl) {
     core::ControlKpis const &k = a->run.overall;
@@ -155,6 +179,39 @@ QString html(ExperimentReportData const &data, bool embedImages) {
                     QStringLiteral("%1 / %2").arg(c.programIntervals > 0 ? QString::number(c.programIntervals) : QStringLiteral("—"),
                                                   c.cycles > 0 ? QString::number(c.cycles) : QStringLiteral("—"))},
                    {QObject::tr("Recorded channels"), c.channels.join(QStringLiteral(", "))}});
+  }
+
+  QJsonObject const &configuration = manifest.configuration;
+  if (!configuration.isEmpty()) {
+    section(QObject::tr("Configuration snapshot"));
+    body += facts({{QObject::tr("Captured"), runrecord::capturedText(configuration)},
+                   {QObject::tr("Job"), runrecord::jobText(configuration)},
+                   {QObject::tr("User"), orDash(configuration.value("user").toObject().value("name").toString())},
+                   {QObject::tr("Application"), QStringLiteral("%1 %2").arg(configuration.value("app").toObject().value("name").toString(),
+                                                                            configuration.value("app").toObject().value("version").toString()).trimmed()},
+                   {QObject::tr("Calibration"), runrecord::calibrationSummary(configuration)}});
+    auto escRows = [](QVector<QStringList> rows) {
+      for (QStringList &row : rows) {
+        for (QString &cell : row) {
+          cell = cell.toHtmlEscaped();
+        }
+      }
+      return rows;
+    };
+    if (QVector<QStringList> const program = runrecord::programRows(configuration); !program.isEmpty()) {
+      body += QStringLiteral("<h3>%1</h3>").arg(esc(QObject::tr("Program sent to the PLC"))) + table(runrecord::programColumns(), escRows(program));
+    }
+    if (QVector<QStringList> const pid = runrecord::pidRows(configuration); !pid.isEmpty()) {
+      body += QStringLiteral("<h3>%1</h3>").arg(esc(QObject::tr("PID table"))) + table(runrecord::pidColumns(), escRows(pid));
+    }
+  }
+  if (!manifest.channels.isEmpty()) {
+    section(QObject::tr("Channels"));
+    QVector<QStringList> rows;
+    for (core::ChannelMeta const &channel : manifest.channels) {
+      rows.push_back({esc(channel.name), esc(channel.label), esc(channel.unit), esc(channel.quantity), esc(channel.role)});
+    }
+    body += table({QObject::tr("Name"), QObject::tr("Description"), QObject::tr("Unit"), QObject::tr("Quantity"), QObject::tr("Role")}, rows);
   }
 
   // ---- charts
@@ -245,7 +302,19 @@ QString html(ExperimentReportData const &data, bool embedImages) {
   }
 
   // ---- events, annotations, rules
-  if (!data.events.isEmpty()) {
+  if (!manifest.events.isEmpty()) {
+    section(QObject::tr("Events"));
+    QVector<QStringList> rows;
+    for (int i{0}; (i < manifest.events.size()) && (i < MAX_EVENTS); ++i) {
+      core::RunEvent const &event = manifest.events[i];
+      rows.push_back({seconds(event.time - data.run.start), dateTime(event.time), colored(runrecord::eventTypeName(event.type), runrecord::eventColor(event.type)),
+                      event.source == QLatin1String("app") ? QObject::tr("live") : QObject::tr("signal"), esc(event.message)});
+    }
+    body += table({QObject::tr("Elapsed"), QObject::tr("Time"), QObject::tr("Event"), QObject::tr("Source"), QObject::tr("Details")}, rows);
+    if (manifest.events.size() > MAX_EVENTS) {
+      body += QStringLiteral("<p>%1</p>").arg(esc(QObject::tr("… and %1 more").arg(manifest.events.size() - MAX_EVENTS)));
+    }
+  } else if (!data.events.isEmpty()) {
     section(QObject::tr("Events"));
     QVector<QStringList> rows;
     for (int i{0}; (i < data.events.size()) && (i < MAX_EVENTS); ++i) {

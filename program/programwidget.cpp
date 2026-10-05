@@ -8,6 +8,7 @@
 #include "delayselectdialog.h"
 #include "dialogs/messagedialog.h"
 #include "experimentrecorder.h"
+#include "rundetailsdialog.h"
 #include "fileloaddialogpathprovider.h"
 #include "filesavedialogpathprovider.h"
 #include "intervaleditdialog.h"
@@ -211,6 +212,7 @@ void ProgramWidget::initGui() {
 
   btnsLay->addWidget(m_startBtn);
   btnsLay->addWidget(m_startDelayedBtn);
+  btnsLay->addWidget(new RunDetailsButton(m_resHolder, this));
   btnsLay->addWidget(m_runStatus);
   btnsLay->addSpacing(30 * utils::ssf());
   btnsLay->addWidget(label2);
@@ -270,8 +272,9 @@ void ProgramWidget::sendProgram() {
   m_runningName   = m_libraryName.isEmpty() ? QString{} : (m_libraryModified ? tr("%1 (modified)").arg(m_libraryName) : m_libraryName);
   m_runningLabels = m_labels;
   if (m_resHolder->recorder) {
-    m_resHolder->recorder->setNextJob(m_runningName.isEmpty() ? tr("Program") : tr("Program %1").arg(m_runningName),
-                                      m_runningName);
+    m_resHolder->recorder->setNextJob(ExperimentRecorder::JobInfo{
+      QStringLiteral("program"), m_runningName.isEmpty() ? tr("Program") : tr("Program %1").arg(m_runningName), m_runningName,
+      m_model->programVariant(), QJsonObject{{"labels", QJsonArray::fromStringList(m_runningLabels)}}});
   }
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, m_model->makeSendData());
   QString const actionMsg{

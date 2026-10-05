@@ -54,7 +54,7 @@ bool DataHolder::addPoint(double epochSecTime, QVector<double> const &pointVecto
     m_autosaveTimer->start(m_autosaveSecPeriod * 1000);
   }
 
-  // it could be several points at the same sec
+  // samples carry millisecond timestamps: only an exact duplicate time replaces the previous sample
   if (!m_times.empty() && (epochSecTime == m_times.back())) {
     // replace last
     for (int i{0U}; i < m_numberOfStates; ++i) {
@@ -116,7 +116,7 @@ QPair<double, QVector<double>> DataHolder::getValueNearTime(double epochSecTime)
   // if there are no points after given time, select prev (last in the interval)
   quint64 const indexNear = (-1 == indexInInterval) ? (m_times.size() - 1) : indexInInterval;
 
-  return {m_times[indexInInterval], getValueAtIndex(indexInInterval)};
+  return {m_times[indexNear], getValueAtIndex(indexNear)};
 }
 
 DataHolder &DataHolder::slice(double epochSecStartTime, double epochSecEndTime) {
@@ -140,11 +140,12 @@ DataHolder &DataHolder::slice(double epochSecStartTime, double epochSecEndTime) 
     return *this;
   }
 
-  QVector<double>          slicedTime(m_times.cbegin() + startIndex, m_times.cbegin() + endIndex);
+  // endIndex is inclusive
+  QVector<double>          slicedTime(m_times.cbegin() + startIndex, m_times.cbegin() + endIndex + 1);
   QVector<QVector<double>> slicedStates;
   {
     for (QVector<double> const &state : m_states) {
-      QVector<double> slicedState(state.cbegin() + startIndex, state.cbegin() + endIndex);
+      QVector<double> slicedState(state.cbegin() + startIndex, state.cbegin() + endIndex + 1);
       slicedStates << slicedState;
     }
   }

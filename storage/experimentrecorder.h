@@ -1,9 +1,12 @@
 #ifndef EXPERIMENTRECORDER_H
 #define EXPERIMENTRECORDER_H
 
+#include <QJsonObject>
 #include <QObject>
+#include <QVariantMap>
 
 #include "hardwarestatus.h"
+#include "runmanifest.h"
 #include "runstore.h"
 
 namespace deepvaccontrol {
@@ -11,19 +14,41 @@ namespace deepvaccontrol {
 struct ResHolder;
 
 /**
- * @brief Saves every finished chamber job (manual setpoint, program, test profile) to the
- * experiment database (storage::RunStore, Deepvac Insight's format) and helps saving any
- * recorded time range on demand.
+ * @brief Saves every finished chamber job (manual setpoint, program, test profile, AI runs) to the
+ * experiment database (storage::RunStore, Deepvac Insight's format) as a self-describing run, and
+ * helps saving any recorded time range on demand.
+ *
+ * Captured while the experiment runs, not reconstructed afterwards:
+ * - the configuration snapshot (program / profile sent, PID table, calibration, control parameters,
+ *   alarms, application version, user, chamber) when the job is sent;
+ * - live events: job start / end, operator and PLC actions, PLC alarms, user changes, PID table writes;
+ * - the run details (DUT, operator, purpose, tags) entered for the next run.
+ * Events visible in the recorded channels (setpoint, gains, PID band, status, program position,
+ * alarm bits) are added from the samples when the run is saved (RunStore::save).
  */
 class ExperimentRecorder : public QObject {
   Q_OBJECT
 public:
   static constexpr double MIN_RUN_DURATION_SEC{60.0};
 
+  // what is about to be started
+  struct JobInfo {
+    QString     kind;        // "manual_setpoint", "program", "test_profile", "ai_advisor", "offline_advisor"
+    QString     label;       // run name suffix
+    QString     testProfile; // profile / library program name
+    QVariantMap program;     // ProgramModel::programVariant() as sent to the PLC
+    QJsonObject details;     // kind specific (AI target, duration, ...)
+  };
+
   explicit ExperimentRecorder(ResHolder *resHolder, QObject *parent = nullptr);
 
-  // describes the job about to be started (shown in the run name / test_profile column)
+  // the job about to be started: takes the configuration snapshot now
+  void setNextJob(JobInfo const &job);
   void setNextJob(QString const &label, QString const &testProfile = {});
+
+  // run details for the next runs (kept until changed); the operator defaults to the logged-in user
+  void                            setNextRunMetadata(core::RunMetadata const &metadata);
+  [[nodiscard]] core::RunMetadata nextRunMetadata() const;
 
   [[nodiscard]] QString chamberName() const;
   [[nodiscard]] QString chamberRef() const; // "host:port" of the PLC gate, identifies the chamber across computers
@@ -33,20 +58,38 @@ public:
   // saves in a background thread; emits runSaved / saveFailed
   void saveAsync(storage::RunStore::NewRun run);
 
+  // configuration of the chamber and the application right now, as stored in a run's manifest
+  [[nodiscard]] QJsonObject configurationSnapshot(JobInfo const &job) const;
+
 signals:
   void runSaved(QString const &key, QString const &name);
   void saveFailed(QString const &error);
+  void nextRunMetadataChanged();
 
 private:
-  void onStatusChanged(HardwareStatus::HardwareStatusEnum newStatus, HardwareStatus::HardwareStatusEnum oldStatus);
-  void finishJob(bool alarm);
+  struct Job {
+    JobInfo                 info;
+    QJsonObject             configuration;
+    core::RunMetadata       metadata;
+    QVector<core::RunEvent> events;
+    double                  start{qQNaN()};
+  };
 
-  ResHolder *m_resHolder;
-  double     m_jobStart{qQNaN()};
-  QString    m_jobLabel;
-  QString    m_jobTestProfile;
-  QString    m_nextLabel;
-  QString    m_nextTestProfile;
+  void onStatusChanged(HardwareStatus::HardwareStatusEnum newStatus, HardwareStatus::HardwareStatusEnum oldStatus);
+  void beginJob(QString const &note);
+  void finishJob(HardwareStatus::HardwareStatusEnum endStatus);
+  void addEvent(char const *type, QString const &message, QJsonObject const &data = {});
+  void onPlcSettingsChanged();
+  [[nodiscard]] bool jobActive() const;
+
+  ResHolder        *m_resHolder;
+  Job               m_job;
+  bool              m_hasPending{false};
+  JobInfo           m_pendingJob;
+  QJsonObject       m_pendingConfiguration;
+  double            m_pendingAt{qQNaN()};
+  core::RunMetadata m_nextMetadata;
+  QJsonValue        m_lastPids; // PID table last seen, to log writes during a job
 };
 
 } // namespace deepvaccontrol

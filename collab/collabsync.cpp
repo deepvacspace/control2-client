@@ -314,6 +314,9 @@ void syncRuns(Context &ctx, QString const &userName) {
       }
       QJsonObject metadata = runFields(run);
       metadata.insert("uid", run.runUid);
+      if (run.manifest.isValid()) {
+        metadata.insert("manifest", run.manifest.toJson()); // configuration, events, content hash: verified on import
+      }
       QJsonObject const payload{{"metadata", metadata}, {"samples_z", QString::fromLatin1(compressed.toBase64())}};
       QJsonObject       uploadResponse;
       if (ctx.client->request("POST", "/runs/" + run.runUid, &payload, uploadResponse, &error, nullptr, 300'000)) {

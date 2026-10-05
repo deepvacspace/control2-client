@@ -13,6 +13,9 @@
 #include <cmath>
 
 #include "experimentinput.h"
+#include "runmanifest.h"
+#include "runrecord.h"
+#include <functional>
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -26,7 +29,7 @@ QTableWidget *makeTable(QWidget *parent) {
   table->verticalHeader()->setVisible(false);
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
-  table->setFixedHeight(170 * utils::ssf());
+  table->setMinimumHeight(90 * utils::ssf());
   return table;
 }
 
@@ -257,7 +260,38 @@ void ComparisonPanel::fillConfiguration() {
   }
   chamber.differs = std::any_of(chamber.values.cbegin(), chamber.values.cend(), [&](QString const &v) { return v != chamber.values.first(); });
   started.differs = false; // always different, not a setting
-  rows << chamber << started << core::compareConfigs(configs);
+  rows << chamber << started;
+
+  // recorded configuration snapshots (when the runs have them): what was actually sent and set
+  auto snapshotRow = [&](QString const &label, std::function<QString(core::RunManifest const &)> value) {
+    core::ConfigComparisonRow row{label, {}, false};
+    bool                      any{false};
+    for (ComparedRun const &run : std::as_const(m_runs)) {
+      core::RunManifest const manifest = core::RunManifest::fromJson(run.manifest);
+      QString const           text     = manifest.isValid() ? value(manifest) : QString();
+      any                              = any || !text.isEmpty();
+      row.values << (text.isEmpty() ? QStringLiteral("—") : text);
+    }
+    row.differs = std::any_of(row.values.cbegin(), row.values.cend(), [&](QString const &v) { return v != row.values.first(); });
+    if (any) {
+      rows << row;
+    }
+  };
+  snapshotRow(tr("DUT"), [](core::RunManifest const &m) { return m.metadata.dut; });
+  snapshotRow(tr("Purpose"), [](core::RunManifest const &m) { return m.metadata.purpose; });
+  snapshotRow(tr("Operator"), [](core::RunManifest const &m) { return m.metadata.operatorName; });
+  snapshotRow(tr("Job"), [](core::RunManifest const &m) { return m.configuration.contains("job") ? runrecord::jobText(m.configuration) : QString(); });
+  snapshotRow(tr("Program"), [](core::RunManifest const &m) {
+    return m.configuration.value("job").toObject().contains("program") ? runrecord::programSummary(m.configuration) : QString();
+  });
+  snapshotRow(tr("PID table (Kp/Ki/Kd per band)"), [](core::RunManifest const &m) {
+    return m.configuration.contains("plc_settings") ? runrecord::pidSummary(m.configuration) : QString();
+  });
+  snapshotRow(tr("Calibration"), [](core::RunManifest const &m) {
+    return m.configuration.contains("plc_settings") ? runrecord::calibrationSummary(m.configuration) : QString();
+  });
+  snapshotRow(tr("Application version"), [](core::RunManifest const &m) { return m.appVersion; });
+  rows << core::compareConfigs(configs);
 
   setHeader(m_configTable, headers, static_cast<int>(rows.size()));
   for (int r{0}; r < rows.size(); ++r) {

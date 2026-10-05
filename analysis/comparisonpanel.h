@@ -1,6 +1,7 @@
 #ifndef COMPARISONPANEL_H
 #define COMPARISONPANEL_H
 
+#include <QJsonObject>
 #include <QVector>
 #include <QWidget>
 
@@ -24,6 +25,7 @@ struct ComparedRun {
   QVector<double>                 temp;
   QVector<double>                 reference;
   QVector<double>                 signal; // the compared channel, for the signal differences
+  QJsonObject                     manifest; // core::RunManifest JSON of stored runs (configuration snapshot, run details)
 };
 
 /**

@@ -34,6 +34,9 @@ static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QT
 int main(int argc, char *argv[]) {
   QApplication a(argc, argv);
   QApplication::setApplicationName(QStringLiteral("Deepvac Control"));
+#ifdef DEEPVACCONTROL_VERSION
+  QApplication::setApplicationVersion(QStringLiteral(DEEPVACCONTROL_VERSION));
+#endif
   // Keep the display name empty so the platform plugin does not append
   // " - Deepvac Control" to the title that MainWindow already provides.
   QApplication::setApplicationDisplayName(QString());

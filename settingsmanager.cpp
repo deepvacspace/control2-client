@@ -79,6 +79,7 @@ QVariantList SettingsManager::commitSystemValues() {
 void SettingsManager::setPlcSettings(QVariantMap const &plcSettings) {
   m_settingsMap["plc_settings"] = plcSettings;
   saveToSettingsFile();
+  emit plcSettingsChanged();
 }
 
 void SettingsManager::setStatesSettings(QVariantList const &statesSettings) {

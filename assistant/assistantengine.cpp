@@ -33,6 +33,7 @@ QString AssistantEngine::systemPrompt() const {
            "How to work:\n"
            "- Get data with tools: get_run_summary (describe a run), compare_runs (any question about two or more "
            "runs), rank_runs (best / worst run, ranking), get_stages / get_kpis (stages), get_anomalies, list_runs, "
+           "get_run_details (DUT, purpose, configuration as recorded), get_events (what happened when), "
            "plot_run (show / plot / open), generate_report. If answering needs data you do not have in a card of "
            "this conversation, call a tool first.\n"
            "- Temperatures are always in °C, as in the cards. Never use Kelvin, never convert units, never calculate "

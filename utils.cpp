@@ -58,7 +58,7 @@ QString timeFromSec(long sec, bool withDay) {
   int m  = static_cast<int>(floor(sec % 3600 / 60));
   int s  = static_cast<int>(sec % 60);
   if (d && withDay) {
-    return QString("%1д. %2:%3:%4")
+    return QCoreApplication::translate("deepvaccontrol::utils", "%1д. %2:%3:%4")
       .arg(d)
       .arg(h, 1, 10, QChar('0'))
       .arg(m, 2, 10, QChar('0'))

@@ -179,7 +179,7 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   // 2 - ос
   auto *osWidget = new SysOsWidget(resHolder, this);
   prepareSystemTabPage(osWidget);
-  m_tabWidget->addTab(osWidget, "ОС");
+  m_tabWidget->addTab(osWidget, tr("ОС"));
 
   // 3 - ручный выходы
   auto *forceOutWidget = new ForceOutListWidget(

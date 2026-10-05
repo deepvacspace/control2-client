@@ -47,6 +47,8 @@ signals:
   // Set of general settings updates its widget automatically, but another (pid, calibration)
   // need be informed.
   void settingsPulled();
+  // plc_settings (PID table, calibration, general settings) replaced, by the user, the AI or the PLC echo
+  void plcSettingsChanged();
   void insightSyncEnabledChanged(bool enabled);
   void opcSettingsChanged();
 

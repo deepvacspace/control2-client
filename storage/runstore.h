@@ -3,6 +3,8 @@
 
 #include <QByteArray>
 #include <QJsonObject>
+
+#include "runmanifest.h"
 #include <QStringList>
 #include <QVector>
 #include <optional>
@@ -30,6 +32,7 @@ struct StoredRun {
   QString runUid;          // stable id across computers
   double  startEpoch{qQNaN()};
   double  endEpoch{qQNaN()};
+  core::RunManifest manifest; // self-describing part (control-app extension column manifest_json); invalid when absent
 };
 
 struct RunSamples {
@@ -55,6 +58,15 @@ public:
     QStringList              columns;
     QVector<double>          times;
     QVector<QVector<double>> values;
+    // identity, metadata, configuration snapshot, channels and live events captured while the job ran;
+    // save() adds the events visible in the channels and the integrity part (created when empty)
+    core::RunManifest manifest;
+  };
+
+  enum class Integrity : uint8_t {
+    VERIFIED, // the samples match the hash recorded when the run was saved
+    MODIFIED, // they do not: changed or damaged after saving
+    UNKNOWN   // no hash recorded (runs from Insight / older versions)
   };
 
   static QVector<StoredRun>       list(QString *error = nullptr);
@@ -83,6 +95,15 @@ public:
   // computes them for stored runs analysed by an older version (or never); returns how many were updated
   static int backfillKpis();
   static QString formatTime(double epochSec);
+
+  // ---- self-describing runs
+  static std::optional<core::RunManifest> manifest(QString const &key);
+  static bool                             updateMetadata(QString const &key, core::RunMetadata const &metadata);
+  static Integrity                        verify(QString const &key);
+  static Integrity                        verify(core::RunManifest const &manifest, QByteArray const &samplesJson);
+  // the whole run as one JSON document: identity, metadata, configuration, channels, samples, analysis
+  // (stages, KPIs, anomalies), events, annotations and integrity, for archiving or exchange
+  static QJsonObject                      bundle(QString const &key, QString *error = nullptr);
 };
 
 } // namespace deepvaccontrol::storage

@@ -4,6 +4,7 @@
 
 #include "constants.h"
 #include "experimentrecorder.h"
+#include "rundetailsdialog.h"
 #include "delayinfodialog.h"
 #include "delayselectdialog.h"
 #include "labelplus.h"
@@ -81,6 +82,7 @@ void Manual::initGui() {
   controlLay->addWidget(m_startBtn);
   controlLay->addWidget(m_startDelayedBtn);
   controlLay->addWidget(m_stopBtn);
+  controlLay->addWidget(new RunDetailsButton(m_resHolder, this));
   controlLay->addWidget(new StatusLabel(m_resHolder, this));
   controlLay->addStretch();
 
@@ -277,7 +279,9 @@ bool Manual::sendJob(ProgramModel *model, QString const &runLabel, QString const
   }
 
   if (m_resHolder->recorder) {
-    m_resHolder->recorder->setNextJob(runLabel, testProfile);
+    m_resHolder->recorder->setNextJob(ExperimentRecorder::JobInfo{testProfile.isEmpty() ? QStringLiteral("manual_setpoint")
+                                                                                        : QStringLiteral("test_profile"),
+                                                                  runLabel, testProfile, model->programVariant(), {}});
   }
   model->printToDebug();
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, model->makeSendData());
