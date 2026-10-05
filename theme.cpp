@@ -80,6 +80,8 @@ QPushButton#stopButton:disabled { background: %11; color: %10; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QDateTimeEdit, QTimeEdit, QDateEdit, QTextEdit, QPlainTextEdit {
   background: %14; color: %2; border: %4px solid %3; border-radius: %15px; selection-background-color: %8;
 }
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled, QTextEdit:disabled,
+QPlainTextEdit:disabled { color: %10; background: %12; border-color: %11; }
 QComboBox QAbstractItemView { background: %1; color: %2; border: %4px solid %3; selection-background-color: %8; }
 QListView, QListWidget, QTreeView, QTreeWidget, QTableView, QTableWidget, QTextBrowser {
   background: %14; color: %2; border: %4px solid %3; border-radius: %15px; gridline-color: %3;

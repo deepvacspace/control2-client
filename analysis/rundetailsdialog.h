@@ -8,6 +8,7 @@
 
 class QLineEdit;
 class QPlainTextEdit;
+class QTimer;
 
 namespace deepvaccontrol {
 
@@ -39,6 +40,26 @@ private:
   void refresh();
 
   ResHolder *m_resHolder;
+};
+
+// The same details as an inline form (Manual control page): edits are stored for the next runs as they are typed.
+class RunDetailsPanel : public QWidget {
+  Q_OBJECT
+public:
+  explicit RunDetailsPanel(ResHolder *resHolder, QWidget *parent = nullptr);
+
+private:
+  void load();  // from the recorder
+  void store(); // to the recorder
+
+  ResHolder      *m_resHolder;
+  QLineEdit      *m_dut{nullptr};
+  QLineEdit      *m_operator{nullptr};
+  QLineEdit      *m_purpose{nullptr};
+  QLineEdit      *m_tags{nullptr};
+  QPlainTextEdit *m_notes{nullptr};
+  QTimer         *m_storeTimer{nullptr};
+  bool            m_loading{false};
 };
 
 } // namespace deepvaccontrol

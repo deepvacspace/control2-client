@@ -106,7 +106,6 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   lay->addWidget(m_user);
   lay->addSpacing(px(8));
   lay->addWidget(m_appState);
-  lay->addWidget(m_usb);
   lay->addWidget(m_opc);
   lay->addSpacing(px(30));
   lay->addWidget(m_clock);
@@ -241,8 +240,7 @@ void HeaderBar::updateBadges() {
   auto const appState = m_resHolder->status->getAppState();
   QString    stateText = APP_STATE_LIST.value(static_cast<int>(appState));
   badge(m_appState, stateText, appState == StatusManager::AppState::ONLINE ? c.active : (appState == StatusManager::AppState::OFFLINE ? c.danger : c.warning));
-  m_usb->setVisible(m_usbPresent);
-  badge(m_usb, QStringLiteral("USB"), c.ready);
+  m_usb->setVisible(false); // removed from the design; drives are still offered as export locations
   QString const opcText = (m_opcState == 0) ? QStringLiteral("OPC OK") : (m_opcState == -1 ? QStringLiteral("OPC ERR") : QStringLiteral("OPC OFF"));
   badge(m_opc, opcText, (m_opcState == 0) ? c.ready : (m_opcState == -1 ? c.danger : c.off));
 }

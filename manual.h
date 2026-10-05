@@ -16,6 +16,9 @@ class Manual : public QWidget {
 public:
   explicit Manual(ResHolder *resHolder, QWidget *parent = nullptr);
 
+protected:
+  void showEvent(QShowEvent *event) override;
+
 private:
   void handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
   void sendProgram();
@@ -35,6 +38,7 @@ private:
   QPushButton *m_startBtn;
   QPushButton *m_startDelayedBtn;
   StopButton  *m_stopBtn;
+  QWidget     *m_advisorNote{nullptr}; // shown while the AI Advisor offer is enabled (Settings -> AI)
 
   AccessManager::AccessLevel m_accessLevel;
 
