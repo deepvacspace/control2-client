@@ -4,45 +4,51 @@
 #include <QCalendarWidget>
 #include <QDialog>
 #include <QLabel>
-#include <QList>
+#include <QListWidget>
+#include <QMap>
+#include <QPushButton>
+
+#include "runstore.h"
 
 namespace deepvaccontrol {
 
-constexpr inline int const CALENDAR_BTN_IMG_SIZE{50};
-constexpr inline int const CALENDAR_BTN_SIZE{60};
-
+// Month view; days with recorded experiments are bold and marked.
 class CalendarCustomWidget : public QCalendarWidget {
   Q_OBJECT
 public:
-  CalendarCustomWidget(QList<QDate> const &dateList, QWidget *parent = nullptr);
+  explicit CalendarCustomWidget(QMap<QDate, int> const &counts, QWidget *parent = nullptr);
 
-private:
-  // void         paintCell(QPainter *painter, QRect const &rect, QDate const &date) const;
-  QList<QDate> m_datelist;
-
-  // QCalendarWidget interface
 protected:
   void paintCell(QPainter *painter, QRect const &rect, QDate date) const override;
+
+private:
+  QMap<QDate, int> m_counts; // experiments per day
 };
 
+// Chart page: the experiments of the experiment database by day; one is opened in the chart,
+// or the live data of today.
 class CalendarDialog : public QDialog {
   Q_OBJECT
 public:
-  explicit CalendarDialog(QString const &dirPath, QWidget *parent = nullptr);
+  explicit CalendarDialog(QVector<storage::ExperimentSpan> const &experiments, QWidget *parent = nullptr);
 
 signals:
-  void intervalKeySelected(double);
+  void experimentSelected(storage::ExperimentSpan const &experiment);
+  void liveSelected();
 
 private:
-  void                  scanFolder();
-  QList<QDate>          m_dateList;
-  void                  checkSelectedDate(QDate const &date);
-  void                  shiftMonth(int sh);
-  CalendarCustomWidget *m_calendarTable;
-  QLabel               *m_currentMonthLabel;
-  int                   m_currentMonthIndex;
-  QStringList           m_monthNameList;
-  QString               m_dirPath;
+  void showDay(QDate const &date);
+  void shiftMonth(int months);
+  void updateMonthLabel();
+  void openSelected();
+
+  QVector<storage::ExperimentSpan> m_experiments;
+  QMap<QDate, QVector<int>>        m_byDay; // indexes into m_experiments
+  CalendarCustomWidget            *m_calendar{nullptr};
+  QLabel                          *m_monthLabel{nullptr};
+  QLabel                          *m_dayLabel{nullptr};
+  QListWidget                     *m_list{nullptr};
+  QPushButton                     *m_openBtn{nullptr};
 };
 
 } // namespace deepvaccontrol

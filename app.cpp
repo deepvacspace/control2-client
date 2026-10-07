@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include "experimentrecorder.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QMessageBox>
@@ -303,6 +305,9 @@ void App::onStateValuesReceive(QVector<float> stateValues) {
   qint64 const    timestampMs = QDateTime::currentMSecsSinceEpoch();
   // millisecond resolution: samples arriving within the same second are all kept
   m_dataManager->addPoint(static_cast<double>(timestampMs) / 1000.0, valuesDouble);
+  if (m_resHolder.recorder) {
+    m_resHolder.recorder->addSample(static_cast<double>(timestampMs) / 1000.0, valuesDouble); // experiment database
+  }
   m_experimentSyncServer->publishSample(m_states.getNames(), stateValues, timestampMs);
 
   if (m_opcServer && (0 == m_status.getOpcStatus())) {

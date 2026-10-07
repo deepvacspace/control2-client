@@ -47,8 +47,10 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     m_currentView = mouseToCoord(rect);
   });
 
-  // legend position
+  // legend position: a box over the top left of the chart
   m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft | Qt::AlignTop);
+  m_plot->legend->setBorderPen(QPen(theme::colors().border));
+  m_plot->setMouseTracking(true); // the value cursor follows the mouse without a button pressed
 
   m_plot->addLayer("cursor", m_plot->layer("legend"), QCustomPlot::limBelow);
   m_plot->layer("cursor")->setMode(QCPLayer::lmBuffered);

@@ -3,6 +3,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QMenu>
+#include <QThread>
 #include <cmath>
 
 #include "calendardialog.h"
@@ -101,17 +102,21 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_modeSelectBtn->setMenu(modeMenu);
   m_modeSelectBtn->setToolTip(tr("How the view follows the data"));
 
-  m_readoutBtn = textButton(QString());
-  m_readoutBtn->setObjectName("readoutBox");
-  m_readoutBtn->setCheckable(true);
-  m_readoutBtn->setMinimumWidth(320 * ssf);
-  m_readoutBtn->setToolTip(tr("Latest values. Press to show a cursor and read the values under it."));
+  m_labelsBtn = textButton(tr("Labels"));
+  m_labelsBtn->setCheckable(true);
+  m_labelsBtn->setChecked(true);
+  m_labelsBtn->setMinimumWidth(80 * ssf);
+  m_labelsBtn->setToolTip(tr("Show or hide the box with the line labels and colours"));
+  m_valuesBtn = textButton(tr("Values"));
+  m_valuesBtn->setCheckable(true);
+  m_valuesBtn->setMinimumWidth(80 * ssf);
+  m_valuesBtn->setToolTip(tr("Also show the values and a line where the mouse points in the chart"));
   auto *calendarBtn = textButton(QString());
   m_dayBtn          = calendarBtn;
   calendarBtn->setIcon(theme::menuIcon("calendar", c.text, c.text, static_cast<int>(13 * ssf)));
   calendarBtn->setIconSize(QSize(13 * ssf, 13 * ssf));
   calendarBtn->setMinimumWidth(110 * ssf);
-  calendarBtn->setToolTip(tr("Show another recorded day"));
+  calendarBtn->setToolTip(tr("Open a saved experiment, or go back to the live data of today"));
 
   auto *topBar = new QHBoxLayout();
   topBar->setSpacing(8 * ssf);
@@ -119,7 +124,8 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   topBar->addWidget(m_styleBtn);
   topBar->addWidget(m_modeSelectBtn);
   topBar->addStretch();
-  topBar->addWidget(m_readoutBtn);
+  topBar->addWidget(m_labelsBtn);
+  topBar->addWidget(m_valuesBtn);
   topBar->addWidget(calendarBtn);
   cardLay->addLayout(topBar, 0, 0, 1, 2);
 
@@ -141,18 +147,19 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   cardLay->setColumnStretch(1, 1);
   cardLay->setRowStretch(1, 1);
   m_dataViewer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  m_dataViewer->setCompactLegend(true);
 
   connect(fitBtn, &QPushButton::clicked, this, [this] { m_dataViewer->setControlMode(DataViewer::ControlMode::LEAD_FULL); });
-  connect(m_readoutBtn, &QPushButton::toggled, this, [this](bool on) {
-    m_dataViewer->setCursorMode(on ? DataViewer::CursorMode::LEGEND_CURSOR : DataViewer::CursorMode::NONE);
-    updateReadout();
-  });
-  connect(m_dataViewer, &DataViewer::cursorPositionChanged, this, [this](double key) { updateReadout(key); });
-  connect(m_resHolder->states, &SystemValueList::ValuesUpdated, this, [this] {
-    if (!m_readoutBtn->isChecked()) {
-      updateReadout();
+  connect(m_labelsBtn, &QPushButton::toggled, this, [this](bool on) {
+    if (!on) {
+      m_valuesBtn->setChecked(false); // values are shown in the labels box
     }
+    updateLegendMode();
+  });
+  connect(m_valuesBtn, &QPushButton::toggled, this, [this](bool on) {
+    if (on) {
+      m_labelsBtn->setChecked(true);
+    }
+    updateLegendMode();
   });
 
   connect(zoomXBtn, &QPushButton::clicked, this, [this] {
@@ -190,29 +197,10 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
 
   connect(m_dataViewer, &DataViewer::controlModeChanged, this, &GraphWidget::updateModeSelectButton);
 
-  connect(calendarBtn, &QPushButton::clicked, this, [this]() {
-    auto *dialog = new CalendarDialog(deepvaccontrol::INTERVALS_DIR, this);
-    connect(dialog, &CalendarDialog::intervalKeySelected, this, [this, dialog](double selectedIntervalKey) {
-      if (m_resHolder->dataManager->prepareIntervalToDisplay(selectedIntervalKey)) {
-        if (m_dataViewer->getData()
-            && (m_resHolder->dataManager->getIntervalToDisplay()->getNumberOfStates()
-                != m_dataViewer->getData()->getNumberOfStates())) {
-          m_resHolder->logger->stream(Logger::Level::WAR) << "New DataHolder has another number of states";
-          QMessageBox::critical(this,
-                                tr("Внимание!"),
-                                QString(tr("Выбранный период содержит отличное количество перменных для "
-                                           "отображения!\nПриложение может работать некорректно.")));
-        }
-        m_dataViewer->setData(m_resHolder->dataManager->getIntervalToDisplay());
-        updateDayButton();
-      }
-      dialog->deleteLater();
-    });
-    dialog->open();
-  });
+  connect(calendarBtn, &QPushButton::clicked, this, &GraphWidget::openCalendar);
 
   connect(m_resHolder->dataManager, &DataManager::intervalToAddRecreated, this, [this](double key) {
-    if (m_resHolder->dataManager->prepareIntervalToDisplay(key)) {
+    if (m_experimentName.isEmpty() && m_resHolder->dataManager->prepareIntervalToDisplay(key)) {
       m_dataViewer->setData(m_resHolder->dataManager->getIntervalToDisplay());
     }
   });
@@ -224,7 +212,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   }
 
   updateDayButton();
-  updateReadout();
+  updateLegendMode();
   handleAccessChange("", m_resHolder->users->getCurrentAccessLevel());
   connect(m_resHolder->users, &AccessManager::userSelected, this, &GraphWidget::handleAccessChange);
 }
@@ -244,6 +232,12 @@ void GraphWidget::updateModeSelectButton(DataViewer::ControlMode mode) {
 }
 
 void GraphWidget::updateDayButton() {
+  if (!m_experimentName.isEmpty()) {
+    m_dayBtn->setText(m_dayBtn->fontMetrics().elidedText(m_experimentName, Qt::ElideRight, static_cast<int>(260 * utils::ssf())));
+    m_dayBtn->setToolTip(tr("%1\nOpen another experiment, or go back to the live data of today").arg(m_experimentName));
+    return;
+  }
+  m_dayBtn->setToolTip(tr("Open a saved experiment, or go back to the live data of today"));
   auto const interval = m_resHolder->dataManager->getIntervalToDisplay();
   if (!interval) {
     m_dayBtn->setText(tr("Today"));
@@ -253,35 +247,65 @@ void GraphWidget::updateDayButton() {
   m_dayBtn->setText(shown == QDate::currentDate() ? tr("Today") : shown.toString("yyyy-MM-dd"));
 }
 
-void GraphWidget::updateReadout(double cursorKey) {
-  // the main temperature channels, with short names and the unit from their label
-  struct Item {
-    char const *name;
-    QString     title;
-  };
-  QList<Item> const items{{"temp", tr("Temp")}, {"temp_ref", tr("Setpoint")}, {"temp_u", tr("Output")}};
-  QStringList const names = m_resHolder->states->getNames();
-  bool const        atCursor{!std::isnan(cursorKey) && m_dataViewer->getData()};
-  QVector<double>   values;
-  if (atCursor) {
-    values = m_dataViewer->getData()->getValueAtTime(cursorKey);
+void GraphWidget::updateLegendMode() {
+  m_dataViewer->setCursorMode(m_valuesBtn->isChecked()   ? DataViewer::CursorMode::LEGEND_CURSOR
+                              : m_labelsBtn->isChecked() ? DataViewer::CursorMode::LEGEND_ONLY
+                                                         : DataViewer::CursorMode::NONE);
+}
+
+void GraphWidget::openCalendar() {
+  if (m_loading) {
+    return;
   }
-  QStringList parts{atCursor ? QDateTime::fromSecsSinceEpoch(static_cast<qint64>(cursorKey)).toString("HH:mm:ss")
-                             : QDateTime::currentDateTime().toString("HH:mm:ss")};
-  for (Item const &item : items) {
-    int const index = static_cast<int>(names.indexOf(QLatin1String(item.name)));
-    if (index < 0) {
-      continue;
+  auto *dialog = new CalendarDialog(storage::RunStore::spans(), this);
+  connect(dialog, &CalendarDialog::experimentSelected, this, &GraphWidget::showExperiment);
+  connect(dialog, &CalendarDialog::liveSelected, this, &GraphWidget::showLive);
+  dialog->open();
+}
+
+void GraphWidget::showLive() {
+  m_experimentName.clear();
+  double const todayKey = utils::calculateKey(QDateTime::currentSecsSinceEpoch());
+  if (m_resHolder->dataManager->prepareIntervalToDisplay(todayKey)) {
+    m_dataViewer->setData(m_resHolder->dataManager->getIntervalToDisplay());
+  }
+  updateDayButton();
+  updateLegendMode();
+}
+
+void GraphWidget::showExperiment(storage::ExperimentSpan const &experiment) {
+  // samples from the experiment database, read in the background (long experiments take a moment)
+  m_loading = true;
+  m_dayBtn->setText(tr("Loading…"));
+  auto     samples = std::make_shared<storage::RunSamples>();
+  auto     ok      = std::make_shared<bool>(false);
+  QString  key     = experiment.key;
+  QThread *thread  = QThread::create([key, samples, ok] { *ok = storage::RunStore::loadSamples(key, *samples); });
+  connect(thread, &QThread::finished, this, [this, thread, samples, ok, experiment] {
+    thread->deleteLater();
+    m_loading = false;
+    if (!*ok) {
+      QMessageBox::warning(this, tr("Chart"), tr("The samples of %1 could not be read.").arg(experiment.name));
+      updateDayButton();
+      return;
     }
-    SystemValue const *state = m_resHolder->states->getSysValue(item.name);
-    double const       value = atCursor ? values.value(index, std::numeric_limits<double>::quiet_NaN()) : state->getValue();
-    QString const      label = state->getLabel();
-    QString const      unit  = label.contains(',') ? label.section(',', -1).trimmed() : QString();
-    QString const      text  = (std::isnan(value) || std::fabs(value) > 1e9) ? QStringLiteral("--")
-                                                                                : QString::number(value, 'f', item.name == QLatin1String("temp_u") ? 0 : 1);
-    parts << QStringLiteral("%1 %2%3").arg(item.title, text, unit.isEmpty() ? QString() : QStringLiteral(" ") + unit);
-  }
-  m_readoutBtn->setText(parts.join(QStringLiteral("    ")));
+    // the channels of the chart, in the order of the states; channels the experiment lacks stay empty
+    QStringList const        names = m_resHolder->states->getNames();
+    QVector<QVector<double>> states(names.size());
+    for (int i{0}; i < names.size(); ++i) {
+      qsizetype const column = samples->columns.indexOf(names[i]);
+      states[i] = (column >= 0) ? samples->values[column] : QVector<double>(samples->times.size(), qQNaN());
+    }
+    auto holder = std::make_shared<DataHolder>(static_cast<quint16>(names.size()), m_resHolder->logger,
+                                               utils::calculateKey(experiment.start));
+    holder->setSeries(samples->times, states);
+    m_experimentName = experiment.name;
+    m_dataViewer->setData(holder);
+    m_dataViewer->updateTextItem(experiment.name);
+    updateDayButton();
+    updateLegendMode();
+  });
+  thread->start(QThread::LowPriority);
 }
 
 void GraphWidget::handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel) {
@@ -303,7 +327,7 @@ void GraphWidget::exportData() {
     int const selectedRangeType{exportDialog->selectedType()};
     if (selectedRangeType < 2) { // current view interval or part of it
       interval->clean();
-      interval->append(m_resHolder->dataManager->getIntervalToDisplay().get());
+      interval->append(m_dataViewer->getData().get());
       if (0 == selectedRangeType) { // part of current view interval
         interval->slice(viewableRange.left(), viewableRange.right());
       }

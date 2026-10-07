@@ -3,14 +3,12 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QJsonArray>
-#include <QDir>
 #include <QThread>
 #include <cmath>
 
 #include "accessmanager.h"
 #include "actionmanager.h"
 #include "constants.h"
-#include "experimentlibrary.h"
 #include "gatetcp.h"
 #include "resholder.h"
 #include "settingsmanager.h"
@@ -27,6 +25,7 @@ double nowSeconds() {
 }
 
 constexpr double PENDING_JOB_MAX_AGE_SEC{600.0}; // a job announced longer ago than this did not start
+constexpr int    JOURNAL_PERIOD_MS{5000};       // samples of the running job reach the database this often
 
 // "band 3: Kp 20 -> 30" for every gain that differs between two PID tables
 QStringList pidTableChanges(QJsonArray const &before, QJsonArray const &after, QJsonArray &details) {
@@ -59,6 +58,11 @@ QStringList pidTableChanges(QJsonArray const &before, QJsonArray const &after, Q
 } // namespace
 
 ExperimentRecorder::ExperimentRecorder(ResHolder *resHolder, QObject *parent) : QObject{parent}, m_resHolder{resHolder} {
+  m_journalTimer = new QTimer(this);
+  m_journalTimer->setInterval(JOURNAL_PERIOD_MS);
+  connect(m_journalTimer, &QTimer::timeout, this, &ExperimentRecorder::flushJournal);
+  m_journalTimer->start();
+  recoverInterrupted();
   connect(m_resHolder->hard_status, &HardwareStatus::statusChanged, this, &ExperimentRecorder::onStatusChanged);
   // experiments saved before KPIs / manifests existed get them now
   QThread *backfill = QThread::create([] {
@@ -222,6 +226,20 @@ void ExperimentRecorder::beginJob(QString const &note) {
   if (m_job.info.label.isEmpty()) {
     m_job.info.label = tr("Chamber job");
   }
+  // the samples of the job go to the experiment database directly, journaled while it runs
+  m_job.columns   = m_resHolder->states->getNames();
+  m_job.values    = QVector<QVector<double>>(m_job.columns.size());
+  m_job.journalId = QStringLiteral("job-%1").arg(static_cast<qint64>(m_job.start * 1000.0));
+  core::RunManifest startManifest;
+  startManifest.metadata      = m_job.metadata;
+  startManifest.configuration = m_job.configuration;
+  startManifest.channels      = core::channelMetadata(m_resHolder->settings->settingsMap().value("states").toList(), m_job.columns);
+  RunStore::journalBegin(m_job.journalId, m_job.start, m_job.columns,
+                         QJsonObject{{"label", m_job.info.label},
+                                     {"test_profile", m_job.info.testProfile},
+                                     {"chamber", chamberName()},
+                                     {"chamber_ref", chamberRef()},
+                                     {"manifest", startManifest.toJson()}});
   addEvent(core::eventtype::JOB_START, QStringLiteral("Job started: %1").arg(m_job.info.label),
            QJsonObject{{"kind", m_job.info.kind}, {"label", m_job.info.label}, {"test_profile", m_job.info.testProfile}});
 }
@@ -241,20 +259,31 @@ void ExperimentRecorder::finishJob(HardwareStatus::HardwareStatusEnum endStatus)
                           : (HardwareStatus::FINISH == endStatus) ? QStringLiteral("finished")
                                                                   : QStringLiteral("stopped");
   addEvent(core::eventtype::JOB_END, QStringLiteral("Job %1").arg(outcome), QJsonObject{{"outcome", outcome}});
+  flushJournal();
   Job const job = m_job;
   m_job         = Job{};
   double const start{job.start};
   double const end{nowSeconds()};
   if (std::isnan(start) || ((end - start) < MIN_RUN_DURATION_SEC)) {
+    RunStore::journalEnd(job.journalId);
     return;
   }
 
-  RunStore::NewRun run;
-  QString          error;
-  if (!collect(start, end, run, &error)) {
-    emit saveFailed(error);
+  if (job.times.isEmpty()) {
+    RunStore::journalEnd(job.journalId);
+    emit saveFailed(tr("No samples were received between %1 and %2")
+                      .arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(start)).toString("yyyy-MM-dd HH:mm"),
+                           QDateTime::fromSecsSinceEpoch(static_cast<qint64>(end)).toString("yyyy-MM-dd HH:mm")));
     return;
   }
+  RunStore::NewRun run;
+  run.chamber = chamberName();
+  run.runUid  = RunStore::makeRunUid(chamberRef(), start, end);
+  run.columns = job.columns;
+  run.times   = job.times;
+  run.values  = job.values;
+  // channel definitions (unit, quantity, role) as configured when recorded
+  run.manifest.channels = core::channelMetadata(m_resHolder->settings->settingsMap().value("states").toList(), run.columns);
   run.name = QStringLiteral("%1 %2%3")
                .arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(start)).toString("yyyy-MM-dd HH:mm"),
                     job.info.label,
@@ -271,75 +300,74 @@ void ExperimentRecorder::finishJob(HardwareStatus::HardwareStatusEnum endStatus)
   run.manifest.metadata      = job.metadata;
   run.manifest.configuration = job.configuration;
   run.manifest.events        = job.events;
-  saveAsync(run);
+  saveAsync(run, job.journalId);
 }
 
-bool ExperimentRecorder::collect(double start, double end, RunStore::NewRun &out, QString *error) const {
-  out.chamber = chamberName();
-  out.runUid  = RunStore::makeRunUid(chamberRef(), start, end);
-  out.columns = m_resHolder->states->getNames();
-  // channel definitions (unit, quantity, role) as configured when recorded
-  out.manifest.channels = core::channelMetadata(m_resHolder->settings->settingsMap().value("states").toList(), out.columns);
-  out.values  = QVector<QVector<double>>(out.columns.size());
-  out.times.clear();
-
-  auto const live = m_resHolder->dataManager ? m_resHolder->dataManager->getIntervalToAdd() : nullptr;
-
-  QDate const firstDay = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(start)).date();
-  QDate const lastDay  = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(end)).date();
-  for (QDate day = firstDay; day <= lastDay; day = day.addDays(1)) {
-    double const            key{utils::calculateKey(QDateTime(day, QTime(12, 0)).toSecsSinceEpoch())};
-    QVector<double>          times;
-    QVector<QVector<double>> states;
-    if (live && (live->getIntervalKey() == key)) {
-      times  = live->getTimes();
-      states = live->getStates();
-    } else {
-      QString const path = QDir(deepvaccontrol::INTERVALS_DIR).filePath(utils::calculateFileName(static_cast<quint64>(key)));
-      if (!ExperimentLibrary::readIntervalFile(path, times, states)) {
-        continue;
-      }
-    }
-
-    for (qsizetype i{0}; i < times.size(); ++i) {
-      if ((times[i] < start) || (times[i] > end)) {
-        continue;
-      }
-      bool allNaN{true};
-      for (auto const &channel : std::as_const(states)) {
-        if ((i < channel.size()) && !std::isnan(channel[i])) {
-          allNaN = false;
-          break;
-        }
-      }
-      if (allNaN) {
-        continue; // application stop marker
-      }
-      out.times.push_back(times[i]);
-      for (int c{0}; c < out.columns.size(); ++c) {
-        out.values[c].push_back((c < states.size()) && (i < states[c].size()) ? states[c][i] : qQNaN());
-      }
-    }
+void ExperimentRecorder::addSample(double epochSec, QVector<double> const &values) {
+  if (!jobActive() || (values.size() != m_job.columns.size())) {
+    return;
   }
-
-  if (out.times.isEmpty()) {
-    if (error) {
-      *error = tr("No recorded data between %1 and %2")
-                 .arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(start)).toString("yyyy-MM-dd HH:mm"),
-                      QDateTime::fromSecsSinceEpoch(static_cast<qint64>(end)).toString("yyyy-MM-dd HH:mm"));
-    }
-    return false;
+  if (std::all_of(values.cbegin(), values.cend(), [](double v) { return std::isnan(v); })) {
+    return;
   }
-  return true;
+  m_job.times.push_back(epochSec);
+  for (qsizetype c{0}; c < values.size(); ++c) {
+    m_job.values[c].push_back(values[c]);
+  }
+  m_job.newTimes.push_back(epochSec);
+  m_job.newRows.push_back(values);
 }
 
-void ExperimentRecorder::saveAsync(RunStore::NewRun run) {
+void ExperimentRecorder::flushJournal() {
+  if (!jobActive() || m_job.newTimes.isEmpty()) {
+    return;
+  }
+  if (RunStore::journalAppend(m_job.journalId, m_job.newTimes, m_job.newRows)) {
+    m_job.newTimes.clear();
+    m_job.newRows.clear();
+  }
+}
+
+void ExperimentRecorder::recoverInterrupted() {
+  for (storage::JournalJob const &pending : RunStore::journalPending()) {
+    if (pending.times.size() < 2 || ((pending.times.last() - pending.times.first()) < MIN_RUN_DURATION_SEC)) {
+      RunStore::journalEnd(pending.id);
+      continue;
+    }
+    RunStore::NewRun run;
+    double const     start{pending.times.first()};
+    double const     end{pending.times.last()};
+    QString const    label = pending.info.value("label").toString(tr("Chamber job"));
+    run.name               = QStringLiteral("%1 %2%3")
+                 .arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(start)).toString("yyyy-MM-dd HH:mm"), label, tr(" (interrupted)"));
+    run.testProfile        = pending.info.value("test_profile").toString();
+    run.chamber            = pending.info.value("chamber").toString();
+    run.runUid             = RunStore::makeRunUid(pending.info.value("chamber_ref").toString(), start, end);
+    run.columns            = pending.columns;
+    run.times              = pending.times;
+    run.values             = pending.values;
+    run.manifest           = core::RunManifest::fromJson(pending.info.value("manifest").toObject());
+    run.manifest.runUid    = run.runUid;
+    run.manifest.name      = run.name;
+    run.manifest.chamber   = run.chamber;
+    run.manifest.chamberRef = pending.info.value("chamber_ref").toString();
+    run.manifest.appName    = QCoreApplication::applicationName();
+    run.manifest.appVersion = QCoreApplication::applicationVersion();
+    run.manifest.configuration.insert("note", tr("the application stopped while the job ran; saved from the journal at the next start"));
+    saveAsync(run, pending.id);
+  }
+}
+
+void ExperimentRecorder::saveAsync(RunStore::NewRun run, QString const &journalId) {
   auto          result = std::make_shared<QPair<QString, QString>>(); // key, error
   QString const name   = run.name;
-  QThread      *thread = QThread::create([run = std::move(run), result]() {
+  QThread      *thread = QThread::create([run = std::move(run), result, journalId]() {
     QString error;
     result->first  = RunStore::save(run, &error);
     result->second = error;
+    if (!result->first.isEmpty() && !journalId.isEmpty()) {
+      RunStore::journalEnd(journalId); // saved: the journal is no longer needed (kept on failure, retried at the next start)
+    }
   });
   connect(thread, &QThread::finished, this, [this, thread, result, name]() {
     thread->deleteLater();

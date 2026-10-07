@@ -3,6 +3,7 @@
 
 #include <QJsonObject>
 #include <QObject>
+#include <QTimer>
 #include <QVariantMap>
 
 #include "hardwarestatus.h"
@@ -53,10 +54,10 @@ public:
   [[nodiscard]] QString chamberName() const;
   [[nodiscard]] QString chamberRef() const; // "host:port" of the PLC gate, identifies the chamber across computers
 
-  // recorded samples of [start, end] from the interval files and the live, not yet saved data
-  bool collect(double start, double end, storage::RunStore::NewRun &out, QString *error = nullptr) const;
-  // saves in a background thread; emits runSaved / saveFailed
-  void saveAsync(storage::RunStore::NewRun run);
+  // every sample received from the PLC (App); kept while a job runs and journaled to the experiment database
+  void addSample(double epochSec, QVector<double> const &values);
+  // saves in a background thread; emits runSaved / saveFailed. journalId: journal of the job, removed once saved
+  void saveAsync(storage::RunStore::NewRun run, QString const &journalId = {});
 
   // configuration of the chamber and the application right now, as stored in a run's manifest
   [[nodiscard]] QJsonObject configurationSnapshot(JobInfo const &job) const;
@@ -73,6 +74,13 @@ private:
     core::RunMetadata       metadata;
     QVector<core::RunEvent> events;
     double                  start{qQNaN()};
+    // samples of the job, recorded directly (no interval files)
+    QString                  journalId;
+    QStringList              columns;
+    QVector<double>          times;
+    QVector<QVector<double>> values;      // [column][sample]
+    QVector<double>          newTimes;    // not yet journaled
+    QVector<QVector<double>> newRows;     // [sample][column]
   };
 
   void onStatusChanged(HardwareStatus::HardwareStatusEnum newStatus, HardwareStatus::HardwareStatusEnum oldStatus);
@@ -81,6 +89,9 @@ private:
   void addEvent(char const *type, QString const &message, QJsonObject const &data = {});
   void onPlcSettingsChanged();
   [[nodiscard]] bool jobActive() const;
+  void               flushJournal();
+  // jobs whose application stopped while they ran: saved from their journal as "(interrupted)"
+  void               recoverInterrupted();
 
   ResHolder        *m_resHolder;
   Job               m_job;
@@ -90,6 +101,7 @@ private:
   double            m_pendingAt{qQNaN()};
   core::RunMetadata m_nextMetadata;
   QJsonValue        m_lastPids; // PID table last seen, to log writes during a job
+  QTimer           *m_journalTimer{nullptr};
 };
 
 } // namespace deepvaccontrol

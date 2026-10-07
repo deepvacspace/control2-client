@@ -298,6 +298,125 @@ QString insertRun(ScopedDb &db, StoredRun const &run, QStringList const &columns
 }
 } // namespace
 
+namespace {
+bool ensureJournal(ScopedDb &db) {
+  if (!db.isOpen()) {
+    return false;
+  }
+  db.exec("CREATE TABLE IF NOT EXISTS live_jobs (job_id TEXT PRIMARY KEY, started REAL NOT NULL, "
+          "columns_json TEXT NOT NULL, info_json TEXT NOT NULL)");
+  db.exec("CREATE TABLE IF NOT EXISTS live_samples (job_id TEXT NOT NULL, t REAL NOT NULL, values_json TEXT NOT NULL)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_live_samples_job ON live_samples(job_id, t)");
+  return true;
+}
+} // namespace
+
+QVector<ExperimentSpan> RunStore::spans(QString *error) {
+  ScopedDb db(RUNS_DB);
+  if (!ensureSchema(db)) {
+    if (error) {
+      *error = db.lastError();
+    }
+    return {};
+  }
+  QVector<ExperimentSpan> result;
+  QSqlQuery q = db.query("SELECT key, id, source, start_epoch, end_epoch, samples FROM runs "
+                         "WHERE start_epoch IS NOT NULL ORDER BY start_epoch, key");
+  while (q.next()) {
+    ExperimentSpan span;
+    span.key     = q.value(0).toString();
+    span.name    = q.value(1).toString();
+    span.source  = q.value(2).toString();
+    span.start   = q.value(3).toDouble();
+    span.end     = q.value(4).isNull() ? span.start : q.value(4).toDouble();
+    span.samples = q.value(5).toLongLong();
+    result.push_back(span);
+  }
+  return result;
+}
+
+bool RunStore::journalBegin(QString const &id, double started, QStringList const &columns, QJsonObject const &info) {
+  ScopedDb db(RUNS_DB);
+  if (!ensureJournal(db)) {
+    return false;
+  }
+  return db.exec("INSERT OR REPLACE INTO live_jobs (job_id, started, columns_json, info_json) VALUES (?, ?, ?, ?)",
+                 {id, started, QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(columns)).toJson(QJsonDocument::Compact)),
+                  QString::fromUtf8(QJsonDocument(info).toJson(QJsonDocument::Compact))});
+}
+
+bool RunStore::journalAppend(QString const &id, QVector<double> const &times, QVector<QVector<double>> const &rows) {
+  if (times.isEmpty()) {
+    return true;
+  }
+  ScopedDb db(RUNS_DB);
+  if (!ensureJournal(db) || !db.transaction()) {
+    return false;
+  }
+  QSqlQuery insert(db.db());
+  insert.prepare("INSERT INTO live_samples (job_id, t, values_json) VALUES (?, ?, ?)");
+  for (qsizetype i{0}; i < times.size(); ++i) {
+    QByteArray row{"["};
+    QVector<double> const &values = rows.value(i);
+    for (qsizetype c{0}; c < values.size(); ++c) {
+      if (c > 0) {
+        row += ',';
+      }
+      row += jsonNumber(values[c]);
+    }
+    row += ']';
+    insert.addBindValue(id);
+    insert.addBindValue(times[i]);
+    insert.addBindValue(QString::fromLatin1(row));
+    if (!insert.exec()) {
+      db.rollback();
+      return false;
+    }
+  }
+  return db.commit();
+}
+
+void RunStore::journalEnd(QString const &id) {
+  ScopedDb db(RUNS_DB);
+  if (!ensureJournal(db)) {
+    return;
+  }
+  db.exec("DELETE FROM live_samples WHERE job_id = ?", {id});
+  db.exec("DELETE FROM live_jobs WHERE job_id = ?", {id});
+}
+
+QVector<JournalJob> RunStore::journalPending() {
+  ScopedDb db(RUNS_DB);
+  if (!ensureJournal(db)) {
+    return {};
+  }
+  QVector<JournalJob> jobs;
+  QSqlQuery           q = db.query("SELECT job_id, started, columns_json, info_json FROM live_jobs ORDER BY started");
+  while (q.next()) {
+    JournalJob job;
+    job.id      = q.value(0).toString();
+    job.started = q.value(1).toDouble();
+    for (QJsonValue const &column : QJsonDocument::fromJson(q.value(2).toString().toUtf8()).array()) {
+      job.columns << column.toString();
+    }
+    job.info   = QJsonDocument::fromJson(q.value(3).toString().toUtf8()).object();
+    job.values = QVector<QVector<double>>(job.columns.size());
+    jobs.push_back(job);
+  }
+  for (JournalJob &job : jobs) {
+    QSqlQuery samples = db.query("SELECT t, values_json FROM live_samples WHERE job_id = ? ORDER BY t", {job.id});
+    while (samples.next()) {
+      QJsonArray const row = QJsonDocument::fromJson(samples.value(1).toString().toUtf8()).array();
+      job.times.push_back(samples.value(0).toDouble());
+      for (qsizetype c{0}; c < job.columns.size(); ++c) {
+        QJsonValue const value = row.at(c);
+        job.values[c].push_back(value.isDouble() ? value.toDouble() : qQNaN());
+      }
+    }
+  }
+  return jobs;
+}
+
 QString RunStore::formatTime(double epochSec) {
   if (std::isnan(epochSec)) {
     return {};

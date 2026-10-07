@@ -36,6 +36,9 @@ public:
   // No need to checks range as soon as DataManager controls it.
   bool addPoint(double epochSecTime, QVector<double> const &pointVector);
 
+  // Replaces all data at once (an experiment from the database); never saved to an interval file.
+  void setSeries(QVector<double> times, QVector<QVector<double>> states);
+
   // Add vector of nan values as point to make terminator (empty space on graph)
   void addNaN();
 

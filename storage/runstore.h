@@ -35,6 +35,26 @@ struct StoredRun {
   core::RunManifest manifest; // self-describing part (control-app extension column manifest_json); invalid when absent
 };
 
+// When and what an experiment is, without its samples (calendar of the Chart page).
+struct ExperimentSpan {
+  QString key;
+  QString name;
+  QString source;
+  double  start{qQNaN()}; // epoch s
+  double  end{qQNaN()};
+  qint64  samples{0};
+};
+
+// Samples of a job still running (or interrupted), journaled while it runs.
+struct JournalJob {
+  QString                  id;
+  double                   started{qQNaN()};
+  QStringList              columns;
+  QJsonObject              info; // job label, chamber, manifest captured at the start
+  QVector<double>          times;
+  QVector<QVector<double>> values; // [column][sample]
+};
+
 struct RunSamples {
   QStringList              columns; // numeric sample columns, without "timestamp"
   QVector<double>          times;   // epoch sec
@@ -70,6 +90,16 @@ public:
   };
 
   static QVector<StoredRun>       list(QString *error = nullptr);
+  // every experiment with its time span, oldest first (no samples, no manifest: fast)
+  static QVector<ExperimentSpan>  spans(QString *error = nullptr);
+
+  // ---- journal of the running job: samples are appended while it runs, so an interrupted job
+  // (crash, power loss) can still be saved as an experiment at the next start
+  static bool                journalBegin(QString const &id, double started, QStringList const &columns, QJsonObject const &info);
+  // rows: [sample][column]
+  static bool                journalAppend(QString const &id, QVector<double> const &times, QVector<QVector<double>> const &rows);
+  static void                journalEnd(QString const &id);
+  static QVector<JournalJob> journalPending();
   static std::optional<StoredRun> get(QString const &key);
   static std::optional<StoredRun> findByUid(QString const &runUid);
   // a stored run covering [start, end] of the same chamber, to avoid saving it twice

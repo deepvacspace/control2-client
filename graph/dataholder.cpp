@@ -73,6 +73,18 @@ bool DataHolder::addPoint(double epochSecTime, QVector<double> const &pointVecto
   return true;
 }
 
+void DataHolder::setSeries(QVector<double> times, QVector<QVector<double>> states) {
+  m_autosaveTimer->stop();
+  m_times = std::move(times);
+  m_states = std::move(states);
+  m_states.resize(m_numberOfStates);
+  for (auto &state : m_states) {
+    state.resize(m_times.size(), qQNaN());
+  }
+  m_dirty = false;
+  emit dataChanged();
+}
+
 void DataHolder::addNaN() {
   QVector<double> vectorOfNaN(m_numberOfStates, qQNaN());
   addPoint(QDateTime::currentDateTime().toSecsSinceEpoch() + 1, vectorOfNaN);

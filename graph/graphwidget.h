@@ -8,6 +8,7 @@
 #include "dataviewer.h"
 #include "graphstyleeditor.h"
 #include "resholder.h"
+#include "runstore.h"
 
 namespace deepvaccontrol {
 class GraphWidget : public QWidget {
@@ -20,11 +21,18 @@ public:
 
 private:
   void              exportData();
-  // time and values in the read-out box: at the cursor (cursor on) or the latest values
-  void              updateReadout(double cursorKey = std::numeric_limits<double>::quiet_NaN());
   void              updateDayButton();
-  QPushButton      *m_readoutBtn{nullptr};
+  // legend box over the chart: line labels only, or labels with the values under the mouse
+  void              updateLegendMode();
+  // the calendar: experiments of the experiment database, or the live data of today
+  void              openCalendar();
+  void              showExperiment(storage::ExperimentSpan const &experiment);
+  void              showLive();
+  QPushButton      *m_labelsBtn{nullptr};
+  QPushButton      *m_valuesBtn{nullptr};
   QPushButton      *m_dayBtn{nullptr};
+  QString           m_experimentName; // experiment shown; empty for the live data
+  bool              m_loading{false};
   ResHolder        *m_resHolder;
   DataViewer       *m_dataViewer;
   GraphStyleEditor *m_styleEditor;
