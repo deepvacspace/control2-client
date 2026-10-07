@@ -98,11 +98,6 @@ SysListWidget::SysListWidget(ResHolder *resHolder, QWidget *parent)
   outputsLay->addStretch();
   mainLay->addWidget(outputsCard, 2);
 
-  theme::Colors const &c = theme::colors();
-  setStyleSheet(QStringLiteral("QFrame#outputRow { background: %1; border-radius: %2px; }")
-                  .arg(c.panelAlt.name())
-                  .arg(static_cast<int>(4 * ssf)));
-
   connect(m_states, &SystemValueList::ValuesUpdated, this, &SysListWidget::updateList);
   updateList();
 }

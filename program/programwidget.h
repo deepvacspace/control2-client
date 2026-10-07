@@ -17,6 +17,9 @@ public:
   explicit ProgramWidget(ResHolder *resHolder, QWidget *parent = nullptr);
   ~ProgramWidget() = default;
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 private:
   void setProgramModel(ProgramModel *newProgramModel);
   void openIntervalEditDialog();
@@ -31,6 +34,9 @@ private:
   void setLibraryProgram(qint64 id, QString const &name, QStringList const &labels);
   void updateProgramLabel();
   void updateRunStatus();
+  void updateSequenceInfo(); // interval count and selected position
+  void updateButtonIcons();  // icons in the colours of the theme
+  void labelsEdited();       // interval labels changed in the interval editor
 
   ResHolder             *m_resHolder;
   ProgramModel          *m_model;
@@ -40,13 +46,14 @@ private:
   QVector<QPushButton *> m_buttons;
   QPushButton           *m_startBtn;
   QPushButton           *m_startDelayedBtn;
-  QPushButton           *m_saveBtn;
-  QPushButton           *m_loadBtn;
   QPushButton           *m_newBtn;
   QPushButton           *m_editBtn;
   QPushButton           *m_deleteBtn;
-  QPushButton           *m_libraryBtn{nullptr};
-  QPushButton           *m_saveLibraryBtn{nullptr};
+  QPushButton           *m_libraryBtn{nullptr};     // "Load": a program from the program library (database)
+  QPushButton           *m_saveLibraryBtn{nullptr}; // "Save": this program into the program library
+  QLabel                *m_sequenceIcon{nullptr};
+  QLabel                *m_countBadge{nullptr};     // number of intervals
+  QLabel                *m_positionLabel{nullptr};  // "02 / 04": selected interval
   QLabel                *m_programLabel{nullptr}; // name of the library program being edited
   QLabel                *m_runStatus{nullptr};
   QLabel                *m_libraryBadge{nullptr};

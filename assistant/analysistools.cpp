@@ -273,12 +273,7 @@ AnalysisTools::AnalysisTools(ExperimentLibrary *library, AnalysisNotesStore *not
 // ------------------------------------------------------------------ runs
 
 QVector<ExperimentRun> AnalysisTools::runs() const {
-  QVector<ExperimentRun> all = m_library->runs();
-  all += m_library->storedRuns();
-  std::stable_sort(all.begin(), all.end(), [](ExperimentRun const &a, ExperimentRun const &b) {
-    return (a.start != b.start) ? (a.start < b.start) : (a.key < b.key);
-  });
-  return all;
+  return m_library->chronological(); // same numbering as the experiment list
 }
 
 QString AnalysisTools::runId(ExperimentRun const &run) const {
@@ -316,7 +311,7 @@ std::optional<ExperimentRun> AnalysisTools::resolve(QString const &reference, QS
       return run;
     }
   }
-  static QRegularExpression const numbered(QStringLiteral("^(?:#|run\\s*#?|no\\.?\\s*)?(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
+  static QRegularExpression const numbered(QStringLiteral("^(?:#|(?:run|experiment)\\s*#?|no\\.?\\s*)?(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
   if (QRegularExpressionMatch const match = numbered.match(ref); match.hasMatch()) {
     int const number{match.captured(1).toInt()};
     if ((number >= 1) && (number <= all.size())) {
@@ -332,8 +327,8 @@ std::optional<ExperimentRun> AnalysisTools::resolve(QString const &reference, QS
   if (partial.size() == 1) {
     return partial.first();
   }
-  error = partial.isEmpty() ? QStringLiteral("no run matches '%1' (there are %2 runs, #1 ... #%2; use list_runs)").arg(ref).arg(all.size())
-                            : QStringLiteral("'%1' matches %2 runs, be more specific (use list_runs)").arg(ref).arg(partial.size());
+  error = partial.isEmpty() ? QStringLiteral("no experiment matches '%1' (there are %2 experiments, #1 ... #%2; use list_runs)").arg(ref).arg(all.size())
+                            : QStringLiteral("'%1' matches %2 experiments, be more specific (use list_runs)").arg(ref).arg(partial.size());
   return std::nullopt;
 }
 
@@ -376,7 +371,7 @@ AnalysisTools::LoadedPtr AnalysisTools::load(ExperimentRun const &run, QString &
 int AnalysisTools::selectStage(core::ExperimentAnalysis const &analysis, QString const &selector, QString &error) {
   QVector<core::StageAnalysis> const &stages = analysis.run.stages;
   if (stages.isEmpty()) {
-    error = QStringLiteral("this run has no stages (no temp_ref recorded)");
+    error = QStringLiteral("this experiment has no stages (no temp_ref recorded)");
     return -1;
   }
   QString text = selector.trimmed().toLower();
@@ -430,7 +425,7 @@ int AnalysisTools::selectStage(core::ExperimentAnalysis const &analysis, QString
   }
   int const position{occurrence < 0 ? static_cast<int>(matching.size()) + occurrence : occurrence - 1};
   if ((position < 0) || (position >= matching.size())) {
-    error = QStringLiteral("the run has %1 %2 stage(s), '%3' does not exist").arg(matching.size()).arg(core::Segment::kindName(kind), selector);
+    error = QStringLiteral("the experiment has %1 %2 stage(s), '%3' does not exist").arg(matching.size()).arg(core::Segment::kindName(kind), selector);
     return -1;
   }
   return matching[position];
@@ -546,8 +541,8 @@ QJsonObject AnalysisTools::listRuns(QJsonObject const &args) const {
                     item.contains("mae") ? fmt(item.value("mae").toDouble(core::NaN), DEG, 3) : QStringLiteral("—"),
                     item.contains("overshoot") ? fmt(item.value("overshoot").toDouble(core::NaN), DEG, 3) : QStringLiteral("—")});
   }
-  result.insert("card", makeCard(QStringLiteral("Recorded runs"),
-                                 {QStringLiteral("%1 runs recorded%2; showing the %3 newest.")
+  result.insert("card", makeCard(QStringLiteral("Recorded experiments"),
+                                 {QStringLiteral("%1 experiments recorded%2; showing the %3 newest.")
                                     .arg(all.size())
                                     .arg(query.isEmpty() ? QString() : QStringLiteral(", %1 matching '%2'").arg(matched).arg(query))
                                     .arg(list.size())},
@@ -610,7 +605,7 @@ QJsonObject AnalysisTools::runSummary(QJsonObject const &args) {
                                          {"most_important", important}});
 
   QString const id = runId(loaded->run);
-  QStringList   facts{QStringLiteral("Run %1 \"%2\" started %3 and lasted %4.").arg(id, loaded->run.title, dateTime(loaded->run.start), hms(loaded->run.duration()))};
+  QStringList   facts{QStringLiteral("Experiment %1 \"%2\" started %3 and lasted %4.").arg(id, loaded->run.title, dateTime(loaded->run.start), hms(loaded->run.duration()))};
   QStringList   levels;
   for (double const setpoint : a.config.setpoints) {
     levels << fmt(setpoint, DEG);
@@ -622,7 +617,7 @@ QJsonObject AnalysisTools::runSummary(QJsonObject const &args) {
   QVector<QStringList> rows;
   if (a.hasControl) {
     double const steady{core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
-    facts << QStringLiteral("Whole run: MAE %1, RMSE %2, steady-state error %3.")
+    facts << QStringLiteral("Whole experiment: MAE %1, RMSE %2, steady-state error %3.")
                .arg(fmt(a.run.overall.mae, DEG), fmt(a.run.overall.rmse, DEG), fmt(a.run.overall.steadyStateError, DEG))
           << QStringLiteral("Worst step overshoot %1; the last setpoint step settled after %2.").arg(fmt(a.run.overshoot, DEG), hms(a.run.settlingTimeS))
           << QStringLiteral("Steady %1 of the time; control output saturated %2 of the time; P / I / D share %3 / %4 / %5.")
@@ -638,7 +633,7 @@ QJsonObject AnalysisTools::runSummary(QJsonObject const &args) {
   }
   QStringList const counts = anomalyCounts(a);
   facts << QStringLiteral("Anomalies: %1 critical, %2 warnings, %3 info.").arg(counts[0], counts[1], counts[2]);
-  result.insert("card", makeCard(QStringLiteral("Run %1 summary").arg(id), facts, rows.isEmpty() ? QStringList{} : STAGE_COLUMNS, rows));
+  result.insert("card", makeCard(QStringLiteral("Experiment %1 summary").arg(id), facts, rows.isEmpty() ? QStringList{} : STAGE_COLUMNS, rows));
   return result;
 }
 
@@ -658,7 +653,7 @@ QJsonObject AnalysisTools::listChannels(QJsonObject const &args) {
   for (ChannelInfo const &channel : loaded->channels) {
     rows.push_back({channel.name, channel.label});
   }
-  result.insert("card", makeCard(QStringLiteral("Channels of run %1").arg(runId(loaded->run)),
+  result.insert("card", makeCard(QStringLiteral("Channels of experiment %1").arg(runId(loaded->run)),
                                  {QStringLiteral("%1 recorded channels.").arg(rows.size())}, {"Name", "Description"}, rows));
   return result;
 }
@@ -716,8 +711,8 @@ QJsonObject AnalysisTools::statistics(QJsonObject const &args) {
                           ? stageLabel(loaded->analysis, result.value("stage").toObject().value("stage").toInt() - 1)
                           : (std::isfinite(from) || std::isfinite(to))
                               ? QStringLiteral("%1 to %2").arg(hms(std::isfinite(from) ? from : 0.0), hms(std::isfinite(to) ? to : loaded->run.duration()))
-                              : QStringLiteral("the whole run");
-  result.insert("card", makeCard(QStringLiteral("Statistics of run %1").arg(runId(loaded->run)),
+                              : QStringLiteral("the whole experiment");
+  result.insert("card", makeCard(QStringLiteral("Statistics of experiment %1").arg(runId(loaded->run)),
                                  {QStringLiteral("Over %1. Values in each channel's own unit; slope per minute.").arg(where)},
                                  {"Channel", "Samples", "Min", "Max", "Mean", "Std", "Slope /min"}, table));
   return result;
@@ -742,7 +737,7 @@ QJsonObject AnalysisTools::kpis(QJsonObject const &args) {
     result.insert("stage", stageJson(a, index, true));
     core::StageAnalysis const &stage = a.run.stages[index];
     core::StageDetail const   &d     = a.stageDetails.value(index);
-    QStringList                facts{QStringLiteral("Run %1, %2, %3.").arg(runId(loaded->run), stageLabel(a, index), spanText(stage.segment)),
+    QStringList                facts{QStringLiteral("Experiment %1, %2, %3.").arg(runId(loaded->run), stageLabel(a, index), spanText(stage.segment)),
                       QStringLiteral("MAE %1, RMSE %2, max error %3.").arg(fmt(stage.kpis.mae, DEG), fmt(stage.kpis.rmse, DEG), fmt(stage.kpis.maxAbsError, DEG))};
     if (stage.segment.kind == core::Segment::Kind::SETPOINT) {
       facts << QStringLiteral("Step response: overshoot %1, settling %2, steady-state error %3.")
@@ -755,7 +750,7 @@ QJsonObject AnalysisTools::kpis(QJsonObject const &args) {
     facts << QStringLiteral("Steady %1 of the stage; output saturated %2; P / I / D share %3 / %4 / %5; gains Kp %6, Ki %7, Kd %8.")
                .arg(pct(d.steadyFraction), pct(d.saturation.fraction), pct(d.pid.shareP), pct(d.pid.shareI), pct(d.pid.shareD), fmt(d.kp),
                     fmt(d.ki), fmt(d.kd));
-    result.insert("card", makeCard(QStringLiteral("Run %1, stage %2").arg(runId(loaded->run)).arg(index + 1), facts));
+    result.insert("card", makeCard(QStringLiteral("Experiment %1, stage %2").arg(runId(loaded->run)).arg(index + 1), facts));
     return result;
   }
   double const from{optionalNumber(args, "from_s")};
@@ -786,7 +781,7 @@ QJsonObject AnalysisTools::kpis(QJsonObject const &args) {
     result.insert("range", QJsonObject{{"from_s", seconds(std::isfinite(from) ? from : 0.0)}, {"to_s", seconds(std::isfinite(to) ? to : loaded->run.duration())}});
     result.insert("kpis", kpi);
     result.insert("stages_in_range", static_cast<int>(range.stages.size()));
-    result.insert("card", makeCard(QStringLiteral("Run %1, %2 to %3").arg(runId(loaded->run), hms(std::isfinite(from) ? from : 0.0),
+    result.insert("card", makeCard(QStringLiteral("Experiment %1, %2 to %3").arg(runId(loaded->run), hms(std::isfinite(from) ? from : 0.0),
                                                                            hms(std::isfinite(to) ? to : loaded->run.duration())),
                                    {QStringLiteral("MAE %1, RMSE %2, max error %3.").arg(fmt(range.overall.mae, DEG), fmt(range.overall.rmse, DEG),
                                                                                          fmt(range.overall.maxAbsError, DEG)),
@@ -802,12 +797,12 @@ QJsonObject AnalysisTools::kpis(QJsonObject const &args) {
   kpi.insert("control_cost", num(a.run.cost));
   kpi.insert("note", "overshoot/undershoot: worst step response; settling: last setpoint, measured from its step");
   result.insert("kpis", kpi);
-  result.insert("card", makeCard(QStringLiteral("Run %1 control KPIs").arg(runId(loaded->run)),
-                                 {QStringLiteral("Whole run: MAE %1, RMSE %2, max error %3.").arg(fmt(a.run.overall.mae, DEG), fmt(a.run.overall.rmse, DEG),
+  result.insert("card", makeCard(QStringLiteral("Experiment %1 control KPIs").arg(runId(loaded->run)),
+                                 {QStringLiteral("Whole experiment: MAE %1, RMSE %2, max error %3.").arg(fmt(a.run.overall.mae, DEG), fmt(a.run.overall.rmse, DEG),
                                                                                                 fmt(a.run.overall.maxAbsError, DEG)),
                                   QStringLiteral("Worst step overshoot %1, worst undershoot %2.").arg(fmt(a.run.overshoot, DEG), fmt(a.run.undershoot, DEG)),
                                   QStringLiteral("The last setpoint step settled after %1; steady-state error %2.").arg(hms(a.run.settlingTimeS), fmt(a.run.overall.steadyStateError, DEG)),
-                                  QStringLiteral("Last %1 of the run: MAE %2, std %3.").arg(hms(300.0), fmt(a.run.overall.tailMae, DEG), fmt(a.run.overall.tailStd, DEG))}));
+                                  QStringLiteral("Last %1 of the experiment: MAE %2, std %3.").arg(hms(300.0), fmt(a.run.overall.tailMae, DEG), fmt(a.run.overall.tailStd, DEG))}));
   return result;
 }
 
@@ -827,12 +822,12 @@ QJsonObject AnalysisTools::stages(QJsonObject const &args) {
     result.insert("note", "no stages: the run has no temp_ref");
   }
   QVector<QStringList> rows;
-  QStringList          facts{QStringLiteral("Run %1 has %2 stages (setpoint = step response, ramp, hold = steady soak).").arg(runId(loaded->run)).arg(list.size())};
+  QStringList          facts{QStringLiteral("Experiment %1 has %2 stages (setpoint = step response, ramp, hold = steady soak).").arg(runId(loaded->run)).arg(list.size())};
   for (int k{0}; k < loaded->analysis.run.stages.size(); ++k) {
     rows.push_back(stageRow(loaded->analysis, k));
     facts << QStringLiteral("%1: %2.").arg(stageLabel(loaded->analysis, k), spanText(loaded->analysis.run.stages[k].segment));
   }
-  result.insert("card", makeCard(QStringLiteral("Stages of run %1").arg(runId(loaded->run)), facts, STAGE_COLUMNS, rows));
+  result.insert("card", makeCard(QStringLiteral("Stages of experiment %1").arg(runId(loaded->run)), facts, STAGE_COLUMNS, rows));
   return result;
 }
 
@@ -860,7 +855,7 @@ QJsonObject AnalysisTools::anomalies(QJsonObject const &args) {
   result.insert("shown", list.size());
   result.insert("anomalies", list);
   QStringList const    counts = anomalyCounts(loaded->analysis);
-  QStringList          facts{QStringLiteral("Run %1: %2 anomalies in total: %3 critical, %4 warnings, %5 info.")
+  QStringList          facts{QStringLiteral("Experiment %1: %2 anomalies in total: %3 critical, %4 warnings, %5 info.")
                       .arg(runId(loaded->run))
                       .arg(loaded->analysis.anomalies.size())
                       .arg(counts[0], counts[1], counts[2])};
@@ -875,7 +870,7 @@ QJsonObject AnalysisTools::anomalies(QJsonObject const &args) {
   if (rows.isEmpty()) {
     facts << QStringLiteral("None at %1 level or above.").arg(minimum);
   }
-  result.insert("card", makeCard(QStringLiteral("Anomalies of run %1").arg(runId(loaded->run)), facts,
+  result.insert("card", makeCard(QStringLiteral("Anomalies of experiment %1").arg(runId(loaded->run)), facts,
                                  {"Severity", "Type", "Channel", "Starts after", "Duration", "Detail"}, rows));
   return result;
 }
@@ -993,7 +988,7 @@ QJsonObject AnalysisTools::compareRuns(QJsonObject const &args) {
     columns << (loaded.size() == 2 ? QStringLiteral("Verdict") : QStringLiteral("Verdict vs %1").arg(runId(loaded[0]->run)));
     QStringList facts;
     for (qsizetype k{0}; k < loaded.size(); ++k) {
-      facts << QStringLiteral("Run %1: %2, %3.").arg(runId(loaded[k]->run), stageLabel(loaded[k]->analysis, indexes[k]),
+      facts << QStringLiteral("Experiment %1: %2, %3.").arg(runId(loaded[k]->run), stageLabel(loaded[k]->analysis, indexes[k]),
                                                     spanText(loaded[k]->analysis.run.stages[indexes[k]].segment));
     }
     QVector<QStringList> rows;
@@ -1152,7 +1147,7 @@ QJsonObject AnalysisTools::compareRuns(QJsonObject const &args) {
   }
   QStringList facts;
   for (LoadedPtr const &one : std::as_const(loaded)) {
-    facts << QStringLiteral("Run %1: \"%2\", %3, lasted %4.").arg(runId(one->run), one->run.title, dateTime(one->run.start), hms(one->run.duration()));
+    facts << QStringLiteral("Experiment %1: \"%2\", %3, lasted %4.").arg(runId(one->run), one->run.title, dateTime(one->run.start), hms(one->run.duration()));
   }
   for (core::ConfigComparisonRow const &row : core::compareConfigs(configs)) {
     if (row.differs) {
@@ -1205,7 +1200,7 @@ QJsonObject AnalysisTools::compareRuns(QJsonObject const &args) {
                     fmt(signal.value("mean_diff").toDouble(core::NaN), DEG, 3), fmt(signal.value("rms_diff").toDouble(core::NaN), DEG, 3),
                     fmt(signal.value("correlation").toDouble(core::NaN), {}, 3));
   }
-  result.insert("card", makeCard(QStringLiteral("Comparison of runs %1").arg(references.join(QStringLiteral(", "))), facts, columns, rows));
+  result.insert("card", makeCard(QStringLiteral("Comparison of experiments %1").arg(references.join(QStringLiteral(", "))), facts, columns, rows));
   return result;
 }
 
@@ -1254,16 +1249,16 @@ QJsonObject AnalysisTools::rankRuns(QJsonObject const &args) const {
     rows.push_back({QString::number(i + 1), ids.value(run.key), run.id, run.startTime.left(16), fmt(run.cost), fmt(run.mae, DEG, 3),
                     fmt(run.overshoot, DEG, 3), hms(run.settleTimeS)});
   }
-  QStringList facts{QStringLiteral("%1 runs saved in the experiment database have this KPI; ranked by %2.").arg(stored.size()).arg(QString::fromLatin1(metric->label))};
+  QStringList facts{QStringLiteral("%1 experiments saved in the experiment database have this KPI; ranked by %2.").arg(stored.size()).arg(QString::fromLatin1(metric->label))};
   if (!stored.isEmpty()) {
     storage::StoredRun const &best  = stored.first();
     storage::StoredRun const &worst = stored.last();
     facts << QStringLiteral("Best: %1 \"%2\" (%3).").arg(ids.value(best.key), best.id, metric->key == QLatin1String("settling") ? hms(metric->get(best)) : fmt(metric->get(best), metric->key == QLatin1String("cost") ? QString() : DEG))
           << QStringLiteral("Worst: %1 \"%2\" (%3).").arg(ids.value(worst.key), worst.id, metric->key == QLatin1String("settling") ? hms(metric->get(worst)) : fmt(metric->get(worst), metric->key == QLatin1String("cost") ? QString() : DEG));
   }
-  facts << QStringLiteral("Runs only recorded in the data files (not saved in the database) are not ranked.");
+  facts << QStringLiteral("Experiments only recorded in the data files (not saved in the database) are not ranked.");
   QJsonObject result{{"metric", QString::fromLatin1(metric->key)}, {"ranking", list}};
-  result.insert("card", makeCard(QStringLiteral("Runs ranked by %1").arg(QString::fromLatin1(metric->key)), facts,
+  result.insert("card", makeCard(QStringLiteral("Experiments ranked by %1").arg(QString::fromLatin1(metric->key)), facts,
                                  {"Rank", "Run", "Title", "Start", "Cost", "MAE", "Overshoot", "Settling"}, rows));
   return result;
 }
@@ -1278,7 +1273,7 @@ QJsonObject AnalysisTools::runDetails(QJsonObject const &args) {
   QJsonObject             result   = runHeader(*loaded);
   QString const           id       = runId(loaded->run);
   if (!manifest.isValid()) {
-    result.insert("card", makeCard(QStringLiteral("Run %1 details").arg(id),
+    result.insert("card", makeCard(QStringLiteral("Experiment %1 details").arg(id),
                                    {QStringLiteral("Run %1 has no recorded details: it is not saved in the experiment database "
                                                    "(or was saved by an older version), so there is no configuration snapshot.").arg(id)}));
     return result;
@@ -1301,7 +1296,7 @@ QJsonObject AnalysisTools::runDetails(QJsonObject const &args) {
     facts << QStringLiteral("Notes: %1").arg(manifest.metadata.notes);
   }
   result.insert("details", manifest.metadata.toJson());
-  result.insert("card", makeCard(QStringLiteral("Run %1 details").arg(id), facts, runrecord::pidColumns(), runrecord::pidRows(configuration)));
+  result.insert("card", makeCard(QStringLiteral("Experiment %1 details").arg(id), facts, runrecord::pidColumns(), runrecord::pidRows(configuration)));
   return result;
 }
 
@@ -1340,16 +1335,16 @@ QJsonObject AnalysisTools::events(QJsonObject const &args) {
   for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
     summary << QStringLiteral("%1 × %2").arg(it.value()).arg(it.key());
   }
-  QStringList facts{QStringLiteral("Run %1: %2 events%3: %4.")
+  QStringList facts{QStringLiteral("Experiment %1: %2 events%3: %4.")
                       .arg(runId(loaded->run))
                       .arg(rows.size() < 60 ? QString::number(rows.size()) : QStringLiteral("60+"))
                       .arg(filter.isEmpty() ? QString() : QStringLiteral(" matching '%1'").arg(filter))
                       .arg(summary.isEmpty() ? QStringLiteral("none") : summary.join(QStringLiteral(", ")))};
-  facts << (recorded ? QStringLiteral("Recorded with the run: live events of the application and events from the recorded signals.")
-                     : QStringLiteral("This run has no recorded events; these were derived now from its signals."));
+  facts << (recorded ? QStringLiteral("Recorded with the experiment: live events of the application and events from the recorded signals.")
+                     : QStringLiteral("This experiment has no recorded events; these were derived now from its signals."));
   QJsonObject result = runHeader(*loaded);
   result.insert("events", list);
-  result.insert("card", makeCard(QStringLiteral("Events of run %1").arg(runId(loaded->run)), facts, {"After", "Event", "Source", "Details"}, rows));
+  result.insert("card", makeCard(QStringLiteral("Events of experiment %1").arg(runId(loaded->run)), facts, {"After", "Event", "Source", "Details"}, rows));
   return result;
 }
 
@@ -1392,7 +1387,7 @@ QJsonObject AnalysisTools::plotRun(QJsonObject const &args) {
   result.insert("shown", QStringLiteral("opened on the Data analysis page"));
   result.insert("channels", QJsonArray::fromStringList(channels));
   // what is on screen, so the explanation can stick to facts
-  QString what = QStringLiteral("the whole run");
+  QString what = QStringLiteral("the whole experiment");
   if (shownStage >= 0) {
     result.insert("stage_shown", stageJson(loaded->analysis, shownStage, true));
     what = QStringLiteral("%1, %2").arg(stageLabel(loaded->analysis, shownStage), spanText(loaded->analysis.run.stages[shownStage].segment));
@@ -1401,14 +1396,14 @@ QJsonObject AnalysisTools::plotRun(QJsonObject const &args) {
                                              {"to", hms(std::isfinite(to) ? to : loaded->run.duration())}});
     what = QStringLiteral("%1 to %2").arg(hms(std::isfinite(from) ? from : 0.0), hms(std::isfinite(to) ? to : loaded->run.duration()));
   }
-  QStringList facts{QStringLiteral("Opened on the Data analysis page: run %1, %2.").arg(runId(loaded->run), what),
+  QStringList facts{QStringLiteral("Opened on the Data analysis page: experiment %1, %2.").arg(runId(loaded->run), what),
                     QStringLiteral("Channels: %1.").arg(channels.join(QStringLiteral(", ")))};
   if (!compare.isEmpty()) {
     QStringList others;
     for (ExperimentRun const &other : std::as_const(compare)) {
       others << runId(other);
     }
-    facts << QStringLiteral("Overlaid runs: %1.").arg(others.join(QStringLiteral(", ")));
+    facts << QStringLiteral("Overlaid experiments: %1.").arg(others.join(QStringLiteral(", ")));
   }
   result.insert("card", makeCard(QStringLiteral("Chart"), facts));
   return result;
@@ -1437,7 +1432,7 @@ QJsonObject AnalysisTools::generateReport(QJsonObject const &args) {
     return QJsonObject{{"error", failed}};
   }
   QJsonObject result{{"run", runId(*run)}, {"title", run->title}, {"report", path}, {"format", pdf ? "pdf" : "html"}};
-  result.insert("card", makeCard(QStringLiteral("Report"), {QStringLiteral("%1 report of run %2 written to %3.").arg(pdf ? "PDF" : "HTML", runId(*run), path)}));
+  result.insert("card", makeCard(QStringLiteral("Report"), {QStringLiteral("%1 report of experiment %2 written to %3.").arg(pdf ? "PDF" : "HTML", runId(*run), path)}));
   return result;
 }
 

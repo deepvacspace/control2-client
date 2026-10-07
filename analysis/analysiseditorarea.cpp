@@ -65,7 +65,7 @@ QTabWidget *AnalysisEditorArea::makeGroup() {
   group->setMovable(true);
   group->setDocumentMode(true);
   group->setElideMode(Qt::ElideRight);
-  group->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss")
+  group->tabBar()->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss")
                          .arg(36 * utils::ssf())
                          .arg(120 * utils::ssf())
                          .arg(36 * utils::ssf()));

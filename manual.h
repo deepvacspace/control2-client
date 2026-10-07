@@ -56,20 +56,25 @@ public:
                          QWidget         *parent          = nullptr);
 
   bool isEnabled() const {
-    return m_enableChkBox->isChecked();
+    return !m_enableChkBox || m_enableChkBox->isChecked();
   }
 
 private:
   SystemValueList *m_modelSysValuesList;
   SystemValue     *m_currentVal;
-  QCheckBox       *m_enableChkBox;
+  QCheckBox       *m_enableChkBox{nullptr}; // only when the temperature can be switched off (chamber with pressure)
 };
 
 class CommonSetWidget : public QGroupBox {
   Q_OBJECT
 public:
-  explicit CommonSetWidget(
-    quint32 index, SystemValueList *manualModel, SystemValue *currentVal, QWidget *parent = nullptr);
+  // manualModel == nullptr: the quantity is not available on this chamber; the column is shown disabled
+  explicit CommonSetWidget(quint32          index,
+                           SystemValueList *manualModel,
+                           SystemValue     *currentVal,
+                           QString const   &title,
+                           QString const   &unit,
+                           QWidget         *parent = nullptr);
 
 private:
   SystemValueList *m_modelSysValuesList;

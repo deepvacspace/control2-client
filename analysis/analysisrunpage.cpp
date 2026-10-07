@@ -9,6 +9,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLocale>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
@@ -18,8 +19,10 @@
 #include <QSignalBlocker>
 #include <QHeaderView>
 #include <QSpinBox>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QTableWidget>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTextBrowser>
 #include <QTextStream>
@@ -32,6 +35,7 @@
 #include "comparisonpanel.h"
 #include "experimentinput.h"
 #include "experimentreport.h"
+#include "theme.h"
 #include "rundetailsdialog.h"
 #include "runrecord.h"
 #include "seriesstats.h"
@@ -98,10 +102,29 @@ public:
 protected:
   void resizeEvent(QResizeEvent *event) override {
     QWidget::resizeEvent(event);
+    updateMinimum();
+  }
+  bool event(QEvent *event) override {
+    bool const handled{QWidget::event(event)};
+    if (event->type() == QEvent::LayoutRequest) { // a group was shown or hidden
+      updateMinimum();
+    }
+    return handled;
+  }
+
+private:
+  void updateMinimum() {
     if (layout() && layout()->hasHeightForWidth()) {
       int const needed{layout()->heightForWidth(width())};
       if (needed != minimumHeight()) {
         setMinimumHeight(needed);
+        // a splitter only applies a new minimum on its next resize
+        for (QWidget *w = parentWidget(); w; w = w->parentWidget()) {
+          if (auto *splitter = qobject_cast<QSplitter *>(w)) {
+            splitter->refresh();
+            break;
+          }
+        }
       }
     }
   }
@@ -183,8 +206,10 @@ AnalysisRunPage::AnalysisRunPage(ResHolder          *resHolder,
 }
 
 void AnalysisRunPage::buildUi() {
+  setObjectName("pageCard");
+  setAttribute(Qt::WA_StyledBackground);
   auto *root = new QVBoxLayout(this);
-  root->setContentsMargins(6 * utils::ssf(), 6 * utils::ssf(), 6 * utils::ssf(), 6 * utils::ssf());
+  root->setContentsMargins(14 * utils::ssf(), 12 * utils::ssf(), 14 * utils::ssf(), 10 * utils::ssf());
   root->setSpacing(4 * utils::ssf());
 
   // title / stats
@@ -196,12 +221,17 @@ void AnalysisRunPage::buildUi() {
     m_titleLabel->setFont(font);
   }
   m_statsLabel = new QLabel(this);
-  m_statsLabel->setStyleSheet("color: #64748b;");
+  m_statsLabel->setProperty("muted", true);
+  m_integrityBadge = new QLabel(this);
+  m_integrityBadge->setVisible(false);
   for (QLabel *label : {m_titleLabel, m_statsLabel}) {
     // long texts must not force the pane wider when tabs are split
     label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   }
-  root->addWidget(m_titleLabel);
+  auto *headerLay = new QHBoxLayout();
+  headerLay->addWidget(m_titleLabel, 1);
+  headerLay->addWidget(m_integrityBadge, 0, Qt::AlignTop);
+  root->addLayout(headerLay);
   root->addWidget(m_statsLabel);
 
   // tools (wrap to more rows in narrow panes)
@@ -240,7 +270,7 @@ void AnalysisRunPage::buildUi() {
 
   auto *statisticsBtn = makeButton(tr("Statistics"), this);
   statisticsBtn->setCheckable(true);
-  statisticsBtn->setToolTip(tr("Statistics of the visible range, run KPIs and automatic stages"));
+  statisticsBtn->setToolTip(tr("Statistics of the visible range, experiment KPIs and automatic stages"));
 
   m_exportBtn      = makeButton(tr("Export ▾"), this);
   auto *exportMenu = new QMenu(m_exportBtn);
@@ -251,9 +281,9 @@ void AnalysisRunPage::buildUi() {
   exportMenu->addAction(tr("Experiment report (HTML)…"), this, [this] { exportReport(false); });
   exportMenu->addAction(tr("Experiment report (PDF)…"), this, [this] { exportReport(true); });
   exportMenu->addSeparator();
-  exportMenu->addAction(tr("Run bundle (JSON)…"), this, &AnalysisRunPage::exportBundle)->setEnabled(!m_run.storeKey.isEmpty());
+  exportMenu->addAction(tr("Experiment bundle (JSON)…"), this, &AnalysisRunPage::exportBundle)->setEnabled(!m_run.storeKey.isEmpty());
   exportMenu->addSeparator();
-  exportMenu->addAction(tr("Edit run details…"), this, &AnalysisRunPage::editRunDetails)->setEnabled(!m_run.storeKey.isEmpty());
+  exportMenu->addAction(tr("Edit experiment details…"), this, &AnalysisRunPage::editRunDetails)->setEnabled(!m_run.storeKey.isEmpty());
   exportMenu->addAction(tr("Save to experiment database…"), this, &AnalysisRunPage::saveToDatabase)
     ->setEnabled(m_run.storeKey.isEmpty());
   m_exportBtn->setMenu(exportMenu);
@@ -347,6 +377,7 @@ void AnalysisRunPage::buildUi() {
   m_setpointCheck = new QCheckBox(tr("Setpoint"), this);
   m_setpointCheck->setChecked(true);
   m_setpointEdit = new LineEditNum(-1'000'000, 1'000'000, 2, false, this);
+  m_setpointEdit->setFont(font()); // same size as the range fields
   m_setpointEdit->setFixedWidth(110 * utils::ssf());
   m_setpointEdit->setMinimumHeight(buttonHeight());
   m_setpointGroup = makeGroup({m_setpointCheck, m_setpointEdit});
@@ -366,8 +397,16 @@ void AnalysisRunPage::buildUi() {
   auto *controlsBox = new FlowBox(chartArea);
   controlsBox->setLayout(controls);
   chartLay->addWidget(controlsBox);
-  auto *panels    = new QWidget(splitter);
-  auto *panelsLay = new QVBoxLayout(panels);
+  // the panels scroll when the window is too low for them and the chart together (compare mode)
+  auto *panels = new QScrollArea(splitter);
+  panels->setWidgetResizable(true);
+  panels->setFrameShape(QFrame::NoFrame);
+  panels->setMinimumHeight(90 * utils::ssf());
+  auto *panelsContent = new QWidget(panels);
+  panelsContent->setAutoFillBackground(false);
+  panels->viewport()->setAutoFillBackground(false);
+  panels->setWidget(panelsContent);
+  auto *panelsLay = new QVBoxLayout(panelsContent);
   panelsLay->setContentsMargins(0, 0, 0, 0);
   splitter->addWidget(chartArea);
   splitter->addWidget(panels);
@@ -410,7 +449,9 @@ void AnalysisRunPage::buildUi() {
 
 QWidget *AnalysisRunPage::buildNotesPanel() {
   auto *panel = new QTabWidget(this);
+  panel->setStyleSheet(theme::flatTabStyleSheet());
   panel->setDocumentMode(true);
+  panel->tabBar()->setExpanding(false);
 
   // variable rules
   auto *rulesPage = new QWidget(panel);
@@ -721,33 +762,59 @@ QColor AnalysisRunPage::channelColor(int index) const {
 }
 
 void AnalysisRunPage::refreshStats() {
-  m_titleLabel->setText((m_run.custom ? tr("Range %1") : tr("Experiment %1")).arg(m_run.title));
-  QString stats = tr("%1 → %2   ·   duration %3   ·   %4 samples")
-                    .arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.start)).toString("yyyy-MM-dd HH:mm:ss"),
-                         QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.end)).toString("yyyy-MM-dd HH:mm:ss"),
-                         ExperimentLibrary::formatDuration(m_run.duration()))
-                    .arg(m_run.samples);
+  QDateTime const start = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.start));
+  QDateTime const end   = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.end));
+  int             number{0};
+  if (m_library && !m_run.custom) {
+    QVector<ExperimentRun> const all = m_library->chronological();
+    for (int i{0}; i < all.size(); ++i) {
+      if (all[i].key == m_run.key) {
+        number = i + 1;
+        break;
+      }
+    }
+  }
+  QString const when = QStringLiteral("%1 → %2").arg(start.toString("yyyy-MM-dd HH:mm"),
+                                                    end.date() == start.date() ? end.toString("HH:mm") : end.toString("yyyy-MM-dd HH:mm"));
+  QString const head = m_run.custom ? tr("Range %1").arg(when) : (number > 0 ? QStringLiteral("#%1 · %2").arg(number).arg(when) : when);
+  m_titleLabel->setText(tr("%1  ·  %2  ·  %3 samples").arg(head, ExperimentLibrary::formatDuration(m_run.duration())).arg(QLocale().toString(m_run.samples)));
+
   core::RunMetadata const &details = m_manifest.metadata;
-  QStringList              about;
+  QStringList              about{m_run.title};
   if (!details.dut.isEmpty()) {
     about << tr("DUT %1").arg(details.dut);
   }
   if (!details.purpose.isEmpty()) {
-    about << details.purpose;
+    about << tr("Purpose %1").arg(details.purpose);
   }
   if (!details.operatorName.isEmpty()) {
-    about << tr("operator %1").arg(details.operatorName);
+    about << tr("Operator %1").arg(details.operatorName);
   }
   if (!details.tags.isEmpty()) {
     about << QStringLiteral("#") + details.tags.join(QStringLiteral(" #"));
   }
-  if (!about.isEmpty()) {
-    stats += QStringLiteral("   ·   ") + about.join(QStringLiteral("   ·   "));
+  m_statsLabel->setText(about.join(QStringLiteral("    ")));
+
+  // integrity: verified / modified (nothing for experiments without a fingerprint)
+  theme::Colors const &c = theme::colors();
+  bool const           known{m_manifestStored && (m_integrity != 2)};
+  m_integrityBadge->setVisible(known);
+  if (known) {
+    QColor const color = (m_integrity == 0) ? c.active : c.danger;
+    m_integrityBadge->setText(m_integrity == 0 ? tr("VERIFIED") : tr("MODIFIED"));
+    m_integrityBadge->setToolTip(runrecord::integrityText(m_integrity));
+    QFont small = font();
+    small.setPointSizeF(font().pointSizeF() * 0.8);
+    small.setBold(true);
+    m_integrityBadge->setFont(small);
+    m_integrityBadge->setStyleSheet(QStringLiteral("color: %1; border: %2px solid %1; border-radius: %3px; padding: %4px %5px; background: %6;")
+                                      .arg(color.name())
+                                      .arg(qMax(1, static_cast<int>(1 * utils::ssf())))
+                                      .arg(static_cast<int>(3 * utils::ssf()))
+                                      .arg(static_cast<int>(1 * utils::ssf()))
+                                      .arg(static_cast<int>(6 * utils::ssf()))
+                                      .arg(QColor(color.red(), color.green(), color.blue(), 30).name(QColor::HexArgb)));
   }
-  if (m_manifestStored && (m_integrity != 2)) {
-    stats += QStringLiteral("   ·   ") + (m_integrity == 0 ? tr("✓ integrity verified") : tr("⚠ integrity check failed"));
-  }
-  m_statsLabel->setText(stats);
   m_statsLabel->setToolTip(m_manifestStored ? runrecord::integrityText(m_integrity) : QString());
 }
 
@@ -925,7 +992,9 @@ int AnalysisRunPage::channelIndex(QString const &name) const {
 
 QWidget *AnalysisRunPage::buildStatisticsPanel() {
   auto *panel = new QTabWidget(this);
+  panel->setStyleSheet(theme::flatTabStyleSheet());
   panel->setDocumentMode(true);
+  panel->tabBar()->setExpanding(false);
 
   auto *rangePage = new QWidget(panel);
   auto *rangeLay  = new QVBoxLayout(rangePage);
@@ -963,6 +1032,27 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
       updateTimeControls();
     }
   });
+  auto *tilesLay = new QHBoxLayout();
+  tilesLay->setSpacing(16 * utils::ssf());
+  for (QString const &title : {tr("MAE"), tr("RMSE"), tr("Max error"), tr("Overshoot"), tr("Undershoot"), tr("Settling"), tr("Tail MAE")}) {
+    auto *tile    = new QWidget(kpiPage);
+    auto *tileLay = new QVBoxLayout(tile);
+    tileLay->setContentsMargins(0, 0, 0, 0);
+    tileLay->setSpacing(1 * utils::ssf());
+    auto *name = new QLabel(title, tile);
+    name->setProperty("muted", true);
+    auto *value = new QLabel(QStringLiteral("—"), tile);
+    QFont font  = value->font();
+    font.setBold(true);
+    font.setPointSizeF(font.pointSizeF() * 1.35);
+    value->setFont(font);
+    tileLay->addWidget(name);
+    tileLay->addWidget(value);
+    tilesLay->addWidget(tile, 1);
+    m_kpiTiles << value;
+  }
+  kpiLay->addLayout(tilesLay);
+  m_kpiLabel->setProperty("muted", true);
   kpiLay->addWidget(m_kpiLabel);
   kpiLay->addWidget(m_stagesTable);
 
@@ -1012,7 +1102,7 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
   panel->addTab(anomalyPage, tr("Anomalies"));
   panel->addTab(m_comparisonPanel, tr("Comparison"));
   panel->addTab(eventsPage, tr("Events"));
-  panel->addTab(m_recordView, tr("Run record"));
+  panel->addTab(m_recordView, tr("Experiment record"));
   return panel;
 }
 
@@ -1154,6 +1244,9 @@ void AnalysisRunPage::computeRunAnalysis() {
 
   core::ExperimentAnalysis const &a = *m_analysis;
   if (!a.hasControl) {
+    for (QLabel *tile : std::as_const(m_kpiTiles)) {
+      tile->setText(QStringLiteral("—"));
+    }
     m_kpiLabel->setText(channelIndex("temp") < 0 || channelIndex("temp_ref") < 0
                           ? tr("KPIs need the channels temp and temp_ref.")
                           : tr("No setpoint (temp_ref) was recorded in this experiment, so there are no KPIs or stages."));
@@ -1169,12 +1262,18 @@ void AnalysisRunPage::computeRunAnalysis() {
     setpoints << statText(setpoint, 2);
   }
   double const steadyShare{core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
+  // headline KPIs as tiles (°C for the temperature errors)
+  {
+    auto degrees = [](double v) { return std::isfinite(v) ? statText(v) + QStringLiteral(" °C") : QStringLiteral("—"); };
+    QStringList const values{degrees(k.mae),           degrees(k.rmse),          degrees(k.maxAbsError),
+                             degrees(a.run.overshoot), degrees(a.run.undershoot), secondsText(a.run.settlingTimeS),
+                             degrees(k.tailMae)};
+    for (int i{0}; i < m_kpiTiles.size(); ++i) {
+      m_kpiTiles[i]->setText(values.value(i));
+    }
+  }
   m_kpiLabel->setText(
-    tr("<b>Run</b> (temp vs temp_ref, %1 samples): MAE %2 · RMSE %3 · max |error| %4 · worst step overshoot %5 · "
-       "worst step undershoot %6 · settling of the last setpoint %7 · tail MAE %8 · tail std %9.")
-      .arg(k.samples)
-      .arg(statText(k.mae), statText(k.rmse), statText(k.maxAbsError), statText(a.run.overshoot), statText(a.run.undershoot),
-           secondsText(a.run.settlingTimeS), statText(k.tailMae), statText(k.tailStd))
+    tr("<b>Experiment</b>: %1 samples · tail std %2.").arg(k.samples).arg(statText(k.tailStd))
     + QStringLiteral("<br>")
     + tr("<b>Control</b>: steady %1 of the time · output saturated %2 (windup %3) · P / I / D share %4 · "
          "<b>configuration</b>: Kp %5, Ki %6, Kd %7%8 · setpoints %9 · %10 anomalies (%11 warning or worse).")
@@ -1954,7 +2053,7 @@ QString AnalysisRunPage::recordHtml() const {
   html += QStringLiteral("<h4>%1</h4>").arg(tr("Identity"));
   if (m_manifestStored) {
     html += QStringLiteral("<p>%1: %2<br>%3: %4 (%5)<br>%6: %7 %8<br>%9</p>")
-              .arg(tr("Run uid"), esc(m_manifest.runUid), tr("Chamber"), esc(m_manifest.chamber), esc(m_manifest.chamberRef),
+              .arg(tr("Experiment uid"), esc(m_manifest.runUid), tr("Chamber"), esc(m_manifest.chamber), esc(m_manifest.chamberRef),
                    tr("Recorded by"), esc(m_manifest.appName), esc(m_manifest.appVersion))
               .arg(tr("Time resolution %1 s · %2 samples").arg(m_manifest.timeResolutionS).arg(m_manifest.sampleCount));
   } else {
@@ -1962,7 +2061,7 @@ QString AnalysisRunPage::recordHtml() const {
   }
   core::RunMetadata const &details = m_manifest.metadata;
   html += QStringLiteral("<h4>%1</h4><p>%2: %3<br>%4: %5<br>%6: %7<br>%8: %9</p>")
-            .arg(tr("Run details"), tr("DUT"), esc(details.dut.isEmpty() ? QStringLiteral("—") : details.dut), tr("Operator"),
+            .arg(tr("Experiment details"), tr("DUT"), esc(details.dut.isEmpty() ? QStringLiteral("—") : details.dut), tr("Operator"),
                  esc(details.operatorName.isEmpty() ? QStringLiteral("—") : details.operatorName), tr("Purpose"),
                  esc(details.purpose.isEmpty() ? QStringLiteral("—") : details.purpose), tr("Tags"),
                  esc(details.tags.isEmpty() ? QStringLiteral("—") : details.tags.join(QStringLiteral(", "))));
@@ -2015,12 +2114,12 @@ void AnalysisRunPage::editRunDetails() {
   if (m_run.storeKey.isEmpty()) {
     return;
   }
-  RunDetailsDialog dialog(m_manifest.metadata, tr("Run details: %1").arg(m_run.title), this);
+  RunDetailsDialog dialog(m_manifest.metadata, tr("Experiment details: %1").arg(m_run.title), this);
   if (dialog.exec() != QDialog::Accepted) {
     return;
   }
   if (!storage::RunStore::updateMetadata(m_run.storeKey, dialog.metadata())) {
-    (new MessageDialog(tr("Run details"), tr("This run has no manifest yet; it gets one at the next start of the application.")))->open();
+    (new MessageDialog(tr("Experiment details"), tr("This experiment has no manifest yet; it gets one at the next start of the application.")))->open();
     return;
   }
   m_manifest.metadata = dialog.metadata();

@@ -29,7 +29,7 @@ QString AssistantEngine::systemPrompt() const {
   // stable for the whole day, so the server can keep it (and the tools) processed in its cache
   return QStringLiteral(
            "You are the analysis assistant of DeepVac Control, software for thermal vacuum (TVAC) test chambers. "
-           "Today is %1. You help engineers understand recorded experiments (runs). Always answer in English.\n"
+           "Today is %1. You help engineers understand recorded experiments (the tools call them runs; always say 'experiment' to the user). Always answer in English.\n"
            "How to work:\n"
            "- Get data with tools: get_run_summary (describe a run), compare_runs (any question about two or more "
            "runs), rank_runs (best / worst run, ranking), get_stages / get_kpis (stages), get_anomalies, list_runs, "
@@ -38,7 +38,7 @@ QString AssistantEngine::systemPrompt() const {
            "this conversation, call a tool first.\n"
            "- Temperatures are always in °C, as in the cards. Never use Kelvin, never convert units, never calculate "
            "numbers yourself.\n"
-           "- Runs: '#N', a title, or 'latest'; 'run 105' is '105'. 'Final stabilization' is stage 'last_hold'.\n"
+           "- Experiments: '#N', a title, or 'latest'; 'experiment 105' or 'run 105' is '105'. 'Final stabilization' is stage 'last_hold'.\n"
            "- The user already sees every tool result as a card with its facts and table, right above your answer. "
            "Do not repeat the card.\n"
            "- Answer in at most 3 short sentences: the direct answer to the question, then the most important "
@@ -187,7 +187,7 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun) {
   }
   QString content = question.trimmed();
   if (!focusRun.isEmpty()) {
-    content = tr("%1\n(Run selected in the app: %2. The question may name another run.)").arg(content, focusRun);
+    content = tr("%1\n(Experiment selected in the app: %2. The question may name another experiment.)").arg(content, focusRun);
   }
   // routing aid for small models: a question naming several runs is answered with one compare_runs call
   QStringList const runs = mentionedRuns(question);

@@ -1,5 +1,6 @@
 #include "userwidget.h"
 
+#include <QEvent>
 #include <QCoreApplication>
 #include <QFrame>
 #include <QHeaderView>
@@ -156,7 +157,7 @@ void UserWidget::initGui() {
     buttonsLay->addWidget(button);
   }
   buttonsLay->addStretch();
-  auto *hint = new QLabel(tr("User changes are written to the log and recorded as run events."), usersCard);
+  auto *hint = new QLabel(tr("User changes are written to the log and recorded as experiment events."), usersCard);
   hint->setProperty("muted", true);
   buttonsLay->addWidget(hint);
   usersLay->addSpacing(6 * ssf);
@@ -173,6 +174,13 @@ void UserWidget::initGui() {
     m_since = QDateTime::currentDateTime();
     updateCurrentUser(name, level);
   });
+}
+
+void UserWidget::changeEvent(QEvent *event) {
+  QWidget::changeEvent(event);
+  if ((event->type() == QEvent::PaletteChange) && m_currentLevel) {
+    updateCurrentUser(m_accessManager->getCurrentUserName(), m_accessManager->getCurrentAccessLevel());
+  }
 }
 
 void UserWidget::updateCurrentUser(QString const &name, AccessManager::AccessLevel level) {

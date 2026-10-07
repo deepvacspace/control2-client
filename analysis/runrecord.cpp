@@ -45,7 +45,7 @@ QString jobText(QJsonObject const &configuration) {
 
 QString capturedText(QJsonObject const &configuration) {
   if (!configuration.value("captured_at_execution").toBool(false)) {
-    return QObject::tr("not captured at execution (run saved later, imported or recorded by an older version)");
+    return QObject::tr("not captured at execution (experiment saved later, imported or recorded by an older version)");
   }
   QDateTime const at = QDateTime::fromString(configuration.value("captured_at").toString(), Qt::ISODateWithMs);
   QString         text = QObject::tr("captured when the job was sent, %1").arg(at.toLocalTime().toString("yyyy-MM-dd HH:mm:ss"));
@@ -181,7 +181,7 @@ QString integrityText(int integrity) {
     case 1:
       return QObject::tr("⚠ samples do not match their content hash (modified or damaged after saving)");
     default:
-      return QObject::tr("no content hash (run from Insight or an older version)");
+      return QObject::tr("no content hash (experiment from Insight or an older version)");
   }
 }
 

@@ -503,4 +503,13 @@ QString ExperimentLibrary::formatDuration(double sec) {
   return days > 0 ? QStringLiteral("%1d %2").arg(days).arg(hms) : hms;
 }
 
+QVector<ExperimentRun> ExperimentLibrary::chronological() const {
+  QVector<ExperimentRun> all = runs();
+  all += storedRuns();
+  std::stable_sort(all.begin(), all.end(), [](ExperimentRun const &a, ExperimentRun const &b) {
+    return (a.start != b.start) ? (a.start < b.start) : (a.key < b.key);
+  });
+  return all;
+}
+
 } // namespace deepvaccontrol

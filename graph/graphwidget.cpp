@@ -143,19 +143,6 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_dataViewer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   m_dataViewer->setCompactLegend(true);
 
-  setStyleSheet(QStringLiteral(R"(
-QFrame#pageCard { background: %1; border: %2px solid %3; border-radius: %4px; }
-QPushButton#readoutBox { background: %5; text-align: left; padding-left: %6px; }
-QPushButton#readoutBox:checked { border-color: %7; }
-)")
-                  .arg(c.panel.name())
-                  .arg(qMax(1, static_cast<int>(1 * ssf)))
-                  .arg(c.border.name())
-                  .arg(static_cast<int>(8 * ssf))
-                  .arg(c.panelAlt.name())
-                  .arg(static_cast<int>(10 * ssf))
-                  .arg(c.accent.name()));
-
   connect(fitBtn, &QPushButton::clicked, this, [this] { m_dataViewer->setControlMode(DataViewer::ControlMode::LEAD_FULL); });
   connect(m_readoutBtn, &QPushButton::toggled, this, [this](bool on) {
     m_dataViewer->setCursorMode(on ? DataViewer::CursorMode::LEGEND_CURSOR : DataViewer::CursorMode::NONE);

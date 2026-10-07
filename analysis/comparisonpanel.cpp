@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -16,6 +17,7 @@
 #include "runmanifest.h"
 #include "runrecord.h"
 #include <functional>
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -134,7 +136,7 @@ ComparisonPanel::ComparisonPanel(QWidget *parent) : QWidget{parent} {
   lay->setContentsMargins(0, 0, 0, 0);
   auto *alignRow = new QHBoxLayout;
   m_alignCombo   = new QComboBox(page);
-  m_alignCombo->addItem(tr("Run start"), static_cast<int>(core::AlignMode::START));
+  m_alignCombo->addItem(tr("Experiment start"), static_cast<int>(core::AlignMode::START));
   m_alignCombo->addItem(tr("Setpoint change #"), static_cast<int>(core::AlignMode::SETPOINT_CHANGE));
   m_alignCombo->addItem(tr("Target crossing after change #"), static_cast<int>(core::AlignMode::TARGET_CROSSING));
   m_alignCombo->addItem(tr("Stage #"), static_cast<int>(core::AlignMode::STAGE));
@@ -160,13 +162,15 @@ ComparisonPanel::ComparisonPanel(QWidget *parent) : QWidget{parent} {
   });
 
   auto *tabs = new QTabWidget(page);
+  tabs->setStyleSheet(theme::flatTabStyleSheet());
   tabs->setDocumentMode(true);
+  tabs->tabBar()->setExpanding(false);
   m_kpiTable    = makeTable(tabs);
   m_configTable = makeTable(tabs);
   m_stepsTable  = makeTable(tabs);
   m_signalTable = makeTable(tabs);
-  m_kpiTable->setToolTip(tr("Differences against the first run: green better, red worse"));
-  m_configTable->setToolTip(tr("Settings that differ between the runs are highlighted"));
+  m_kpiTable->setToolTip(tr("Differences against the first experiment: green better, red worse"));
+  m_configTable->setToolTip(tr("Settings that differ between the experiments are highlighted"));
   tabs->addTab(m_kpiTable, tr("KPIs"));
   tabs->addTab(m_configTable, tr("Configuration"));
   tabs->addTab(m_stepsTable, tr("Step responses"));
@@ -343,9 +347,9 @@ void ComparisonPanel::fillSteps() {
 
 void ComparisonPanel::fillSignals() {
   setHeader(m_signalTable,
-            {tr("Run"), tr("Overlap"), tr("Mean diff"), tr("RMS diff"), tr("Max |diff|"), tr("Correlation")},
+            {tr("Experiment"), tr("Overlap"), tr("Mean diff"), tr("RMS diff"), tr("Max |diff|"), tr("Correlation")},
             std::max(0, static_cast<int>(m_runs.size()) - 1));
-  m_signalTable->setToolTip(tr("%1 of each run minus the first run, on the aligned time axis").arg(m_signalLabel));
+  m_signalTable->setToolTip(tr("%1 of each experiment minus the first experiment, on the aligned time axis").arg(m_signalLabel));
   for (int k{1}; k < m_runs.size(); ++k) {
     // offsets are added to each run's time: undo them to compare on aligned axes
     core::SignalComparison const diff = core::compareSignals(m_runs[0].times, m_runs[0].signal, -m_offsets.value(0),
@@ -363,9 +367,9 @@ QString ComparisonPanel::html() const {
     return {};
   }
   return QStringLiteral("<p>%1: <b>%2</b></p><h3>%3</h3>%4<h3>%5</h3>%6<h3>%7</h3>%8<h3>%9</h3><p>%10</p>%11")
-    .arg(tr("Aligned on"), alignmentText().toHtmlEscaped(), tr("KPIs (difference against the first run)"), htmlTable(m_kpiTable),
+    .arg(tr("Aligned on"), alignmentText().toHtmlEscaped(), tr("KPIs (difference against the first experiment)"), htmlTable(m_kpiTable),
          tr("Configuration"), htmlTable(m_configTable), tr("Step responses"), htmlTable(m_stepsTable), tr("Signals"))
-    .arg(tr("%1 of each run minus the first run, on the aligned time axis.").arg(m_signalLabel.toHtmlEscaped()), htmlTable(m_signalTable));
+    .arg(tr("%1 of each experiment minus the first experiment, on the aligned time axis.").arg(m_signalLabel.toHtmlEscaped()), htmlTable(m_signalTable));
 }
 
 } // namespace deepvaccontrol

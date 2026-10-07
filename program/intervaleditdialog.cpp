@@ -5,11 +5,13 @@
 #include "constants.h"
 #include "intervaleditdelegate.h"
 #include "lineeditnum.h"
+#include "lineeditscreen.h"
 #include "lineedittime.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
-IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QWidget *parent) : QDialog{parent}, m_model{model} {
+IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QStringList *labels, QWidget *parent)
+    : QDialog{parent}, m_model{model}, m_labels{labels} {
   paramsOrder = m_model->getParamListOrder();
 
   initGui();
@@ -47,6 +49,13 @@ IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QWidget *parent) : Q
 
   connect(newButton, &QPushButton::clicked, this, [this] {
     localCommit();
+    if (m_labels) {
+      while (m_labels->size() < m_model->getStandardModel()->columnCount()) {
+        m_labels->append(QString());
+      }
+      m_labels->insert(mapper->currentIndex() + 1, QString());
+      emit labelsChanged();
+    }
     m_model->newItem(mapper->currentIndex() + 1);
     mapper->toNext();
   });
@@ -79,7 +88,15 @@ void IntervalEditDialog::initGui() {
   auto *paramLay  = new QGridLayout();
 
   // cycle all params in Interval Model Struct (duration, temp, hum, etc.)
-  int indexPositionInLay = 0; // != index in model->getModelStruct(), so count separately
+  // interval label (shown in the interval table, saved with the program)
+  labelEdit = new LineEditScreen(this, VirtualKeyboard::EN);
+  labelEdit->setPlaceholderText(tr("e.g. Ramp up, Hot dwell"));
+  labelEdit->setMinimumHeight(32 * utils::ssf());
+  labelEdit->setEnabled(m_labels != nullptr);
+  auto *labelTitle = new QLabel(tr("Label"), this);
+  paramLay->addWidget(labelTitle, 0, 0);
+  paramLay->addWidget(labelEdit, 0, 2);
+  int indexPositionInLay = 1; // != index in model->getModelStruct(), so count separately
   for (auto const &item : m_model->getParamListVariant()) {
     int const     type{item.toMap()["type"].toInt()};
     QString const label{item.toMap()["label"].toString()};
@@ -270,6 +287,7 @@ void IntervalEditDialog::updateGuiElements(int newIndex) {
   // }
 
   maxSpeedCheck->setChecked(utils::getBitOfDword(flags, deepvaccontrol::AWAIT_BIT));
+  labelEdit->setText(m_labels ? m_labels->value(newIndex) : QString());
 
   int const count{m_model->getStandardModel()->columnCount()};
 
@@ -295,6 +313,17 @@ void IntervalEditDialog::localCommit() {
   bool const tempIsEnabled{utils::getBitOfDword(flags, paramsOrder.indexOf("temp"))};
   utils::setBitOfDword(flags, deepvaccontrol::AWAIT_BIT, tempIsEnabled & maxSpeedCheck->isChecked());
   utils::setBitOfDword(flags, deepvaccontrol::RAMP_BIT, tempIsEnabled & (!maxSpeedCheck->isChecked()));
+
+  if (m_labels) {
+    while (m_labels->size() < m_model->getStandardModel()->columnCount()) {
+      m_labels->append(QString());
+    }
+    QString const label = labelEdit->text().trimmed();
+    if ((curIndex >= 0) && (curIndex < m_labels->size()) && ((*m_labels)[curIndex] != label)) {
+      (*m_labels)[curIndex] = label;
+      emit labelsChanged();
+    }
+  }
 
   // flags does not mapped to anything, so 'commit' it value manualy
   m_model->getStandardModel()->item(m_model->getFlagsIndex(), curIndex)->setData(flags, Qt::UserRole + 1);

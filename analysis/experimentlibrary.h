@@ -97,6 +97,8 @@ public:
   [[nodiscard]] QVector<ExperimentRun> const &runs() const;
   // runs saved in the experiment database (recorded here or received from other computers)
   [[nodiscard]] QVector<ExperimentRun> const &storedRuns() const;
+  // every experiment (recorded days and database), oldest first: experiment #N is element N - 1
+  [[nodiscard]] QVector<ExperimentRun> chronological() const;
   [[nodiscard]] std::optional<ExperimentRun>  findRun(QString const &key) const;
   [[nodiscard]] ExperimentRun                 makeRangeRun(double start, double end) const;
 

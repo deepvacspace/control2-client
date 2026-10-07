@@ -124,55 +124,60 @@ void Manual::initGui() {
   paramOrder.push_back({"pres", tr("Давление, мм рт. ст.")});
   paramOrder.push_back({"solar", tr("Лампа солнечной радиации")});
 
-  QList<QVBoxLayout *> statesLaysList;
-  QVector<int>         layFillOrder{0, 1, 1, 0};
-  int                  paramCount{0U}; // number of added params
-  bool                 tempAlwaysEnable{true};
-
+  bool tempAlwaysEnable{true};
   if (m_modelSysValuesList->contains("pres")) {
-    tempAlwaysEnable = false;
+    tempAlwaysEnable = false; // temperature and pressure are alternatives: each one is ticked
   }
+
+  // temperature and pressure side by side, each one half of the card
+  auto *pairLay = new QHBoxLayout();
+  pairLay->setSpacing(20 * ssf);
+  settingsLay->addLayout(pairLay);
+  int paramCount{0U}; // number of added params
 
   for (int i{0U}; i < paramOrder.size(); ++i) {
     auto const &ckeckedParam = paramOrder[i];
     auto const &name         = ckeckedParam.first;
-    auto const &label        = ckeckedParam.second;
+    QString     label        = ckeckedParam.second;
 
-    if (!m_modelSysValuesList->contains(name)) {
+    bool const available{m_modelSysValuesList->contains(name)};
+    if (!available && (name != "pres")) {
       continue;
     }
-
-    int const indexInSysValModel{static_cast<int>(m_modelSysValuesList->getNames().indexOf(name))};
+    int const   indexInSysValModel{static_cast<int>(m_modelSysValuesList->getNames().indexOf(name))};
+    QString     unit;
+    if (int const comma = static_cast<int>(label.lastIndexOf(',')); comma > 0) {
+      unit  = label.mid(comma + 1).trimmed();
+      label = label.left(comma).trimmed();
+    }
 
     QGroupBox *newItem = nullptr;
-
     if (name == "temp") {
-      auto *tempWidget = new TempSetWidget(indexInSysValModel,
-                                           m_modelSysValuesList,
-                                           m_resHolder->states->getSysValue(name),
-                                           false /*speedUnitIsHour*/,
-                                           tempAlwaysEnable /*alwaysEnable*/,
-                                           this);
-      if (!tempAlwaysEnable) {
-        tempWidget->setTitle(label); // checkable box: its title is the tick label
-      }
-      newItem = tempWidget;
-    }
-    // else if (name == "solar_en") {
-    //   auto solarWidget = new SolarSetWidget(i, m_manualModel, states->getVar(name), this);
-    //   newItem          = solarWidget;
-    // } else if (name == "lum") {
-    //   auto lumWidget = new LumSetWidget(i, m_manualModel, states->getVar(name), this);
-    //   newItem        = lumWidget;
-    else {
-      auto stateSetWidget
-        = new CommonSetWidget(indexInSysValModel, m_modelSysValuesList, m_resHolder->states->getSysValue(name), this);
-      stateSetWidget->setTitle(label);
-      newItem = stateSetWidget;
+      newItem = new TempSetWidget(indexInSysValModel,
+                                  m_modelSysValuesList,
+                                  m_resHolder->states->getSysValue(name),
+                                  false /*speedUnitIsHour*/,
+                                  tempAlwaysEnable /*alwaysEnable*/,
+                                  this);
+    } else {
+      // pressure is shown (disabled) also when the chamber has no pressure sensor
+      SystemValue *current = m_resHolder->states->contains(name) ? m_resHolder->states->getSysValue(name) : nullptr;
+      newItem = new CommonSetWidget(indexInSysValModel, available ? m_modelSysValuesList : nullptr, current, label,
+                                    unit.isEmpty() && (name == "pres") ? tr("mmHg") : unit, this);
     }
 
     m_stateWidgets.insert(paramCount, newItem);
-    settingsLay->addWidget(newItem);
+    if ((name == "temp") || (name == "pres")) {
+      if ((name == "pres") && (pairLay->count() > 0)) {
+        auto *line = new QFrame(controlCard);
+        line->setObjectName("cardDivider");
+        line->setFixedWidth(qMax(1, static_cast<int>(1 * ssf)));
+        pairLay->addWidget(line);
+      }
+      pairLay->addWidget(newItem, 1);
+    } else {
+      settingsLay->addWidget(newItem);
+    }
     ++paramCount;
   }
 
@@ -204,40 +209,17 @@ void Manual::initGui() {
   controlLay->addStretch();
 
   // ---- right: details recorded with the next runs
-  auto *detailsCard = makeCard(tr("Run details"), {});
+  auto *detailsCard = makeCard(tr("Experiment details"), {});
   auto *detailsLay  = static_cast<QVBoxLayout *>(detailsCard->layout());
   detailsLay->addSpacing(4 * ssf);
   detailsLay->addWidget(new RunDetailsPanel(m_resHolder, detailsCard));
   detailsLay->addStretch();
   mainLay->addWidget(detailsCard, 1);
 
-  theme::Colors const &c = theme::colors();
-  QFont const          base = QWidget::font();
-  setStyleSheet(QStringLiteral(R"(
-QFrame#pageCard { background: %1; border: %2px solid %3; border-radius: %4px; }
-QFrame#cardDivider { background: %3; border: none; }
-QLabel { color: %5; }
-QLabel[muted="true"] { color: %6; }
-QLabel#cardTitle { font-weight: bold; }
-QPushButton#startButton { background: %7; color: #052e16; border: none; }
-QPushButton#startButton:disabled { background: %9; color: %6; }
-QPushButton#stopButton[outline="true"] { background: transparent; color: %8; border: %2px solid %8; }
-QPushButton#stopButton[outline="true"]:disabled { color: %6; border-color: %3; }
-QFrame#advisorNote { background: rgba(168, 85, 247, 40); border: none; border-left: %10px solid #a855f7; border-radius: %11px; }
-QLabel#advisorNoteTitle { color: #c084fc; font-weight: bold; }
-QGroupBox#setpointBox { border: none; margin-top: 0; padding-top: 0; }
-QCheckBox { color: %5; spacing: %12px; }
-QCheckBox::indicator { width: %13px; height: %13px; }
-)")
-                  .arg(c.panel.name())
-                  .arg(qMax(1, static_cast<int>(1 * ssf)))
-                  .arg(c.border.name())
-                  .arg(static_cast<int>(8 * ssf))
-                  .arg(c.text.name(), c.muted.name(), c.active.name(), c.danger.name(), c.panelAlt.name())
-                  .arg(static_cast<int>(3 * ssf))
-                  .arg(static_cast<int>(5 * ssf))
+  setStyleSheet(QStringLiteral("QCheckBox { spacing: %1px; } QCheckBox::indicator { width: %2px; height: %2px; }")
                   .arg(static_cast<int>(8 * ssf))
                   .arg(static_cast<int>(18 * ssf)));
+  QFont const base = QWidget::font();
   for (QLabel *label : findChildren<QLabel *>()) {
     if (label->property("small").toBool()) {
       QFont small = base;
@@ -369,6 +351,63 @@ bool Manual::sendJob(ProgramModel *model, QString const &runLabel, QString const
   return true;
 }
 
+namespace {
+// big value with its unit ("Current temperature")
+QWidget *currentValueRow(SystemValue *value, QString const &unit, QWidget *parent) {
+  auto *row    = new QWidget(parent);
+  auto *lay    = new QHBoxLayout(row);
+  lay->setContentsMargins(0, 0, 0, 0);
+  QLabel *number = value ? static_cast<QLabel *>(new LabelPlus(value, row)) : new QLabel(QStringLiteral("—"), row);
+  QFont   font   = parent->font();
+  font.setBold(true);
+  font.setPointSizeF(parent->font().pointSizeF() * 1.6);
+  number->setFont(font);
+  auto *unitLabel = new QLabel(unit, row);
+  unitLabel->setFont(font);
+  lay->addWidget(number);
+  lay->addWidget(unitLabel);
+  lay->addStretch();
+  return row;
+}
+
+// unit inside a field, on the right
+void unitInside(QLineEdit *edit, QString const &unit) {
+  double const ssf{utils::ssf()};
+  // the field fills its column (LineEditNum has a fixed width of its own)
+  edit->setMinimumWidth(0);
+  edit->setMaximumWidth(QWIDGETSIZE_MAX);
+  auto        *lay = new QHBoxLayout(edit);
+  lay->setContentsMargins(0, 0, 8 * ssf, 0);
+  lay->addStretch();
+  auto *label = new QLabel(unit, edit);
+  label->setProperty("muted", true);
+  label->setAttribute(Qt::WA_TransparentForMouseEvents);
+  lay->addWidget(label);
+  QFontMetrics const fm(label->font());
+  edit->setTextMargins(0, 0, fm.horizontalAdvance(unit) + 14 * ssf, 0);
+}
+
+QLabel *mutedLabel(QString const &text, QWidget *parent) {
+  auto *label = new QLabel(text, parent);
+  label->setProperty("muted", true);
+  return label;
+}
+
+// column heading: plain, or a tick that switches the quantity on and off
+QWidget *columnHeading(QString const &title, QCheckBox **tick, QWidget *parent) {
+  if (tick) {
+    *tick = new QCheckBox(title, parent);
+    QFont font = (*tick)->font();
+    font.setBold(true);
+    (*tick)->setFont(font);
+    return *tick;
+  }
+  auto *label = new QLabel(title, parent);
+  label->setObjectName("cardTitle");
+  return label;
+}
+} // namespace
+
 TempSetWidget::TempSetWidget(quint32          index,
                              SystemValueList *manualModel,
                              SystemValue     *currentVal,
@@ -377,83 +416,39 @@ TempSetWidget::TempSetWidget(quint32          index,
                              QWidget         *parent)
     : QGroupBox{parent}, m_modelSysValuesList{manualModel}, m_currentVal{currentVal} {
   auto *flagsSysValue = manualModel->getSysValue("flags");
-  setCheckable(!alwaysEnable);
-  if (alwaysEnable) {
-    setChecked(true);
-    flagsSysValue->setBitOfUInt(index, true); // NOTE important
-  } else {
-    setChecked(flagsSysValue->getBitOfUInt(index));
-  }
-
-  if (!alwaysEnable) {
-    connect(this, &QGroupBox::toggled, this, [index, flagsSysValue](bool value) {
-      flagsSysValue->setBitOfUInt(index, value);
-    });
-  }
-
   setObjectName("setpointBox");
   if (alwaysEnable) {
-    setTitle(QString());
+    flagsSysValue->setBitOfUInt(index, true); // NOTE important
   }
   double const ssf{utils::ssf()};
   auto        *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
   mainLay->setSpacing(4 * ssf);
-  auto muted = [this](QString const &text) {
-    auto *label = new QLabel(text, this);
-    label->setProperty("muted", true);
-    return label;
-  };
-  auto unitInside = [ssf](QLineEdit *edit, QString const &unit) {
-    // the unit inside the field, on the right
-    auto *lay = new QHBoxLayout(edit);
-    lay->setContentsMargins(0, 0, 8 * ssf, 0);
-    lay->addStretch();
-    auto *label = new QLabel(unit, edit);
-    label->setProperty("muted", true);
-    label->setAttribute(Qt::WA_TransparentForMouseEvents);
-    lay->addWidget(label);
-    QFontMetrics const fm(label->font());
-    edit->setTextMargins(0, 0, fm.horizontalAdvance(unit) + 14 * ssf, 0);
-  };
-  auto hint = [this, ssf](QString const &text) {
-    auto *label = new QLabel(text, this);
-    label->setProperty("muted", true);
-    label->setProperty("small", true);
-    label->setContentsMargins(28 * ssf, 0, 0, 0);
-    label->setWordWrap(true);
-    return label;
-  };
+  mainLay->addWidget(columnHeading(tr("Temperature"), alwaysEnable ? nullptr : &m_enableChkBox, this));
+  mainLay->addSpacing(6 * ssf);
 
-  // current temperature
-  mainLay->addWidget(muted(tr("Current temperature")));
-  auto *currentRow = new QHBoxLayout();
-  auto *current    = new LabelPlus(m_currentVal, this);
-  QFont currentFont = QWidget::font();
-  currentFont.setBold(true);
-  currentFont.setPointSizeF(QWidget::font().pointSizeF() * 1.6);
-  current->setFont(currentFont);
-  auto *currentUnit = new QLabel(QStringLiteral("°C"), this);
-  currentUnit->setFont(currentFont);
-  currentRow->addWidget(current);
-  currentRow->addWidget(currentUnit);
-  currentRow->addStretch();
-  mainLay->addLayout(currentRow);
-  mainLay->addSpacing(10 * ssf);
+  auto *content    = new QWidget(this);
+  auto *contentLay = new QVBoxLayout(content);
+  contentLay->setContentsMargins(0, 0, 0, 0);
+  contentLay->setSpacing(4 * ssf);
+  mainLay->addWidget(content);
 
-  // new setpoint
-  mainLay->addWidget(muted(tr("Новая уставка:").remove(':')));
-  auto *setpoint = new LineEditNum(manualModel->getSysValue("temp"));
+  contentLay->addWidget(mutedLabel(tr("Current temperature"), content));
+  contentLay->addWidget(currentValueRow(m_currentVal, QStringLiteral("°C"), content));
+  contentLay->addSpacing(10 * ssf);
+
+  // new setpoint: the whole column width
+  contentLay->addWidget(mutedLabel(tr("Новая уставка:").remove(':'), content));
+  auto *setpoint     = new LineEditNum(manualModel->getSysValue("temp"));
   QFont setpointFont = setpoint->font();
   setpointFont.setPointSizeF(setpointFont.pointSizeF() * 1.25);
   setpoint->setFont(setpointFont);
-  setpoint->setFixedWidth(260 * ssf);
   unitInside(setpoint, QStringLiteral("°C"));
-  mainLay->addWidget(setpoint);
-  mainLay->addSpacing(12 * ssf);
+  contentLay->addWidget(setpoint);
+  contentLay->addSpacing(12 * ssf);
 
   // ramp rate and hold time: a tick enables the field
-  QString const speedUnitString = speedUnitIsHour ? tr("час") : tr("мин");
+  QString const speedUnitString   = speedUnitIsHour ? tr("час") : tr("мин");
   auto         *tempSpeedSysValue = new SystemValue("temp_speed", 1, this);
   tempSpeedSysValue->setPrec(2);
   tempSpeedSysValue->setMin(0.01 * (speedUnitIsHour ? 60 : 1));
@@ -464,24 +459,20 @@ TempSetWidget::TempSetWidget(quint32          index,
   holdTimeSysValue->setMax(3599999);
   manualModel->add(holdTimeSysValue);
 
-  auto *rampCheck = new QCheckBox(tr("Ramp rate"), this);
+  auto *rampCheck = new QCheckBox(tr("Ramp rate"), content);
   auto *rampEdit  = new LineEditNum(tempSpeedSysValue);
-  rampEdit->setFixedWidth(200 * ssf);
   unitInside(rampEdit, QStringLiteral("°C/") + speedUnitString);
-  auto *holdCheck = new QCheckBox(tr("Hold time"), this);
+  auto *holdCheck = new QCheckBox(tr("Hold time"), content);
   auto *holdEdit  = new LineEditTime(holdTimeSysValue);
   auto *grid      = new QGridLayout();
-  grid->setHorizontalSpacing(16 * ssf);
-  grid->setVerticalSpacing(2 * ssf);
+  grid->setHorizontalSpacing(12 * ssf);
+  grid->setVerticalSpacing(10 * ssf);
   grid->addWidget(rampCheck, 0, 0);
-  grid->addWidget(rampEdit, 0, 1, Qt::AlignLeft);
-  grid->addWidget(hint(tr("Without it the chamber goes to the setpoint as fast as it can.")), 1, 0, 1, 2);
-  grid->setRowMinimumHeight(2, 10 * ssf);
-  grid->addWidget(holdCheck, 3, 0);
-  grid->addWidget(holdEdit, 3, 1, Qt::AlignLeft);
-  grid->addWidget(hint(tr("Without it the setpoint is held until Stop.")), 4, 0, 1, 2);
-  grid->setColumnStretch(2, 1);
-  mainLay->addLayout(grid);
+  grid->addWidget(rampEdit, 0, 1);
+  grid->addWidget(holdCheck, 1, 0);
+  grid->addWidget(holdEdit, 1, 1);
+  grid->setColumnStretch(1, 1);
+  contentLay->addLayout(grid);
 
   rampEdit->setEnabled(false);
   holdEdit->setEnabled(false);
@@ -493,31 +484,69 @@ TempSetWidget::TempSetWidget(quint32          index,
     flagsSysValue->setBitOfUInt(TEMP_RAMP_CHECHED, value);
     rampEdit->setEnabled(value);
   });
+
+  if (m_enableChkBox) {
+    m_enableChkBox->setChecked(flagsSysValue->getBitOfUInt(index));
+    content->setEnabled(m_enableChkBox->isChecked());
+    connect(m_enableChkBox, &QCheckBox::toggled, this, [index, flagsSysValue, content](bool value) {
+      flagsSysValue->setBitOfUInt(index, value);
+      content->setEnabled(value);
+    });
+  }
 }
 
-CommonSetWidget::CommonSetWidget(quint32 index, SystemValueList *manualModel, SystemValue *currentVal, QWidget *parent)
+CommonSetWidget::CommonSetWidget(quint32          index,
+                                 SystemValueList *manualModel,
+                                 SystemValue     *currentVal,
+                                 QString const   &title,
+                                 QString const   &unit,
+                                 QWidget         *parent)
     : QGroupBox{parent}, m_modelSysValuesList{manualModel}, m_currentVal{currentVal} {
+  setObjectName("setpointBox");
+  double const ssf{utils::ssf()};
+  auto        *mainLay = new QVBoxLayout(this);
+  mainLay->setContentsMargins(0, 0, 0, 0);
+  mainLay->setSpacing(4 * ssf);
+  QCheckBox *tick{nullptr};
+  mainLay->addWidget(columnHeading(title, &tick, this));
+  mainLay->addSpacing(6 * ssf);
+
+  auto *content    = new QWidget(this);
+  auto *contentLay = new QVBoxLayout(content);
+  contentLay->setContentsMargins(0, 0, 0, 0);
+  contentLay->setSpacing(4 * ssf);
+  mainLay->addWidget(content);
+
+  contentLay->addWidget(mutedLabel(tr("Current %1").arg(title.toLower()), content));
+  contentLay->addWidget(currentValueRow(manualModel ? m_currentVal : nullptr, unit, content));
+  contentLay->addSpacing(10 * ssf);
+
+  contentLay->addWidget(mutedLabel(tr("Новая уставка:").remove(':'), content));
+  LineEditNum *setpoint = manualModel ? new LineEditNum(manualModel->getSysValue(manualModel->getNames().at(index)))
+                                      : new LineEditNum(0, 1, 1, false, content);
+  QFont setpointFont = setpoint->font();
+  setpointFont.setPointSizeF(setpointFont.pointSizeF() * 1.25);
+  setpoint->setFont(setpointFont);
+  unitInside(setpoint, unit);
+  contentLay->addWidget(setpoint);
+
+  if (!manualModel) {
+    // no sensor for this quantity on this chamber
+    tick->setChecked(false);
+    tick->setEnabled(false);
+    content->setEnabled(false);
+    setpoint->clear();
+    mainLay->addSpacing(8 * ssf);
+    mainLay->addWidget(mutedLabel(tr("No %1 sensor connected").arg(title.toLower()), this));
+    return;
+  }
   auto *flagsSysValue = manualModel->getSysValue("flags");
-  setCheckable(true);
-  setChecked(flagsSysValue->getBitOfUInt(index));
-
-  connect(this, &QGroupBox::toggled, this, [index, flagsSysValue](bool value) {
+  tick->setChecked(flagsSysValue->getBitOfUInt(index));
+  content->setEnabled(tick->isChecked());
+  connect(tick, &QCheckBox::toggled, this, [index, flagsSysValue, content](bool value) {
     flagsSysValue->setBitOfUInt(index, value);
+    content->setEnabled(value);
   });
-
-  auto *mainLay = new QVBoxLayout(this);
-
-  auto *setValLay = new QGridLayout();
-  setValLay->addWidget(new QLabel(tr("Текущее значение:"), this), 0, 0);
-  setValLay->addWidget(new LabelPlus(m_currentVal, this), 0, 1);
-
-  QString const stateName{manualModel->getNames().at(index)};
-  setValLay->addWidget(new QLabel(tr("Новая уставка:"), this), 1, 0);
-  setValLay->addWidget(new LineEditNum(manualModel->getSysValue(stateName)), 1, 1);
-  mainLay->addLayout(setValLay);
-
-  setStyleSheet(utils::readStyleFromFile(":/styles/checkBox")
-                + QString("QCheckBox::indicator{width: %1px; height: %1px;}").arg(26 * utils::ssf()));
 }
 
 } // namespace deepvaccontrol

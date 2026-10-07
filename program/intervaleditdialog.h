@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
 
@@ -53,13 +54,15 @@ private:
 class IntervalEditDialog : public QDialog {
   Q_OBJECT
 public:
-  explicit IntervalEditDialog(ProgramModel *model, QWidget *parent = nullptr);
+  // labels: the interval labels of the program (one per interval), edited here too; may be null
+  explicit IntervalEditDialog(ProgramModel *model, QStringList *labels, QWidget *parent = nullptr);
   // QDialog interface
 public slots:
   void reject() override;
 
 signals:
   void selectedIndexChanged(int);
+  void labelsChanged();
 
 private:
   void initGui();
@@ -67,6 +70,8 @@ private:
   void localCommit();
 
   ProgramModel      *m_model;
+  QStringList       *m_labels{nullptr};
+  QLineEdit         *labelEdit{nullptr};
   QStringList        paramsOrder;
   QDataWidgetMapper *mapper;
 

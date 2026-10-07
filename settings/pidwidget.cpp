@@ -282,18 +282,6 @@ void PidWidget::initGui() {
   scaleLay->addWidget(m_scale, 1);
   mainLay->addWidget(scaleCard, 2);
 
-  theme::Colors const &c = theme::colors();
-  setStyleSheet(QStringLiteral(R"(
-QFrame#bandHeader { background: %1; border-radius: %2px; }
-QFrame#bandRow { border: none; border-bottom: %3px solid %4; }
-QFrame#bandRow[active="true"] { background: %5; border: %3px solid %6; border-radius: %2px; }
-)")
-                  .arg(c.panelAlt.name())
-                  .arg(static_cast<int>(4 * ssf))
-                  .arg(qMax(1, static_cast<int>(1 * ssf)))
-                  .arg(c.border.name())
-                  .arg(QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 45).name(QColor::HexArgb))
-                  .arg(c.accent.name()));
 }
 
 void PidWidget::setSetpointValue(SystemValue *value) {

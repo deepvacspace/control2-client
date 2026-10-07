@@ -119,7 +119,7 @@ QString html(ExperimentReportData const &data, bool embedImages) {
   }
   body += facts(summary);
 
-  section(QObject::tr("Run details"));
+  section(QObject::tr("Experiment details"));
   core::RunMetadata const &details = manifest.metadata;
   auto                     orDash  = [](QString const &value) { return value.isEmpty() ? QStringLiteral("—") : value; };
   QVector<QPair<QString, QString>> detailFacts{{QObject::tr("DUT"), orDash(details.dut)},
@@ -130,7 +130,7 @@ QString html(ExperimentReportData const &data, bool embedImages) {
     detailFacts.push_back({QObject::tr("Notes"), details.notes});
   }
   if (data.manifestStored) {
-    detailFacts.push_back({QObject::tr("Run uid"), manifest.runUid});
+    detailFacts.push_back({QObject::tr("Experiment uid"), manifest.runUid});
     detailFacts.push_back({QObject::tr("Recorded by"), QStringLiteral("%1 %2").arg(manifest.appName, manifest.appVersion).trimmed()});
     detailFacts.push_back({QObject::tr("Time resolution"), QObject::tr("%1 s").arg(manifest.timeResolutionS)});
     detailFacts.push_back({QObject::tr("Integrity"), runrecord::integrityText(data.integrity)});

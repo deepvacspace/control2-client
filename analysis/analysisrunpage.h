@@ -141,6 +141,8 @@ private:
   AnalysisChart  *m_chart{nullptr};
   QLabel         *m_titleLabel{nullptr};
   QLabel         *m_statsLabel{nullptr};
+  QLabel         *m_integrityBadge{nullptr};
+  QVector<QLabel *> m_kpiTiles; // MAE, RMSE, max error, overshoot, undershoot, settling, tail MAE
   QPushButton    *m_channelsBtn{nullptr};
   QPushButton    *m_compareBtn{nullptr};
   QComboBox      *m_modeCombo{nullptr};

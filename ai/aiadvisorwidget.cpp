@@ -94,7 +94,7 @@ AiAdvisorWidget::~AiAdvisorWidget() {
     m_progressTimer.stop();
     m_shadowPidTimer.stop();
     m_twinCheckTimer.stop();
-    m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor run"));
+    m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor experiment"));
     if (m_resHolder->experimentSync) {
       m_resHolder->experimentSync->endExperiment(m_runId);
     }
@@ -644,7 +644,7 @@ void AiAdvisorWidget::runExperiment() {
     return;
   }
   if (m_pidGuard->isPending()) {
-    setStatusText(tr("The manual PID from the previous run has not been confirmed by the chamber yet"), true);
+    setStatusText(tr("The manual PID from the previous experiment has not been confirmed by the chamber yet"), true);
     return;
   }
 
@@ -900,7 +900,7 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   m_twinCheckTimer.stop();
   // manual PID table first, then stop the job the advisor started
   ai::ManualPidGuard::Result const restored =
-    m_pidGuard->restore(true, aborted ? (reason.isEmpty() ? tr("experiment aborted") : reason) : tr("run finished"));
+    m_pidGuard->restore(true, aborted ? (reason.isEmpty() ? tr("experiment aborted") : reason) : tr("experiment finished"));
   QString const restoreNote = (ai::ManualPidGuard::Result::PENDING == restored)
                                 ? tr(" - manual PID and stop will be sent when the chamber is reachable again")
                                 : QString();
@@ -919,22 +919,22 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
 
   setMetricsColumn(1, computeActualMetrics());
   if (m_safetyTripped) {
-    setStatusText(tr("Actual run finished - safety interlock was triggered: %1").arg(m_safetyReason), true);
+    setStatusText(tr("Actual experiment finished - safety interlock was triggered: %1").arg(m_safetyReason), true);
   } else {
-    setStatusText(tr("Actual run finished"), false);
+    setStatusText(tr("Actual experiment finished"), false);
   }
   promptForComparison();
 }
 
 void AiAdvisorWidget::promptForComparison() {
   auto *dialog = new ConfDialog(tr("Compare without Digital Twin?"),
-                                 tr("The run has finished. Compare the result without using the Digital Twin?"),
+                                 tr("The experiment has finished. Compare the result without using the Digital Twin?"),
                                  tr("Yes"), tr("No"), this);
   connect(dialog, &ConfDialog::finished, this, [this](int result) {
     if (1 == result) { // == accepted()
       runComparison();
     } else {
-      setStatusText(tr("Showing actual run only"), false);
+      setStatusText(tr("Showing actual experiment only"), false);
     }
   });
   dialog->open();

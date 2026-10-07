@@ -16,6 +16,9 @@ class UserWidget : public QWidget {
 public:
   explicit UserWidget(Logger *logger, AccessManager *accessManager, QWidget *parent = nullptr);
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 private:
   void    initGui();
   void    updateBtnsEnable();

@@ -45,7 +45,8 @@ private:
   ResHolder *m_resHolder;
 };
 
-// The same details as an inline form (Manual control page): edits are stored for the next runs as they are typed.
+// DUT, operator and purpose as an inline form (Manual control page): edits are stored for the next experiments as
+// they are typed (tags and notes are kept as they are). The operator is the logged-in user unless typed otherwise.
 class RunDetailsPanel : public QWidget {
   Q_OBJECT
 public:
@@ -54,15 +55,15 @@ public:
 private:
   void load();  // from the recorder
   void store(); // to the recorder
+  void userChanged(QString const &name);
 
-  ResHolder      *m_resHolder;
-  QLineEdit      *m_dut{nullptr};
-  QLineEdit      *m_operator{nullptr};
-  QLineEdit      *m_purpose{nullptr};
-  QLineEdit      *m_tags{nullptr};
-  QPlainTextEdit *m_notes{nullptr};
-  QTimer         *m_storeTimer{nullptr};
-  bool            m_loading{false};
+  ResHolder *m_resHolder;
+  QLineEdit *m_dut{nullptr};
+  QLineEdit *m_operator{nullptr};
+  QLineEdit *m_purpose{nullptr};
+  QTimer    *m_storeTimer{nullptr};
+  QString    m_autoOperator; // the logged-in user filled in as operator
+  bool       m_loading{false};
 };
 
 } // namespace deepvaccontrol

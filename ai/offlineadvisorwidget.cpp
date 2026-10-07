@@ -83,7 +83,7 @@ OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent
 OfflineAdvisorWidget::~OfflineAdvisorWidget() {
   if (m_running) {
     m_progressTimer.stop();
-    m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor run"));
+    m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor experiment"));
     if (m_resHolder->experimentSync) {
       m_resHolder->experimentSync->endExperiment(m_runId);
     }
@@ -379,7 +379,7 @@ void OfflineAdvisorWidget::runExperiment() {
     return;
   }
   if (m_pidGuard->isPending()) {
-    setStatusText(tr("The manual PID from the previous run has not been confirmed by the chamber yet"), true);
+    setStatusText(tr("The manual PID from the previous experiment has not been confirmed by the chamber yet"), true);
     return;
   }
 
@@ -662,7 +662,7 @@ void OfflineAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   m_progressTimer.stop();
   // manual PID table first, then stop the job the advisor started
   ai::ManualPidGuard::Result const restored =
-    m_pidGuard->restore(true, aborted ? (reason.isEmpty() ? tr("experiment aborted") : reason) : tr("run finished"));
+    m_pidGuard->restore(true, aborted ? (reason.isEmpty() ? tr("experiment aborted") : reason) : tr("experiment finished"));
   QString const restoreNote = (ai::ManualPidGuard::Result::PENDING == restored)
                                 ? tr(" - manual PID and stop will be sent when the chamber is reachable again")
                                 : QString();
@@ -680,7 +680,7 @@ void OfflineAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   }
 
   setMetricsColumn(1, computeActualMetrics());
-  setStatusText(tr("Actual run finished"), false);
+  setStatusText(tr("Actual experiment finished"), false);
 }
 
 void OfflineAdvisorWidget::redrawActualChart() {

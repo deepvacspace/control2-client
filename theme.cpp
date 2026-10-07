@@ -12,7 +12,7 @@
 namespace deepvaccontrol::theme {
 
 namespace {
-bool g_dark{true};
+bool g_dark{false};
 
 Colors const NAVY{
   QColor("#0b1524"), QColor("#0d1a2c"), QColor("#122138"), QColor("#0f1c30"), QColor("#22385a"), QColor("#e6edf7"),
@@ -116,6 +116,23 @@ QPushButton#startButton { background: %22; color: #052e16; border: none; font-we
 QPushButton#startButton:disabled { background: %14; color: %10; }
 QPushButton[outline="true"] { background: transparent; color: %13; border: %4px solid %13; }
 QPushButton[outline="true"]:disabled { color: %10; border-color: %3; }
+QFrame#advisorNote { background: rgba(168, 85, 247, 40); border: none; border-left: %18px solid #a855f7; border-radius: %15px; }
+QLabel#advisorNoteTitle { color: %23; font-weight: bold; }
+QGroupBox#setpointBox { border: none; margin-top: 0; padding-top: 0; }
+QLabel#dutField { background: %14; border: %4px solid %3; border-radius: %15px; padding: %15px %7px; }
+QPushButton#readoutBox { background: %14; text-align: left; padding-left: %7px; }
+QPushButton#readoutBox:checked { border-color: %8; }
+QFrame#outputRow { background: %14; border-radius: %15px; }
+QFrame#bandHeader { background: %14; border-radius: %15px; }
+QFrame#bandRow { border: none; border-bottom: %4px solid %3; }
+QFrame#bandRow[active="true"] { background: %24; border: %4px solid %8; border-radius: %15px; }
+QLabel#countBadge { background: %14; color: %16; border: %4px solid %3; border-radius: %15px; padding: 0 %15px; }
+QTableWidget#intervalTable { background: transparent; border: none; selection-background-color: %24; selection-color: %2; }
+QTableWidget#intervalTable::item { border: none; border-bottom: %4px solid %3; padding-left: %15px; }
+QTableWidget#intervalTable::item:selected { background: %24; color: %2; }
+QTableWidget#intervalTable QHeaderView::section { background: transparent; color: %16; border: none;
+  border-bottom: %4px solid %3; padding: %15px; }
+QLabel[fieldLabel="true"] { color: %16; }
 )");
   return qss.arg(c.panel.name(), c.text.name(), c.border.name())
     .arg(px(1))
@@ -130,13 +147,19 @@ QPushButton[outline="true"]:disabled { color: %10; border-color: %3; }
     .arg(px(8))
     .arg(px(9))
     .arg(px(4.5))
-    .arg(c.active.name());
+    .arg(c.active.name(), dark ? QStringLiteral("#c084fc") : QStringLiteral("#7e22ce"),
+         QColor(c.accent.red(), c.accent.green(), c.accent.blue(), dark ? 45 : 30).name(QColor::HexArgb));
 }
 
 void apply(bool dark) {
   g_dark = dark;
   QApplication::setPalette(palette(dark));
   qApp->setStyleSheet(styleSheet(dark));
+  for (QWidget *widget : QApplication::allWidgets()) {
+    if (auto *plot = qobject_cast<QCustomPlot *>(widget)) {
+      stylePlot(plot);
+    }
+  }
 }
 
 void stylePlot(QCustomPlot *plot) {
@@ -310,6 +333,53 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
     p.drawLine(pt(0.14, 0.4), pt(0.86, 0.4));
     p.drawLine(pt(0.34, 0.1), pt(0.34, 0.28));
     p.drawLine(pt(0.66, 0.1), pt(0.66, 0.28));
+  } else if (kind == "edit") { // pencil
+    QPainterPath path;
+    path.moveTo(pt(0.2, 0.8));
+    path.lineTo(pt(0.24, 0.62));
+    path.lineTo(pt(0.66, 0.2));
+    path.lineTo(pt(0.8, 0.34));
+    path.lineTo(pt(0.38, 0.76));
+    path.closeSubpath();
+    p.drawPath(path);
+    p.drawLine(pt(0.56, 0.3), pt(0.7, 0.44));
+  } else if (kind == "delete") { // bin
+    p.drawLine(pt(0.18, 0.28), pt(0.82, 0.28));
+    p.drawLine(pt(0.4, 0.28), pt(0.42, 0.16));
+    p.drawLine(pt(0.42, 0.16), pt(0.58, 0.16));
+    p.drawLine(pt(0.58, 0.16), pt(0.6, 0.28));
+    QPainterPath path;
+    path.moveTo(pt(0.26, 0.28));
+    path.lineTo(pt(0.31, 0.86));
+    path.lineTo(pt(0.69, 0.86));
+    path.lineTo(pt(0.74, 0.28));
+    p.drawPath(path);
+    p.drawLine(pt(0.44, 0.42), pt(0.44, 0.72));
+    p.drawLine(pt(0.56, 0.42), pt(0.56, 0.72));
+  } else if (kind == "save" || kind == "load") { // tray with an arrow into it / out of it
+    QPainterPath tray;
+    tray.moveTo(pt(0.16, 0.62));
+    tray.lineTo(pt(0.16, 0.84));
+    tray.lineTo(pt(0.84, 0.84));
+    tray.lineTo(pt(0.84, 0.62));
+    p.drawPath(tray);
+    p.drawLine(pt(0.5, 0.14), pt(0.5, 0.64));
+    QPainterPath head;
+    if (kind == "save") {
+      head.moveTo(pt(0.32, 0.46)); head.lineTo(pt(0.5, 0.64)); head.lineTo(pt(0.68, 0.46));
+    } else {
+      head.moveTo(pt(0.32, 0.32)); head.lineTo(pt(0.5, 0.14)); head.lineTo(pt(0.68, 0.32));
+    }
+    p.drawPath(head);
+  } else if (kind == "sequence") { // pulse
+    QPainterPath path;
+    path.moveTo(pt(0.08, 0.52));
+    path.lineTo(pt(0.3, 0.52));
+    path.lineTo(pt(0.42, 0.2));
+    path.lineTo(pt(0.58, 0.82));
+    path.lineTo(pt(0.7, 0.52));
+    path.lineTo(pt(0.92, 0.52));
+    p.drawPath(path);
   } else if (kind == "power") {
     p.drawArc(QRectF(pt(0.16, 0.2), pt(0.84, 0.88)), 120 * 16, 300 * 16);
     p.drawLine(pt(0.5, 0.1), pt(0.5, 0.5));

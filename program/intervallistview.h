@@ -15,7 +15,10 @@ public:
   explicit IntervalListView(QWidget *parent = nullptr);
 
   void setModel(ProgramModel *model);
-  void setLabels(QStringList const &labels); // library labels, one per interval
+  void setLabels(QStringList const &labels); // interval labels, one per interval
+
+protected:
+  void changeEvent(QEvent *event) override;
 
 private:
   void rebuild();

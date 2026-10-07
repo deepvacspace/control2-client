@@ -57,7 +57,7 @@ core::RunMetadata RunDetailsDialog::metadata() const {
   return metadata;
 }
 
-RunDetailsButton::RunDetailsButton(ResHolder *resHolder, QWidget *parent) : QPushButton{tr("Run\ndetails…"), parent}, m_resHolder{resHolder} {
+RunDetailsButton::RunDetailsButton(ResHolder *resHolder, QWidget *parent) : QPushButton{tr("Experiment\ndetails…"), parent}, m_resHolder{resHolder} {
   setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
   connect(this, &QPushButton::clicked, this, [this] {
     if (!m_resHolder->recorder) {
@@ -67,7 +67,7 @@ RunDetailsButton::RunDetailsButton(ResHolder *resHolder, QWidget *parent) : QPus
     if (current.operatorName.isEmpty() && m_resHolder->users) {
       current.operatorName = m_resHolder->users->getCurrentUserName();
     }
-    RunDetailsDialog dialog(current, tr("Details of the next runs"), this);
+    RunDetailsDialog dialog(current, tr("Details of the next experiments"), this);
     if (dialog.exec() == QDialog::Accepted) {
       m_resHolder->recorder->setNextRunMetadata(dialog.metadata());
     }
@@ -87,10 +87,10 @@ void RunDetailsButton::refresh() {
   core::RunMetadata const metadata = m_resHolder->recorder ? m_resHolder->recorder->nextRunMetadata() : core::RunMetadata{};
   // long DUT names are shortened in the middle so a serial number at the end stays readable
   QString const dut = fontMetrics().elidedText(metadata.dut, Qt::ElideMiddle, width() - static_cast<int>(10 * utils::ssf()));
-  setText((metadata.dut.isEmpty() || m_plainCaption) ? (m_plainCaption ? tr("Run details…") : tr("Run\ndetails…"))
+  setText((metadata.dut.isEmpty() || m_plainCaption) ? (m_plainCaption ? tr("Experiment details…") : tr("Experiment\ndetails…"))
                                                       : tr("DUT\n%1").arg(dut));
-  setToolTip(metadata.isEmpty() ? tr("DUT, operator, purpose and tags recorded with the next runs")
-                                : tr("Next runs are recorded with:\nDUT: %1\nOperator: %2\nPurpose: %3\nTags: %4")
+  setToolTip(metadata.isEmpty() ? tr("DUT, operator, purpose and tags recorded with the next experiments")
+                                : tr("Next experiments are recorded with:\nDUT: %1\nOperator: %2\nPurpose: %3\nTags: %4")
                                     .arg(metadata.dut, metadata.operatorName.isEmpty() ? tr("(logged-in user)") : metadata.operatorName,
                                          metadata.purpose, metadata.tags.join(QStringLiteral(", "))));
 }
@@ -116,34 +116,27 @@ RunDetailsPanel::RunDetailsPanel(ResHolder *resHolder, QWidget *parent) : QWidge
   m_dut      = line(tr("Device under test, e.g. serial number"));
   m_operator = line(tr("Logged-in user"));
   m_purpose  = line(tr("e.g. thermal cycling qualification"));
-  m_tags     = line(tr("comma separated, e.g. qualification, batch-7"));
-  m_notes    = new QPlainTextEdit(this);
-  m_notes->setPlaceholderText(tr("Anything else worth knowing about the setup"));
-  m_notes->setMinimumHeight(70 * utils::ssf());
   field(tr("DUT"), m_dut);
   field(tr("Operator"), m_operator);
   field(tr("Purpose"), m_purpose);
-  field(tr("Tags"), m_tags);
-  field(tr("Notes"), m_notes);
 
   m_storeTimer = new QTimer(this);
   m_storeTimer->setSingleShot(true);
   m_storeTimer->setInterval(400);
   connect(m_storeTimer, &QTimer::timeout, this, &RunDetailsPanel::store);
-  for (QLineEdit *edit : {m_dut, m_operator, m_purpose, m_tags}) {
+  for (QLineEdit *edit : {m_dut, m_operator, m_purpose}) {
     connect(edit, &QLineEdit::textChanged, this, [this] {
       if (!m_loading) {
         m_storeTimer->start();
       }
     });
   }
-  connect(m_notes, &QPlainTextEdit::textChanged, this, [this] {
-    if (!m_loading) {
-      m_storeTimer->start();
-    }
-  });
   if (m_resHolder->recorder) {
     connect(m_resHolder->recorder, &ExperimentRecorder::nextRunMetadataChanged, this, &RunDetailsPanel::load);
+  }
+  if (m_resHolder->users) {
+    connect(m_resHolder->users, &AccessManager::userSelected, this,
+            [this](QString const &name, AccessManager::AccessLevel) { userChanged(name); });
   }
   load();
 }
@@ -160,29 +153,39 @@ void RunDetailsPanel::load() {
     }
   };
   set(m_dut, metadata.dut);
-  set(m_operator, metadata.operatorName);
   set(m_purpose, metadata.purpose);
-  set(m_tags, metadata.tags.join(QStringLiteral(", ")));
-  if (m_notes->toPlainText() != metadata.notes) {
-    m_notes->setPlainText(metadata.notes);
+  bool fillOperator{false};
+  if (metadata.operatorName.isEmpty() && m_resHolder->users) {
+    // default: the logged-in user
+    m_autoOperator = m_resHolder->users->getCurrentUserName();
+    set(m_operator, m_autoOperator);
+    fillOperator = !m_autoOperator.isEmpty();
+  } else {
+    set(m_operator, metadata.operatorName);
   }
   m_loading = false;
+  if (fillOperator) {
+    store();
+  }
+}
+
+void RunDetailsPanel::userChanged(QString const &name) {
+  // the operator follows the logged-in user unless another name was typed
+  QString const current = m_operator->text().trimmed();
+  if (current.isEmpty() || (current == m_autoOperator)) {
+    m_autoOperator = name;
+    m_operator->setText(name); // stored by the timer
+  }
 }
 
 void RunDetailsPanel::store() {
   if (!m_resHolder->recorder) {
     return;
   }
-  core::RunMetadata metadata;
-  metadata.dut          = m_dut->text().trimmed();
-  metadata.operatorName = m_operator->text().trimmed();
-  metadata.purpose      = m_purpose->text().trimmed();
-  metadata.notes        = m_notes->toPlainText().trimmed();
-  for (QString const &tag : m_tags->text().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-    if (!tag.trimmed().isEmpty()) {
-      metadata.tags << tag.trimmed();
-    }
-  }
+  core::RunMetadata metadata = m_resHolder->recorder->nextRunMetadata(); // tags and notes stay
+  metadata.dut               = m_dut->text().trimmed();
+  metadata.operatorName      = m_operator->text().trimmed();
+  metadata.purpose           = m_purpose->text().trimmed();
   m_resHolder->recorder->setNextRunMetadata(metadata);
 }
 

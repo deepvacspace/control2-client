@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
 
   // Style and sizes
   a.setStyle(QStyleFactory::create("fusion"));
-  deepvaccontrol::theme::apply(true); // navy application design (System -> OS switches to light)
+  deepvaccontrol::theme::apply(false); // light design by default (System -> OS switches to dark)
 
   if (!windowedMode) {
     auto        *screen = a.primaryScreen();

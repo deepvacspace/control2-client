@@ -1,5 +1,6 @@
 #include "programwidget.h"
 
+#include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -10,8 +11,6 @@
 #include "dialogs/messagedialog.h"
 #include "experimentrecorder.h"
 #include "rundetailsdialog.h"
-#include "fileloaddialogpathprovider.h"
-#include "filesavedialogpathprovider.h"
 #include "intervaleditdialog.h"
 #include "offlineadvisorstart.h"
 #include "programlibrarydialog.h"
@@ -32,6 +31,10 @@ ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
   connect(m_newBtn, &QPushButton::clicked, this, [this]() {
     if (m_model) {
       int const nexIndex{m_model->getSelectedInterval() + 1};
+      if (nexIndex <= m_labels.size()) {
+        m_labels.insert(nexIndex, QString());
+        labelsEdited();
+      }
       m_model->newItem(nexIndex);
       m_model->selectInterval(nexIndex);
     }
@@ -43,28 +46,11 @@ ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
         return;
       }
       int index{m_model->getSelectedInterval()};
-      m_model->delItem(index);
-    }
-  });
-
-  connect(m_saveBtn, &QPushButton::clicked, this, [this]() {
-    if (m_model) {
-      auto sourceList = QStringList{deepvaccontrol::PROGS_DIR};
-      sourceList.append(m_resHolder->usb->getAvailableDrives());
-      auto *savePathProvider = new FileSaveDialogPathProvider(sourceList, m_resHolder->logger, this);
-      if (m_model) {
-        m_model->saveToFileAsync(savePathProvider, this);
+      if (index < m_labels.size()) {
+        m_labels.removeAt(index);
+        labelsEdited();
       }
-    }
-  });
-
-  connect(m_loadBtn, &QPushButton::clicked, this, [this]() {
-    auto sourceList = QStringList{deepvaccontrol::PROGS_DIR};
-    sourceList.append(m_resHolder->usb->getAvailableDrives());
-    auto *loadPath = new FileLoadDialogPathProvider(sourceList, m_resHolder->logger, this);
-    if (m_model) {
-      setLibraryProgram(-1, QString{}, {});
-      m_model->loadFromFileAsync(loadPath, this, "*");
+      m_model->delItem(index);
     }
   });
 
@@ -98,6 +84,8 @@ ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
   connect(m_resHolder->users, &AccessManager::userSelected, this, &ProgramWidget::handleAccessChange);
   updateProgramLabel();
   updateRunStatus();
+  updateSequenceInfo();
+  updateButtonIcons();
 }
 
 void ProgramWidget::setProgramModel(ProgramModel *newProgramModel) {
@@ -127,11 +115,14 @@ void ProgramWidget::setProgramModel(ProgramModel *newProgramModel) {
   connect(m_model, &ProgramModel::cycleParamsUpdated, this, markModified);
   connect(m_model, &ProgramModel::modelChanged, this, markModified);
   connect(m_model, &ProgramModel::cycleParamsUpdated, m_cycleWidget, &CycleWidget::setParams);
+  connect(m_model, &ProgramModel::numberOfIntervalChanged, this, &ProgramWidget::updateSequenceInfo);
+  connect(m_model, &ProgramModel::intervalSelected, this, &ProgramWidget::updateSequenceInfo);
   connect(m_cycleWidget, &CycleWidget::paramsChanged, m_model, &ProgramModel::setCycleParams);
 }
 
 void ProgramWidget::openIntervalEditDialog() {
-  auto *editDialog = new IntervalEditDialog(m_model, this);
+  auto *editDialog = new IntervalEditDialog(m_model, &m_labels, this);
+  connect(editDialog, &IntervalEditDialog::labelsChanged, this, &ProgramWidget::labelsEdited);
   editDialog->open();
 }
 
@@ -154,11 +145,6 @@ void ProgramWidget::initGui() {
     }
     return card;
   };
-  auto button = [this, ssf](QString const &text, int width) {
-    auto *btn = new QPushButton(text, this);
-    btn->setFixedSize(width * ssf, 26 * ssf);
-    return btn;
-  };
 
   // ---- title (program name) and file / library actions
   m_programLabel = new QLabel(this);
@@ -168,14 +154,6 @@ void ProgramWidget::initGui() {
     m_programLabel->setFont(font);
   }
   m_libraryBadge = new QLabel(this);
-  m_saveBtn        = button(tr("Save file"), 76);
-  m_loadBtn        = button(tr("Open file"), 76);
-  m_libraryBtn     = button(tr("Library…"), 76);
-  m_saveLibraryBtn = button(tr("Save to library…"), 110);
-  m_saveBtn->setToolTip(tr("Save the program to a file (also on a USB drive)"));
-  m_loadBtn->setToolTip(tr("Open a program file"));
-  m_libraryBtn->setToolTip(tr("Open a saved program (also those shared by paired computers)"));
-  m_saveLibraryBtn->setToolTip(tr("Save this program by name, with a label per interval"));
 
   // ---- program profile
   auto *graphCard = makeCard({});
@@ -183,40 +161,72 @@ void ProgramWidget::initGui() {
   graphCard->layout()->addWidget(m_programGraph);
   mainLay->addWidget(graphCard, 7);
 
-  // ---- intervals
+  // ---- interval sequence
   auto *bottomLay = new QHBoxLayout();
   bottomLay->setSpacing(10 * ssf);
   mainLay->addLayout(bottomLay, 3);
 
-  // compact cards so the program graph keeps most of the height
-  auto *intervalsCard = makeCard(tr("Intervals"));
+  auto *intervalsCard = makeCard({});
   auto *intervalsLay  = static_cast<QVBoxLayout *>(intervalsCard->layout());
-  auto *titleRow      = static_cast<QLabel *>(intervalsLay->itemAt(0)->widget());
-  intervalsLay->removeWidget(titleRow);
+  auto  toolButton    = [this, ssf](QString const &text) {
+    auto *btn = new QPushButton(text, this);
+    btn->setFixedHeight(26 * ssf);
+    btn->setMinimumWidth(78 * ssf);
+    btn->setIconSize(QSize(14 * ssf, 14 * ssf));
+    QFont font = btn->font();
+    font.setBold(true);
+    font.setPointSizeF(font.pointSizeF() * 0.9);
+    btn->setFont(font);
+    return btn;
+  };
+
+  // header: title, interval count, library program; New / Edit / Delete on the right
   auto *intervalsTop = new QHBoxLayout();
-  intervalsTop->setSpacing(10 * ssf);
-  intervalsTop->addWidget(titleRow);
+  intervalsTop->setSpacing(8 * ssf);
+  m_sequenceIcon = new QLabel(intervalsCard);
+  intervalsTop->addWidget(m_sequenceIcon);
+  auto *title = new QLabel(tr("Interval sequence").toUpper(), intervalsCard);
+  title->setObjectName("cardTitle");
+  {
+    QFont font = title->font();
+    font.setLetterSpacing(QFont::PercentageSpacing, 106);
+    title->setFont(font);
+  }
+  intervalsTop->addWidget(title);
+  m_countBadge = new QLabel(intervalsCard);
+  m_countBadge->setObjectName("countBadge");
+  intervalsTop->addWidget(m_countBadge);
   intervalsTop->addSpacing(6 * ssf);
   intervalsTop->addWidget(m_programLabel);
   intervalsTop->addWidget(m_libraryBadge);
   intervalsTop->addStretch();
-  intervalsLay->addLayout(intervalsTop);
-  m_tableWidget       = new IntervalListView(intervalsCard);
-  intervalsLay->addWidget(m_tableWidget, 1);
-  m_newBtn    = button(tr("Новый"), 70);
-  m_editBtn   = button(tr("Редактировать"), 70);
-  m_deleteBtn = button(tr("Удалить"), 70);
+  m_newBtn = toolButton(tr("New"));
+  m_newBtn->setObjectName("primaryButton");
+  m_editBtn   = toolButton(tr("Edit"));
+  m_deleteBtn = toolButton(tr("Delete"));
   m_deleteBtn->setProperty("outline", true);
-  auto *intervalButtonsLay = new QHBoxLayout();
-  intervalButtonsLay->setSpacing(8 * ssf);
-  intervalButtonsLay->addWidget(m_newBtn);
-  intervalButtonsLay->addWidget(m_editBtn);
-  intervalButtonsLay->addWidget(m_deleteBtn);
-  intervalButtonsLay->addStretch();
-  for (QPushButton *btn : {m_saveBtn, m_loadBtn, m_libraryBtn, m_saveLibraryBtn}) {
-    intervalButtonsLay->addWidget(btn);
-  }
-  intervalsLay->addLayout(intervalButtonsLay);
+  intervalsTop->addWidget(m_newBtn);
+  intervalsTop->addWidget(m_editBtn);
+  intervalsTop->addWidget(m_deleteBtn);
+  intervalsLay->addLayout(intervalsTop);
+
+  m_tableWidget = new IntervalListView(intervalsCard);
+  intervalsLay->addWidget(m_tableWidget, 1);
+
+  // footer: the program library (database); selected position on the right
+  m_saveLibraryBtn = toolButton(tr("Save"));
+  m_libraryBtn     = toolButton(tr("Load"));
+  m_saveLibraryBtn->setToolTip(tr("Save this program in the program library, by name"));
+  m_libraryBtn->setToolTip(tr("Load a program from the program library (also those shared by paired computers)"));
+  m_positionLabel = new QLabel(intervalsCard);
+  m_positionLabel->setProperty("muted", true);
+  auto *intervalsBottom = new QHBoxLayout();
+  intervalsBottom->setSpacing(8 * ssf);
+  intervalsBottom->addWidget(m_saveLibraryBtn);
+  intervalsBottom->addWidget(m_libraryBtn);
+  intervalsBottom->addStretch();
+  intervalsBottom->addWidget(m_positionLabel);
+  intervalsLay->addLayout(intervalsBottom);
   bottomLay->addWidget(intervalsCard, 62);
 
   // ---- cycle, run details, start
@@ -228,7 +238,7 @@ void ProgramWidget::initGui() {
   divider->setObjectName("cardDivider");
   divider->setFixedHeight(qMax(1, static_cast<int>(1 * ssf)));
   runLay->addWidget(divider);
-  auto *detailsTitle = new QLabel(tr("Run details"), runCard);
+  auto *detailsTitle = new QLabel(tr("Experiment details"), runCard);
   detailsTitle->setProperty("muted", true);
   runLay->addWidget(detailsTitle);
   m_dutLabel = new QLabel(runCard);
@@ -264,14 +274,6 @@ void ProgramWidget::initGui() {
 
   m_buttons << m_startBtn << m_newBtn << m_editBtn << m_deleteBtn << m_startDelayedBtn << m_libraryBtn << m_saveLibraryBtn;
 
-  theme::Colors const &c = theme::colors();
-  m_dutLabel->setStyleSheet(QStringLiteral("QLabel#dutField { background: %1; border: %2px solid %3; border-radius: %4px; padding: %5px %6px; }")
-                              .arg(c.panelAlt.name())
-                              .arg(qMax(1, static_cast<int>(1 * ssf)))
-                              .arg(c.border.name())
-                              .arg(static_cast<int>(3 * ssf))
-                              .arg(static_cast<int>(3 * ssf))
-                              .arg(static_cast<int>(8 * ssf)));
   auto updateDut = [this] {
     core::RunMetadata const metadata = m_resHolder->recorder ? m_resHolder->recorder->nextRunMetadata() : core::RunMetadata{};
     m_dutLabel->setText(metadata.dut.isEmpty() ? tr("DUT: not set") : tr("DUT: %1").arg(metadata.dut));
@@ -303,7 +305,6 @@ void ProgramWidget::updateGui() {
 
   m_cycleWidget->setIntervalsCount(intervalCount);
 
-  m_saveBtn->setEnabled(m_accessLevel >= AccessManager::AccessLevel::USER_EDIT_2);
   m_saveLibraryBtn->setEnabled((m_accessLevel >= AccessManager::AccessLevel::USER_EDIT_2) && (intervalCount > 0));
   m_newBtn->setEnabled(m_accessLevel >= AccessManager::AccessLevel::USER_EDIT_2);
   m_editBtn->setEnabled(m_accessLevel >= AccessManager::AccessLevel::USER_EDIT_2);
@@ -382,6 +383,47 @@ void ProgramWidget::setLibraryProgram(qint64 id, QString const &name, QStringLis
   m_labels          = labels;
   m_libraryModified = false;
   updateProgramLabel();
+}
+
+void ProgramWidget::changeEvent(QEvent *event) {
+  QWidget::changeEvent(event);
+  if (event->type() == QEvent::PaletteChange) {
+    updateProgramLabel(); // title underline and badge colours follow the theme
+    updateButtonIcons();
+  }
+}
+
+void ProgramWidget::labelsEdited() {
+  if (!m_loadingLibrary && !m_libraryName.isEmpty()) {
+    m_libraryModified = true;
+  }
+  updateProgramLabel(); // also hands the labels to the table
+}
+
+void ProgramWidget::updateSequenceInfo() {
+  if (!m_model || !m_countBadge) {
+    return;
+  }
+  int const count{m_model->getStandardModel()->columnCount()};
+  int const selected{m_model->getSelectedInterval()};
+  auto      two = [](int n) { return QStringLiteral("%1").arg(n, 2, 10, QLatin1Char('0')); };
+  m_countBadge->setText(two(count));
+  m_positionLabel->setText((count > 0) ? QStringLiteral("%1 / %2").arg(two(qBound(1, selected + 1, count)), two(count)) : QString());
+}
+
+void ProgramWidget::updateButtonIcons() {
+  if (!m_newBtn) {
+    return;
+  }
+  theme::Colors const &c = theme::colors();
+  int const            size{static_cast<int>(14 * utils::ssf())};
+  m_newBtn->setIcon(theme::menuIcon("plus", Qt::white, Qt::white, size));
+  m_editBtn->setIcon(theme::menuIcon("edit", c.text, c.text, size));
+  m_deleteBtn->setIcon(theme::menuIcon("delete", c.danger, c.danger, size));
+  m_saveLibraryBtn->setIcon(theme::menuIcon("save", c.text, c.text, size));
+  m_libraryBtn->setIcon(theme::menuIcon("load", c.text, c.text, size));
+  int const titleIcon{static_cast<int>(16 * utils::ssf())};
+  m_sequenceIcon->setPixmap(theme::menuIcon("sequence", c.muted, c.muted, titleIcon).pixmap(titleIcon));
 }
 
 void ProgramWidget::updateProgramLabel() {

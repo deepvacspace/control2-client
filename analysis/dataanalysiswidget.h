@@ -6,6 +6,7 @@
 #include "experimentlibrary.h"
 
 class QLineEdit;
+class QFrame;
 class QPushButton;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -52,7 +53,7 @@ private:
   AnalysisNotesStore *m_notes;
   AnalysisEditorArea *m_editor;
 
-  QWidget     *m_browser{nullptr};
+  QFrame      *m_browser{nullptr};
   QTreeWidget *m_tree{nullptr};
   QLineEdit   *m_filterEdit{nullptr};
   QPushButton *m_refreshBtn{nullptr};

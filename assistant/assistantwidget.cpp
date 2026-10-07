@@ -84,7 +84,7 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
   m_runCombo       = new QComboBox(this);
   m_runCombo->setMinimumHeight(36 * utils::ssf());
   m_runCombo->setMinimumContentsLength(28);
-  m_runCombo->setToolTip(tr("Questions are about this run unless you name another one"));
+  m_runCombo->setToolTip(tr("Questions are about this experiment unless you name another one"));
   m_statusDot = new QLabel(QStringLiteral("●"), this); // model state; details in the tooltip
   contextRow->addWidget(m_statusDot);
   contextRow->addWidget(new QLabel(tr("Experiment:"), this));
@@ -93,10 +93,10 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
     QString label;
     QString question;
   };
-  for (Quick const &quick : {Quick{tr("Summarize"), tr("Summarize this run: configuration, main KPIs, stages and anything abnormal.")},
-                             Quick{tr("Anomalies"), tr("Which anomalies were detected in this run and how serious are they?")},
-                             Quick{tr("Compare with previous"), tr("Compare this run with the previous run. What changed and which one controlled better?")},
-                             Quick{tr("Report"), tr("Generate an HTML report of this run.")}}) {
+  for (Quick const &quick : {Quick{tr("Summarize"), tr("Summarize this experiment: configuration, main KPIs, stages and anything abnormal.")},
+                             Quick{tr("Anomalies"), tr("Which anomalies were detected in this experiment and how serious are they?")},
+                             Quick{tr("Compare with previous"), tr("Compare this experiment with the previous experiment. What changed and which one controlled better?")},
+                             Quick{tr("Report"), tr("Generate an HTML report of this experiment.")}}) {
     auto *button = makeButton(quick.label, this);
     connect(button, &QPushButton::clicked, this, [this, question = quick.question] { send(question); });
     contextRow->addWidget(button);
