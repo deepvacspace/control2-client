@@ -2,22 +2,47 @@
 
 #include <QVBoxLayout>
 
-#include "scrollwidget.h"
+#include <QFrame>
+#include <QLabel>
+#include <QScrollArea>
 
 namespace deepvaccontrol {
 ForceOutListWidget::ForceOutListWidget(
   ResHolder *resHolder, SystemValue *outsSystVal, QVariantList const &forceOutVariantList, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_outsSystVal{outsSystVal} {
-  auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->setSpacing(0);
+  double const ssf{utils::ssf()};
+  auto        *mainLay = new QVBoxLayout(this);
+  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
 
-  auto *btnLay = new QHBoxLayout();
-  btnLay->setContentsMargins(3 * utils::ssf(), 3 * utils::ssf(), 3 * utils::ssf(), 3 * utils::ssf());
-  btnLay->setSpacing(3 * utils::ssf());
-  mainLay->addLayout(btnLay);
+  auto *card = new QFrame(this);
+  card->setObjectName("pageCard");
+  mainLay->addWidget(card);
+  auto *cardLay = new QVBoxLayout(card);
+  cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
+  cardLay->setSpacing(8 * ssf);
 
-  auto *elementLay = new QVBoxLayout();
+  // header: title, note, all outputs at once
+  auto *header = new QHBoxLayout();
+  header->setSpacing(8 * ssf);
+  auto *title = new QLabel(tr("Manual output control"), card);
+  title->setObjectName("cardTitle");
+  header->addWidget(title);
+  header->addStretch();
+  auto *resetAllBtn = new QPushButton(tr("Release all outputs"), card);
+  resetAllBtn->setProperty("outline", true);
+  auto *setAllBtn = new QPushButton(tr("Set all outputs"), card);
+  setAllBtn->setObjectName("primaryButton");
+  for (QPushButton *button : {resetAllBtn, setAllBtn}) {
+    button->setMinimumSize(150 * ssf, 28 * ssf);
+    header->addWidget(button);
+  }
+  cardLay->addLayout(header);
+
+  // one row per output
+  auto *list    = new QWidget();
+  auto *listLay = new QVBoxLayout(list);
+  listLay->setContentsMargins(0, 0, 4 * ssf, 0);
+  listLay->setSpacing(6 * ssf);
   for (auto const &forceOutVariant : forceOutVariantList) {
     QVariantMap const forceOutVariantMap = forceOutVariant.toMap();
 
@@ -31,30 +56,21 @@ ForceOutListWidget::ForceOutListWidget(
 
     if (outType > 0) {
       auto *item = new ForceOutSingleWidget(
-        index, label, outsSystVal, static_cast<ForceOutSingleWidget::ForceType>(outType), this);
-      elementLay->addWidget(item);
+        index, label, outsSystVal, static_cast<ForceOutSingleWidget::ForceType>(outType), list);
+      listLay->addWidget(item);
       connect(item, &ForceOutSingleWidget::generateRaw, this, &ForceOutListWidget::sendForceOutMsg);
       m_outWidgets.push_back(item);
     }
   }
-  elementLay->addStretch();
-
-  auto *elementScrollWidget = new ScrollWidget(true, this);
-  elementScrollWidget->setLayout2(elementLay);
-
-  mainLay->addWidget(elementScrollWidget);
-
-  auto *resetAllBtn = new QPushButton(tr("Освободить все выходы"), this);
-  auto *setAllBtn   = new QPushButton(tr("Установить все выходы"), this);
-
-  resetAllBtn->setFixedHeight(35 * utils::ssf());
-  setAllBtn->setFixedHeight(35 * utils::ssf());
-
-  // mainLay->addStretch();
-
-  btnLay->addWidget(resetAllBtn);
-  btnLay->addWidget(setAllBtn);
-  btnLay->addStretch();
+  listLay->addStretch();
+  auto *scroll = new QScrollArea(card);
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setWidget(list);
+  list->setAutoFillBackground(false);
+  scroll->viewport()->setAutoFillBackground(false);
+  scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
+  cardLay->addWidget(scroll, 1);
 
   connect(resetAllBtn, &QPushButton::clicked, this, [this]() {
     m_resHolder->tcpGate->sendTextCmd("reset_force_out");

@@ -19,6 +19,9 @@ class SysOsWidget : public QWidget {
 public:
   explicit SysOsWidget(ResHolder *resHolder, QWidget *parent = nullptr);
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 signals:
   void prepareToCloseApp();
   void switchAppMaximizedClicked();
@@ -37,6 +40,9 @@ signals:
 private:
   void        handleAccessChange(QString const &, AccessManager::AccessLevel newLevel);
   QTabWidget *m_tabWidget;
+  QWidget    *m_osTab{nullptr};
+  QWidget    *m_outputsTab{nullptr};
+  QWidget    *m_commandsTab{nullptr};
 };
 } // namespace deepvaccontrol
 

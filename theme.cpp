@@ -133,6 +133,17 @@ QTableWidget#intervalTable::item:selected { background: %24; color: %2; }
 QTableWidget#intervalTable QHeaderView::section { background: transparent; color: %16; border: none;
   border-bottom: %4px solid %3; padding: %15px; }
 QLabel[fieldLabel="true"] { color: %16; }
+QTableView#flatTable { background: transparent; border: none; selection-background-color: %24; selection-color: %2; }
+QTableView#flatTable::item { border: none; border-bottom: %4px solid %3; padding-left: %15px; }
+QTableView#flatTable::item:selected { background: %24; color: %2; }
+QTableView#flatTable QHeaderView::section { background: transparent; color: %16; border: none;
+  border-bottom: %4px solid %3; padding: %15px; }
+QPushButton[segment="true"] { background: %14; color: %16; border-radius: 0; }
+QPushButton[segment="true"]:checked { background: %8; color: white; border-color: %8; font-weight: bold; }
+QPushButton[segment="true"]:disabled { color: %10; }
+QPushButton[segmentFirst="true"] { border-top-left-radius: %15px; border-bottom-left-radius: %15px; }
+QPushButton[segmentLast="true"] { border-top-right-radius: %15px; border-bottom-right-radius: %15px; }
+QLabel#rowTitle { font-weight: bold; }
 )");
   return qss.arg(c.panel.name(), c.text.name(), c.border.name())
     .arg(px(1))
@@ -371,6 +382,53 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
       head.moveTo(pt(0.32, 0.32)); head.lineTo(pt(0.5, 0.14)); head.lineTo(pt(0.68, 0.32));
     }
     p.drawPath(head);
+  } else if (kind == "compare") { // two overlaid curves
+    QPainterPath a;
+    a.moveTo(pt(0.1, 0.72));
+    a.cubicTo(pt(0.35, 0.72), pt(0.4, 0.22), pt(0.9, 0.22));
+    p.drawPath(a);
+    QPen dashed = pen;
+    dashed.setStyle(Qt::DashLine);
+    p.setPen(dashed);
+    QPainterPath b;
+    b.moveTo(pt(0.1, 0.86));
+    b.cubicTo(pt(0.4, 0.86), pt(0.5, 0.4), pt(0.9, 0.4));
+    p.drawPath(b);
+    p.setPen(pen);
+  } else if (kind == "channels") { // three lines with a dot each
+    for (int i = 0; i < 3; ++i) {
+      double const y = 0.26 + 0.24 * i;
+      p.drawLine(pt(0.36, y), pt(0.88, y));
+      p.setBrush(color);
+      p.drawEllipse(pt(0.18, y), s * 0.06, s * 0.06);
+      p.setBrush(Qt::NoBrush);
+    }
+  } else if (kind == "annotate") { // speech bubble
+    QPainterPath path;
+    path.addRoundedRect(QRectF(pt(0.12, 0.16), pt(0.88, 0.68)), s * 0.12, s * 0.12);
+    p.drawPath(path);
+    QPainterPath tail;
+    tail.moveTo(pt(0.32, 0.68));
+    tail.lineTo(pt(0.26, 0.88));
+    tail.lineTo(pt(0.48, 0.68));
+    p.drawPath(tail);
+  } else if (kind == "fit") { // four corners
+    for (auto const &[x, y, dx, dy] : {std::tuple{0.14, 0.14, 1, 1}, std::tuple{0.86, 0.14, -1, 1}, std::tuple{0.14, 0.86, 1, -1},
+                                       std::tuple{0.86, 0.86, -1, -1}}) {
+      p.drawLine(pt(x, y), pt(x + dx * 0.24, y));
+      p.drawLine(pt(x, y), pt(x, y + dy * 0.24));
+    }
+  } else if (kind == "stats") { // bars
+    p.drawLine(pt(0.12, 0.88), pt(0.88, 0.88));
+    p.drawRect(QRectF(pt(0.2, 0.5), pt(0.36, 0.88)));
+    p.drawRect(QRectF(pt(0.44, 0.22), pt(0.6, 0.88)));
+    p.drawRect(QRectF(pt(0.68, 0.38), pt(0.84, 0.88)));
+  } else if (kind == "dots") { // vertical ellipsis
+    p.setBrush(color);
+    p.setPen(Qt::NoPen);
+    for (double const y : {0.22, 0.5, 0.78}) {
+      p.drawEllipse(pt(0.5, y), s * 0.08, s * 0.08);
+    }
   } else if (kind == "sequence") { // pulse
     QPainterPath path;
     path.moveTo(pt(0.08, 0.52));

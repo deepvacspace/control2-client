@@ -45,6 +45,8 @@ public:
   [[nodiscard]] QVector<Annotation> annotations(double start, double end, QString const &runKey) const;
   void                              addAnnotation(Annotation const &annotation);
   void                              removeAnnotation(QString const &id);
+  // replaces annotation `id` (removed, shared copies included) by the changed one
+  void                              updateAnnotation(QString const &id, Annotation const &annotation);
 
   [[nodiscard]] QVector<Rule> rules(QString const &runKey) const;
   void                        addRule(QString const &runKey, Rule const &rule);

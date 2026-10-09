@@ -109,7 +109,7 @@ void UserWidget::initGui() {
     {AccessManager::AccessLevel::SPECTATOR_0,
      tr("Home, Chart, Data analysis, AI (Simulator and Assistant), Users and System. Cannot start or stop the chamber.")},
     {AccessManager::AccessLevel::USER_START_1, tr("Everything above, plus Manual control and Program control.")},
-    {AccessManager::AccessLevel::USER_EDIT_2, tr("As Level 1, and may run the AI Advisor and the Offline advisor.")},
+    {AccessManager::AccessLevel::USER_EDIT_2, tr("As Level 1, and may run the AI Advisor, which changes the PID gains.")},
     {AccessManager::AccessLevel::USER_ADMIN_3, tr("Everything, including Settings.")},
   };
   for (auto const &[level, text] : levels) {

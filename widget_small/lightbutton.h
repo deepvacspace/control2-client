@@ -11,6 +11,10 @@ class LightButton : public QPushButton {
 public:
   // off and disabled unless a light output is configured ("monitor") and the chamber is online
   explicit LightButton(ResHolder *resHolder, QWidget *parent = nullptr);
+  // a light output is configured for this chamber (settings "monitor"); without one the button is not shown
+  [[nodiscard]] bool isConfigured() const {
+    return m_sysVal != nullptr;
+  }
 
 protected:
   // footer card: lamp, label and an on / off switch

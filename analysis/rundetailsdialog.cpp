@@ -16,7 +16,8 @@
 
 namespace deepvaccontrol {
 
-RunDetailsDialog::RunDetailsDialog(core::RunMetadata const &metadata, QString const &title, QWidget *parent) : QDialog{parent} {
+RunDetailsDialog::RunDetailsDialog(core::RunMetadata const &metadata, QString const &title, QWidget *parent, bool withTagsAndNotes)
+    : QDialog{parent}, m_initial{metadata} {
   setWindowTitle(title);
   setMinimumWidth(460 * utils::ssf());
   auto *form = new QFormLayout(this);
@@ -35,8 +36,13 @@ RunDetailsDialog::RunDetailsDialog(core::RunMetadata const &metadata, QString co
   form->addRow(tr("DUT"), m_dut);
   form->addRow(tr("Operator"), m_operator);
   form->addRow(tr("Purpose"), m_purpose);
-  form->addRow(tr("Tags"), m_tags);
-  form->addRow(tr("Notes"), m_notes);
+  if (withTagsAndNotes) {
+    form->addRow(tr("Tags"), m_tags);
+    form->addRow(tr("Notes"), m_notes);
+  } else {
+    m_tags->setVisible(false);
+    m_notes->setVisible(false);
+  }
   auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
   connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -48,7 +54,12 @@ core::RunMetadata RunDetailsDialog::metadata() const {
   metadata.dut          = m_dut->text().trimmed();
   metadata.operatorName = m_operator->text().trimmed();
   metadata.purpose      = m_purpose->text().trimmed();
-  metadata.notes        = m_notes->toPlainText().trimmed();
+  if (m_tags->isHidden()) {
+    metadata.notes = m_initial.notes; // not edited here
+    metadata.tags  = m_initial.tags;
+    return metadata;
+  }
+  metadata.notes = m_notes->toPlainText().trimmed();
   for (QString const &tag : m_tags->text().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
     if (!tag.trimmed().isEmpty()) {
       metadata.tags << tag.trimmed();
@@ -67,7 +78,7 @@ RunDetailsButton::RunDetailsButton(ResHolder *resHolder, QWidget *parent) : QPus
     if (current.operatorName.isEmpty() && m_resHolder->users) {
       current.operatorName = m_resHolder->users->getCurrentUserName();
     }
-    RunDetailsDialog dialog(current, tr("Details of the next experiments"), this);
+    RunDetailsDialog dialog(current, tr("Experiment details"), this, false);
     if (dialog.exec() == QDialog::Accepted) {
       m_resHolder->recorder->setNextRunMetadata(dialog.metadata());
     }

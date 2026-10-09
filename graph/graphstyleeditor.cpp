@@ -4,49 +4,70 @@
 #include <QVBoxLayout>
 
 #include "constants.h"
-#include "scrollwidget.h"
+#include <QLabel>
+#include <QScrollArea>
 #include "utils.h"
 
 namespace deepvaccontrol {
 GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDialog{parent}, m_resHolder{resHolder} {
-  auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(5 * utils::ssf(), 5 * utils::ssf(), 5 * utils::ssf(), 5 * utils::ssf());
-  mainLay->setSpacing(3 * utils::ssf());
+  double const ssf{utils::ssf()};
+  auto        *mainLay = new QVBoxLayout(this);
+  mainLay->setContentsMargins(16 * ssf, 14 * ssf, 16 * ssf, 14 * ssf);
+  mainLay->setSpacing(10 * ssf);
 
-  auto *elementLay = new QVBoxLayout();
+  // header: title and how many channels are shown
+  auto *header = new QHBoxLayout();
+  auto *title  = new QLabel(tr("Displayed channels"), this);
+  title->setObjectName("cardTitle");
+  header->addWidget(title);
+  header->addStretch();
+  m_countLabel = new QLabel(this);
+  m_countLabel->setProperty("muted", true);
+  header->addWidget(m_countLabel);
+  mainLay->addLayout(header);
+
+  // one row per channel
+  auto *list       = new QWidget();
+  auto *elementLay = new QVBoxLayout(list);
+  elementLay->setContentsMargins(0, 0, 6 * ssf, 0);
+  elementLay->setSpacing(6 * ssf);
 
   QVariantList const statesList = resHolder->settings->settingsMap()["states"].toList();
 
   for (int i{0U}; i < statesList.size(); ++i) {
     QVariantMap const stateMap{statesList[i].toMap()};
     if (stateMap.contains("visible")) {
-      auto *stateStyleWidget = new GraphStyleSingleWidget(i, stateMap, this);
+      auto *stateStyleWidget = new GraphStyleSingleWidget(i, stateMap, list);
       connect(stateStyleWidget, &GraphStyleSingleWidget::styleUpdated, this, [this, i, stateStyleWidget]() {
         emit styleChanged(i, stateStyleWidget->getStateMapVariant());
+        updateCount();
       });
       elementLay->addWidget(stateStyleWidget);
       widgetsMap[i] = stateStyleWidget;
     }
   }
-
   elementLay->addStretch();
 
-  auto *elementScrollWidget = new ScrollWidget(true, this);
-  elementScrollWidget->setLayout2(elementLay);
-  elementScrollWidget->setContentsMargins(0, 0, 0, 0);
+  auto *scroll = new QScrollArea(this);
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setWidget(list);
+  list->setAutoFillBackground(false);
+  scroll->viewport()->setAutoFillBackground(false);
+  scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
+  mainLay->addWidget(scroll, 1);
 
-  mainLay->addWidget(elementScrollWidget);
-
-  auto *closeBtn      = new QPushButton(tr("Закрыть"), this);
-  auto *selectAllBtn  = new QPushButton(tr("Все"), this);
-  auto *selectNoneBtn = new QPushButton(tr("Ни одного"), this);
+  // footer: all / none, done
+  auto *closeBtn      = new QPushButton(tr("Done"), this);
+  closeBtn->setObjectName("primaryButton");
+  auto *selectAllBtn  = new QPushButton(tr("Show all"), this);
+  auto *selectNoneBtn = new QPushButton(tr("Hide all"), this);
   for (QPushButton *item : {closeBtn, selectAllBtn, selectNoneBtn}) {
-    item->setFixedSize(90 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+    item->setMinimumSize(100 * ssf, 30 * ssf);
   }
 
   auto *btnLay = new QHBoxLayout();
-  btnLay->setContentsMargins(3 * utils::ssf(), 3 * utils::ssf(), 3 * utils::ssf(), 3 * utils::ssf());
-  btnLay->setSpacing(6 * utils::ssf());
+  btnLay->setSpacing(8 * ssf);
   btnLay->addWidget(selectAllBtn);
   btnLay->addWidget(selectNoneBtn);
   btnLay->addStretch();
@@ -60,6 +81,7 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDia
       item->setEnabled(true);
     }
     emit styleAllChanged(getStateStylesList());
+    updateCount();
   });
 
   connect(selectNoneBtn, &QPushButton::clicked, this, [this] {
@@ -67,11 +89,21 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDia
       item->setEnabled(false);
     }
     emit styleAllChanged(getStateStylesList());
+    updateCount();
   });
 
-  setMinimumWidth(600 * utils::ssf());
+  updateCount();
+  setMinimumSize(640 * ssf, 520 * ssf);
   setModal(true);
-  setWindowTitle(tr("Выбор отображения переменных"));
+  setWindowTitle(tr("Channels"));
+}
+
+void GraphStyleEditor::updateCount() {
+  int shown{0};
+  for (auto const &item : std::as_const(widgetsMap)) {
+    shown += item->getStateMapVariant().value("visible").toBool() ? 1 : 0;
+  }
+  m_countLabel->setText(tr("%1 of %2 shown").arg(shown).arg(widgetsMap.size()));
 }
 
 QVariantList GraphStyleEditor::getStateStylesList() {

@@ -66,10 +66,15 @@ QTabWidget *AnalysisEditorArea::makeGroup() {
   group->setDocumentMode(true);
   group->setElideMode(Qt::ElideRight);
   group->tabBar()->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss")
-                         .arg(36 * utils::ssf())
-                         .arg(120 * utils::ssf())
+                         .arg(28 * utils::ssf())
+                         .arg(100 * utils::ssf())
                          .arg(36 * utils::ssf()));
   group->setMinimumSize(320 * utils::ssf(), 240 * utils::ssf());
+  {
+    QFont font = group->tabBar()->font();
+    font.setPointSizeF(font.pointSizeF() * 0.9); // smaller experiment tabs
+    group->tabBar()->setFont(font);
+  }
 
   // The corner widget only reserves room next to the tabs; the menu button is laid over it
   // so it spans exactly the tab row (QTabWidget does not align corner widgets with the tabs).
@@ -145,7 +150,7 @@ AnalysisRunPage *AnalysisEditorArea::page(QString const &key) const {
 void AnalysisEditorArea::addPage(AnalysisRunPage *page) {
   QTabWidget *group = m_groups.contains(m_activeGroup) ? m_activeGroup : m_groups.first();
   page->chart()->setSyncHub(m_syncHub);
-  int const index{group->addTab(page, page->title())};
+  int const index{group->addTab(page, page->tabTitle())};
   group->setTabToolTip(index, page->title());
   group->setCurrentIndex(index);
   updatePlaceholder();

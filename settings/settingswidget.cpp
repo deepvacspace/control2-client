@@ -1,6 +1,10 @@
 #include "settingswidget.h"
 
+#include <QButtonGroup>
 #include <QCheckBox>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QPushButton>
 #include <QGridLayout>
 #include <QLabel>
 #include <QTabWidget>
@@ -117,23 +121,66 @@ void SettingsWidget::initGui() {
   auto *alarmListWidget = new AlarmListWidget(m_resHolder, this);
   tabWidget->addTab(alarmListWidget, tr("Аварии"));
 
-  // App-only AI setting. Its top-left alignment mirrors Operating Params;
-  // this value is not part of the settings sent to the PLC.
-  auto *aiSettingsWidget = new QWidget(this);
-  auto *aiSettingsLayout = new QGridLayout(aiSettingsWidget);
-  aiSettingsLayout->setContentsMargins(3, 3, 3, 3);
-  auto *aiAdvisorLabel  = new QLabel(tr("AI Advisor"), aiSettingsWidget);
-  auto *aiAdvisorToggle = new QCheckBox(aiSettingsWidget);
-  aiAdvisorToggle->setChecked(m_resHolder->aiAdvisorEnabled);
-  aiSettingsLayout->addWidget(aiAdvisorLabel, 0, 0);
-  aiSettingsLayout->addWidget(aiAdvisorToggle, 0, 1, Qt::AlignLeft);
+  // App-only AI setting (not part of the settings sent to the PLC)
+  double const ssf{utils::ssf()};
+  auto        *aiSettingsWidget = new QWidget(this);
+  {
+    auto *pageLay = new QVBoxLayout(aiSettingsWidget);
+    pageLay->setContentsMargins(0, 8 * ssf, 0, 0);
+    auto *card = new QFrame(aiSettingsWidget);
+    card->setObjectName("pageCard");
+    pageLay->addWidget(card);
+    auto *cardLay = new QVBoxLayout(card);
+    cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
+    cardLay->setSpacing(8 * ssf);
+    auto *title = new QLabel(tr("AI"), card);
+    title->setObjectName("cardTitle");
+    cardLay->addWidget(title);
 
-  // Database Synchronization (Deepvac Insight link) lives in the Connections tab
-  aiSettingsLayout->setColumnStretch(2, 1);
-  aiSettingsLayout->setRowStretch(1, 1);
-  connect(aiAdvisorToggle, &QCheckBox::toggled, this, [this](bool checked) {
-    m_resHolder->aiAdvisorEnabled = checked;
-  });
+    auto *row = new QFrame(card);
+    row->setObjectName("outputRow");
+    auto *rowLay = new QHBoxLayout(row);
+    rowLay->setContentsMargins(12 * ssf, 10 * ssf, 12 * ssf, 10 * ssf);
+    rowLay->setSpacing(12 * ssf);
+    auto *icon = new QLabel(row);
+    int const iconSize{static_cast<int>(22 * ssf)};
+    icon->setPixmap(theme::menuIcon("ai", theme::colors().muted, theme::colors().muted, iconSize).pixmap(iconSize));
+    rowLay->addWidget(icon);
+    auto *texts = new QVBoxLayout();
+    texts->setSpacing(2 * ssf);
+    auto *rowTitle = new QLabel(tr("AI Advisor"), row);
+    rowTitle->setObjectName("rowTitle");
+    auto *rowText = new QLabel(tr("Before a job starts, offer to search suitable PID parameters with the AI Advisor."), row);
+    rowText->setProperty("muted", true);
+    texts->addWidget(rowTitle);
+    texts->addWidget(rowText);
+    rowLay->addLayout(texts, 1);
+
+    // Off / On
+    auto *group    = new QButtonGroup(row);
+    auto *segments = new QHBoxLayout();
+    segments->setSpacing(0);
+    QStringList const texts2{tr("Off"), tr("On")};
+    for (int i{0}; i < texts2.size(); ++i) {
+      auto *button = new QPushButton(texts2[i], row);
+      button->setCheckable(true);
+      button->setProperty("segment", true);
+      button->setProperty("segmentFirst", i == 0);
+      button->setProperty("segmentLast", i == texts2.size() - 1);
+      button->setFixedSize(80 * ssf, 30 * ssf);
+      group->addButton(button, i);
+      segments->addWidget(button);
+    }
+    group->setExclusive(true);
+    group->button(m_resHolder->aiAdvisorEnabled ? 1 : 0)->setChecked(true);
+    rowLay->addLayout(segments);
+    cardLay->addWidget(row);
+    cardLay->addStretch();
+
+    connect(group, &QButtonGroup::idClicked, this, [this](int id) {
+      m_resHolder->aiAdvisorEnabled = (id == 1);
+    });
+  }
   tabWidget->addTab(aiSettingsWidget, tr("AI"));
 
   // App-only network links: chamber gate, Deepvac Insight, OPC UA

@@ -13,6 +13,8 @@ class QComboBox;
 class QGridLayout;
 class QPushButton;
 
+class QFrame;
+
 namespace deepvaccontrol {
 class AnalysisChart;
 class LineEditNum;
@@ -67,6 +69,7 @@ private:
   QLabel *m_settleTile{nullptr};
 
   QComboBox   *m_channelCombo{nullptr};
+  QFrame      *m_scenarioRow{nullptr}; // scenario and results above the chart
   AnalysisChart *m_chart{nullptr};
   QString        m_runTitle;
   QTimer       m_animTimer;

@@ -185,7 +185,7 @@ void ProgramWidget::initGui() {
   intervalsTop->setSpacing(8 * ssf);
   m_sequenceIcon = new QLabel(intervalsCard);
   intervalsTop->addWidget(m_sequenceIcon);
-  auto *title = new QLabel(tr("Interval sequence").toUpper(), intervalsCard);
+  auto *title = new QLabel(tr("Intervals").toUpper(), intervalsCard);
   title->setObjectName("cardTitle");
   {
     QFont font = title->font();

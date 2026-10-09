@@ -6,45 +6,48 @@
 #include <QPainter>
 #include <QPen>
 
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
 
 GraphStyleSingleWidget::GraphStyleSingleWidget(int index, QVariantMap const &stateMap, QWidget *parent)
-    : QWidget{parent}, m_index{index}, m_stateMap{stateMap} {
+    : QFrame{parent}, m_index{index}, m_stateMap{stateMap} {
+  double const ssf{utils::ssf()};
+  setObjectName("outputRow");
   auto *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(0, 0, 0, 0);
+  mainLay->setContentsMargins(10 * ssf, 5 * ssf, 10 * ssf, 5 * ssf);
+  mainLay->setSpacing(10 * ssf);
 
+  // shown on the chart
   m_visibility = new QCheckBox(this);
-  m_visibility->setStyleSheet(utils::readStyleFromFile(":/styles/checkBoxBig.qss")
-                              + QString("QCheckBox::indicator{width: %1px; height: %1px;}").arg(26 * utils::ssf()));
+  m_visibility->setToolTip(tr("Show this channel on the chart"));
 
-  auto *label = new QLabel(this);
-  // label->setFixedWidth(250 * utils::ssf());
+  // colour swatch: opens the colour picker
+  m_colorPicker = new QPushButton(this);
+  m_colorPicker->setFixedSize(26 * ssf, 26 * ssf);
+  m_colorPicker->setToolTip(tr("Line colour"));
 
-  m_colorPicker = new QPushButton(tr("Цвет"), this);
-  m_colorPicker->setFixedSize(40 * utils::ssf(), 20 * utils::ssf());
+  m_label = new QLabel(m_stateMap["label"].toString(), this);
+  m_label->setToolTip(m_stateMap["name"].toString());
 
   m_lineStyle = new QComboBox(this);
-  m_lineWidth = new QComboBox(this);
-
-  label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-
-  m_lineWidth->addItems(QStringList{"1", "2", "3", "4"});
-  m_lineWidth->setFixedSize(35 * utils::ssf(), 20 * utils::ssf());
-  m_lineWidth->setStyleSheet("QComboBox QAbstractItemView {selection-color: black;}");
-
   m_lineStyle->addItems(QStringList{"", "", "", "", ""});
-  m_lineStyle->setFixedSize(88 * utils::ssf(), 20 * utils::ssf());
-  m_lineStyle->setIconSize(QSize(80 * utils::ssf(), 15 * utils::ssf()));
+  m_lineStyle->setFixedSize(110 * ssf, 28 * ssf);
+  m_lineStyle->setIconSize(QSize(80 * ssf, 14 * ssf));
+  m_lineStyle->setToolTip(tr("Line style"));
+
+  m_lineWidth = new QComboBox(this);
+  m_lineWidth->addItems(QStringList{"1 px", "2 px", "3 px", "4 px"});
+  m_lineWidth->setFixedSize(72 * ssf, 28 * ssf);
+  m_lineWidth->setToolTip(tr("Line width"));
 
   mainLay->addWidget(m_visibility);
-  mainLay->addWidget(label);
   mainLay->addWidget(m_colorPicker);
+  mainLay->addWidget(m_label, 1);
   mainLay->addWidget(m_lineStyle);
   mainLay->addWidget(m_lineWidth);
 
-  label->setText(m_stateMap["label"].toString());
   updateLineStyleBox();
   setEnabled(m_stateMap["visible"].toBool());
   m_lineWidth->setCurrentIndex(m_stateMap["width"].toUInt() - 1);
@@ -85,8 +88,9 @@ void GraphStyleSingleWidget::handleColorSelected(QColor newColor) {
 }
 
 void GraphStyleSingleWidget::updateLineStyleBox() {
+  double const ssf{utils::ssf()};
   for (int i = Qt::SolidLine; i < Qt::CustomDashLine; ++i) {
-    QPixmap pix(80 * utils::ssf(), 15 * utils::ssf());
+    QPixmap pix(80 * ssf, 14 * ssf);
     pix.fill(Qt::transparent);
 
     QPen pen;
@@ -96,25 +100,33 @@ void GraphStyleSingleWidget::updateLineStyleBox() {
 
     QPainter painter(&pix);
     painter.setPen(pen);
-    painter.drawLine(2 * utils::ssf(), 8 * utils::ssf(), 78 * utils::ssf(), 8 * utils::ssf());
+    painter.drawLine(2 * ssf, 7 * ssf, 78 * ssf, 7 * ssf);
     m_lineStyle->setItemIcon(i - 1, QIcon(pix));
   }
-  m_colorPicker->setStyleSheet("QPushButton {color :" + m_stateMap["color"].toString() + ";}");
+  updateSwatch();
+}
+
+void GraphStyleSingleWidget::updateSwatch() {
+  bool const   shown{m_stateMap["visible"].toBool()};
+  QColor const color = shown ? QColor::fromString(m_stateMap["color"].toString()) : theme::colors().off;
+  m_colorPicker->setStyleSheet(QStringLiteral("QPushButton { background: %1; border: %2px solid %3; border-radius: %4px; }")
+                                 .arg(color.name())
+                                 .arg(qMax(1, static_cast<int>(1 * utils::ssf())))
+                                 .arg(theme::colors().border.name())
+                                 .arg(static_cast<int>(5 * utils::ssf())));
 }
 
 void GraphStyleSingleWidget::setEnabled(bool value) {
-  // if(m_visibility->isEnabled() == value) {
-  //   return;
-  // }
   m_stateMap["visible"] = value;
 
   m_colorPicker->setEnabled(value);
   m_lineStyle->setEnabled(value);
   m_lineWidth->setEnabled(value);
   m_visibility->setChecked(value);
-
-  static QColor const grey(127, 127, 127);
-  m_colorPicker->setStyleSheet("QPushButton {color :" + (value ? m_stateMap["color"].toString() : grey.name()) + ";}");
+  m_label->setProperty("muted", !value);
+  m_label->style()->unpolish(m_label);
+  m_label->style()->polish(m_label);
+  updateSwatch();
 }
 
 } // namespace deepvaccontrol

@@ -101,6 +101,33 @@ VirtualNumKeyboard::VirtualNumKeyboard(QWidget *parent) : QDialog{parent}, host{
   setGeometry(QRect(showPos, dialogSize));
 }
 
+void VirtualNumKeyboard::keyPressEvent(QKeyEvent *event) {
+  int const key{event->key()};
+  if ((key >= Qt::Key_0) && (key <= Qt::Key_9)) {
+    numericalButtons.value(key - Qt::Key_0)->click();
+  } else if ((key == Qt::Key_Period) || (key == Qt::Key_Comma)) {
+    point->click();
+  } else if (key == Qt::Key_Minus) {
+    if (minus->isEnabled()) {
+      minus->click();
+    }
+  } else if (key == Qt::Key_E) {
+    if (e->isEnabled() && e->isVisible()) {
+      e->click();
+    }
+  } else if ((key == Qt::Key_Backspace) || (key == Qt::Key_Delete)) {
+    del->click();
+  } else if ((key == Qt::Key_Return) || (key == Qt::Key_Enter)) {
+    enter->click();
+  } else if (key == Qt::Key_Escape) {
+    cancel->click();
+  } else {
+    QDialog::keyPressEvent(event);
+    return;
+  }
+  event->accept();
+}
+
 void VirtualNumKeyboard::reject() {
   host->setText(prev);
   QDialog::reject();

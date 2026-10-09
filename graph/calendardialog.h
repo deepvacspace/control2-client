@@ -35,6 +35,8 @@ public:
 signals:
   void experimentSelected(storage::ExperimentSpan const &experiment);
   void liveSelected();
+  // every experiment of one day, oldest first
+  void daySelected(QDate const &day, QVector<storage::ExperimentSpan> const &experiments);
 
 private:
   void showDay(QDate const &date);
@@ -49,6 +51,7 @@ private:
   QLabel                          *m_dayLabel{nullptr};
   QListWidget                     *m_list{nullptr};
   QPushButton                     *m_openBtn{nullptr};
+  QPushButton                     *m_openDayBtn{nullptr};
 };
 
 } // namespace deepvaccontrol

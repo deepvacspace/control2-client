@@ -1,14 +1,16 @@
 #ifndef ALARMSINGLEWIDGET_H
 #define ALARMSINGLEWIDGET_H
 
+#include <QFrame>
 #include <QLabel>
-#include <QRadioButton>
+#include <QPushButton>
 #include <QWidget>
 
 #include "systemvalue.h"
 
 namespace deepvaccontrol {
-class AlarmSingleWidget : public QWidget {
+// One alarm input on Settings -> Alarms: its state and when it triggers (contact closed, open, or off).
+class AlarmSingleWidget : public QFrame {
   Q_OBJECT
 public:
   explicit AlarmSingleWidget(QString const &label,
@@ -23,6 +25,9 @@ public:
   bool getPosition() const;
   bool getActive() const;
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 private:
   void initGui();
   void updateStatusColors();
@@ -35,13 +40,13 @@ private:
   SystemValue *m_enableValue; // переменная с массивом активности каналов аварий
   SystemValue *m_conditionValue; // переменная с массивом критерий срабатывания каналов аварий
   quint32 m_index; // номер канала аварии
+  int  m_triggered{-1}; // row colour shown: -1 none yet, 0 normal, 1 alarm
+  bool m_restyling{false}; // restyling sends a palette change: no recursion
 
-  QFrame *curState;
-  QFrame *box;
-
-  QRadioButton *onLock;
-  QRadioButton *onUnlock;
-  QRadioButton *off;
+  QLabel      *curState; // input state badge
+  QPushButton *onLock;   // triggers when the contact is closed
+  QPushButton *onUnlock; // ... open
+  QPushButton *off;
 };
 
 inline bool AlarmSingleWidget::getPosition() const {

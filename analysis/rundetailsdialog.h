@@ -18,7 +18,8 @@ struct ResHolder;
 class RunDetailsDialog : public QDialog {
   Q_OBJECT
 public:
-  RunDetailsDialog(core::RunMetadata const &metadata, QString const &title, QWidget *parent = nullptr);
+  // withTagsAndNotes false: only DUT, operator and purpose are shown; tags and notes are kept as they are
+  RunDetailsDialog(core::RunMetadata const &metadata, QString const &title, QWidget *parent = nullptr, bool withTagsAndNotes = true);
 
   [[nodiscard]] core::RunMetadata metadata() const;
 
@@ -28,6 +29,7 @@ private:
   QLineEdit      *m_purpose{nullptr};
   QLineEdit      *m_tags{nullptr};
   QPlainTextEdit *m_notes{nullptr};
+  core::RunMetadata m_initial;
 };
 
 // "Run details…" next to the Start buttons: what the next runs are recorded with (kept until changed).

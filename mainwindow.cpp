@@ -109,6 +109,7 @@ void MainWindow::initGui() {
 
   auto *lightBtn = new LightButton(m_resHolder, this);
   m_menu->addWidget(lightBtn);
+  lightBtn->setVisible(lightBtn->isConfigured()); // only for a chamber with a light
 
   auto *powerBtn = new PowerButton(m_resHolder, this);
   m_menu->addWidget(powerBtn);

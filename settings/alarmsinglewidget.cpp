@@ -2,6 +2,8 @@
 
 #include "theme.h"
 
+#include <QButtonGroup>
+#include <QEvent>
 #include <QHBoxLayout>
 
 #include "utils.h"
@@ -13,7 +15,7 @@ AlarmSingleWidget::AlarmSingleWidget(QString const &label,
                                      SystemValue   *conditionValue,
                                      quint32        index,
                                      QWidget       *parent)
-    : QWidget{parent}
+    : QFrame{parent}
     , m_label{label}
     , m_statusValue{statusValue}
     , m_enableValue{enableValue}
@@ -25,24 +27,42 @@ AlarmSingleWidget::AlarmSingleWidget(QString const &label,
   connect(enableValue, &SystemValue::valueChanged, this, &AlarmSingleWidget::updateSelection);
   connect(conditionValue, &SystemValue::valueChanged, this, &AlarmSingleWidget::updateSelection);
 
-  connect(onLock, &QRadioButton::toggled, this, &AlarmSingleWidget::updateConfigValue);
-  connect(onUnlock, &QRadioButton::toggled, this, &AlarmSingleWidget::updateConfigValue);
-  connect(off, &QRadioButton::toggled, this, &AlarmSingleWidget::updateConfigValue);
+  connect(onLock, &QPushButton::toggled, this, &AlarmSingleWidget::updateConfigValue);
+  connect(onUnlock, &QPushButton::toggled, this, &AlarmSingleWidget::updateConfigValue);
+  connect(off, &QPushButton::toggled, this, &AlarmSingleWidget::updateConfigValue);
 }
 
 void AlarmSingleWidget::updateStatusColors() {
-  bool const conditionStatus{utils::getBitOfFloat(m_statusValue->getValue(), m_index)};
-
+  bool const           conditionStatus{utils::getBitOfFloat(m_statusValue->getValue(), m_index)};
   theme::Colors const &c = theme::colors();
-  auto                 tint = [](QColor const &color) { return QColor(color.red(), color.green(), color.blue(), 60).name(QColor::HexArgb); };
-  QString const stateColor{conditionStatus ? c.warning.name() : c.panelAlt.name()};
-  curState->setStyleSheet("background-color:" + stateColor + ";");
+  auto                 tint = [](QColor const &color, int alpha) {
+    return QColor(color.red(), color.green(), color.blue(), alpha).name(QColor::HexArgb);
+  };
 
-  QString boxColor{conditionStatus == getPosition() ? tint(c.danger) : tint(c.active)};
-  if (!getActive()) {
-    boxColor = c.panelAlt.name();
+  // input state
+  QColor const stateColor = conditionStatus ? c.warning : c.off;
+  curState->setText(conditionStatus ? tr("CLOSED") : tr("OPEN"));
+  curState->setStyleSheet(QStringLiteral("color: %1; border: %2px solid %1; border-radius: %3px; background: %4; font-weight: bold;")
+                            .arg(stateColor.name())
+                            .arg(qMax(1, static_cast<int>(1 * utils::ssf())))
+                            .arg(static_cast<int>(3 * utils::ssf()))
+                            .arg(tint(stateColor, conditionStatus ? 40 : 0)));
+
+  // the row is red while the alarm condition is met
+  bool const triggered{getActive() && (conditionStatus == getPosition())};
+  if (m_restyling || (m_triggered != static_cast<int>(triggered))) { // restyle only on a change (or a theme switch)
+    m_triggered = static_cast<int>(triggered);
+    setStyleSheet(triggered ? QStringLiteral("QFrame#outputRow { background: %1; }").arg(tint(c.danger, 45)) : QString());
   }
-  box->setStyleSheet("background-color:" + boxColor + ";");
+}
+
+void AlarmSingleWidget::changeEvent(QEvent *event) {
+  QFrame::changeEvent(event);
+  if ((event->type() == QEvent::PaletteChange) && !m_restyling) {
+    m_restyling = true;
+    updateStatusColors();
+    m_restyling = false;
+  }
 }
 
 void AlarmSingleWidget::setActiveAndPosition(bool active, bool position) {
@@ -59,41 +79,45 @@ void AlarmSingleWidget::updateSelection() {
 }
 
 void AlarmSingleWidget::initGui() {
-  auto *mainLay     = new QHBoxLayout(this);
+  double const ssf{utils::ssf()};
+  setObjectName("outputRow");
+  auto *mainLay = new QHBoxLayout(this);
+  mainLay->setContentsMargins(12 * ssf, 6 * ssf, 10 * ssf, 6 * ssf);
+  mainLay->setSpacing(10 * ssf);
+
   auto *description = new QLabel(m_label, this);
-  curState          = new QFrame(this);
-  box               = new QFrame(this);
+  description->setObjectName("rowTitle");
+  mainLay->addWidget(description, 1);
 
-  auto *btnsLay = new QHBoxLayout(box);
-  onLock        = new QRadioButton(this);
-  onUnlock      = new QRadioButton(this);
-  off           = new QRadioButton(this);
-  btnsLay->addWidget(onLock);
-  btnsLay->addWidget(onUnlock);
-  btnsLay->addStretch();
-  btnsLay->addWidget(off);
-  btnsLay->setStretch(0, 1);
-  btnsLay->setStretch(1, 1);
-  btnsLay->setStretch(2, 1);
-  btnsLay->setStretch(3, 1);
-  btnsLay->setContentsMargins(0, 0, 0, 0);
-
-  mainLay->addWidget(description);
+  curState = new QLabel(this);
+  curState->setAlignment(Qt::AlignCenter);
+  curState->setFixedSize(70 * ssf, 26 * ssf);
+  curState->setToolTip(tr("State of the alarm input"));
   mainLay->addWidget(curState);
-  mainLay->addWidget(box);
-  mainLay->setContentsMargins(0, 0, 0, 0);
+  mainLay->addSpacing(10 * ssf);
 
-  box->setContentsMargins(0, 0, 0, 0);
-  box->setFrameStyle(QFrame::StyledPanel | QFrame::Plain);
-  setStyleSheet(QString("QRadioButton::indicator{subcontrol-position: center center; width: %1px; height: %1px;}")
-                  .arg(20 * utils::ssf()));
-
-  box->setMinimumSize(200 * utils::ssf(), 30 * utils::ssf());
-
-  curState->setFrameStyle(QFrame::StyledPanel | QFrame::Plain);
-  curState->setFixedSize(10 * utils::ssf(), 30 * utils::ssf());
-
-  mainLay->setStretch(0, 1);
+  // trigger condition: one segmented control
+  auto *group    = new QButtonGroup(this);
+  auto *segments = new QHBoxLayout();
+  segments->setSpacing(0);
+  QList<QPushButton **> const buttons{&onLock, &onUnlock, &off};
+  QStringList const           texts{tr("Closed"), tr("Open"), tr("Off")};
+  for (int i{0}; i < buttons.size(); ++i) {
+    auto *button = new QPushButton(texts[i], this);
+    button->setCheckable(true);
+    button->setProperty("segment", true);
+    button->setProperty("segmentFirst", i == 0);
+    button->setProperty("segmentLast", i == buttons.size() - 1);
+    button->setFixedSize(80 * ssf, 28 * ssf);
+    group->addButton(button, i);
+    segments->addWidget(button);
+    *buttons[i] = button;
+  }
+  group->setExclusive(true);
+  onLock->setToolTip(tr("The alarm triggers when the contact is closed"));
+  onUnlock->setToolTip(tr("The alarm triggers when the contact is open"));
+  off->setToolTip(tr("This alarm input is not processed"));
+  mainLay->addLayout(segments);
 
   updateSelection();
 }

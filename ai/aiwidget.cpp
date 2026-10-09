@@ -37,11 +37,13 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
 
   auto *advisorWidget = new AiAdvisorWidget(resHolder, this);
   prepareAiTabPage(advisorWidget);
-  m_tabWidget->addTab(advisorWidget, tr("Advisor"));
+  // the online advisor (PPO, adjusts the gains while the job runs) is hidden for the time being
+  int const onlineAdvisorTab{m_tabWidget->addTab(advisorWidget, tr("Online advisor"))};
+  m_tabWidget->setTabVisible(onlineAdvisorTab, false);
 
   auto *offlineAdvisorWidget = new OfflineAdvisorWidget(resHolder, this);
   prepareAiTabPage(offlineAdvisorWidget);
-  m_tabWidget->addTab(offlineAdvisorWidget, tr("Offline advisor"));
+  m_tabWidget->addTab(offlineAdvisorWidget, tr("Advisor"));
 
   m_assistantWidget = new assistant::AssistantWidget(resHolder, this);
   prepareAiTabPage(m_assistantWidget);

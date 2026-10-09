@@ -261,6 +261,11 @@ void DataViewer::zoomView(double mulX, double mulY) {
 void DataViewer::setControlMode(ControlMode const mode) {
   m_controlMode = mode;
   emit controlModeChanged(m_controlMode);
+  // fit / follow right away (not only when new data arrives: a saved experiment never changes)
+  if ((ControlMode::ZOOM != mode) && m_data && (m_plot->graphCount() > 0)) {
+    updateRange();
+    m_plot->replot();
+  }
 }
 
 void DataViewer::setCompactLegend(bool compact) {

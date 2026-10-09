@@ -2,6 +2,7 @@
 #define GRAPHSTYLEEDITOR_H
 
 #include <QDialog>
+#include <QLabel>
 #include <graphstylesinglewidget.h>
 #include <resholder.h>
 
@@ -19,6 +20,8 @@ private:
 private:
   ResHolder                          *m_resHolder;
   QMap<int, GraphStyleSingleWidget *> widgetsMap; // only visible states
+  QLabel                             *m_countLabel{nullptr};
+  void                                updateCount();
 
   // QWidget interface
 protected:

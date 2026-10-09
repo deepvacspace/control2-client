@@ -73,6 +73,8 @@ public:
   // experiment stages as a labelled strip along the top of the plot
   void setStages(QVector<ChartRegion> const &stages);
   void setAnnotateMode(bool enabled);
+  // the box with the line labels over the plot
+  void setLegendVisible(bool visible);
 
   // batch several setters into a single redraw
   void beginUpdate();
@@ -97,9 +99,11 @@ signals:
 protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
   void resizeEvent(QResizeEvent *event) override;
+  void changeEvent(QEvent *event) override;
 
 private:
   void rebuild();
+  void styleLegendBox();
   void rebuildDecorations();
   void clearDecorations();
   void addOverlays();

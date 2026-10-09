@@ -39,6 +39,11 @@ void AnalysisNotesStore::removeAnnotation(QString const &id) {
   emit annotationsChanged();
 }
 
+void AnalysisNotesStore::updateAnnotation(QString const &id, Annotation const &annotation) {
+  AnnotationsDb::removeAnnotation(id.toLongLong());
+  addAnnotation(annotation); // emits annotationsChanged
+}
+
 QVector<AnalysisNotesStore::Rule> AnalysisNotesStore::rules(QString const &runKey) const {
   QVector<Rule> result;
   for (RuleRow const &row : AnnotationsDb::rules(runKey)) {

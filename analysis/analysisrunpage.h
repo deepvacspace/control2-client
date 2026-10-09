@@ -24,6 +24,9 @@ class QSpinBox;
 class QTableWidget;
 class QTextBrowser;
 
+class QDialog;
+class QMenu;
+
 namespace deepvaccontrol {
 
 class AnalysisNotesStore;
@@ -45,6 +48,8 @@ public:
 
   [[nodiscard]] QString        key() const;
   [[nodiscard]] QString        title() const;
+  // short name for the tab: without the logger folder and without a trailing "(...)"
+  [[nodiscard]] QString        tabTitle() const;
   [[nodiscard]] AnalysisChart *chart() const;
 
   // loads the run now if the page has not done it yet; false when it cannot be read
@@ -55,8 +60,12 @@ public:
   // configuration, stages, KPIs, events, anomalies, charts and the comparison (needs the run loaded)
   [[nodiscard]] ExperimentReportData buildReport();
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 private:
   void buildUi();
+  void updateToolIcons();
   QWidget *buildNotesPanel();
   void     load();
   void     refreshChart();
@@ -87,6 +96,8 @@ private:
   void     refreshStats();
   void     refreshRulesList();
   void     refreshAnnotationsList();
+  QWidget *buildAnnotationsPanel();
+  void     editAnnotation(int row);
   void     updateTimeControls();
   void     updateChannelsButton();
   // derived (calculated) channels appended after the recorded ones
@@ -148,6 +159,11 @@ private:
   QComboBox      *m_modeCombo{nullptr};
   QPushButton    *m_annotateBtn{nullptr};
   QPushButton    *m_exportBtn{nullptr};
+  QPushButton    *m_moreBtn{nullptr};       // ⋮ menu: view, labels, options, rules & notes, export
+  QMenu          *m_moreMenu{nullptr};
+  QDialog        *m_statisticsDialog{nullptr};
+  QDialog        *m_notesDialog{nullptr};
+  QVector<QPair<QPushButton *, QString>> m_iconButtons; // button, icon kind
   QDoubleSpinBox *m_fromSpin{nullptr};
   QDoubleSpinBox *m_toSpin{nullptr};
   QSpinBox       *m_smoothSpin{nullptr};
@@ -184,7 +200,8 @@ private:
   QLineEdit      *m_ruleLabelEdit{nullptr};
   QComboBox      *m_ruleColorCombo{nullptr};
   QListWidget    *m_rulesList{nullptr};
-  QListWidget    *m_annotationsList{nullptr};
+  QTableWidget   *m_annotationsTable{nullptr}; // Annotations dialog
+  QDialog        *m_annotationsDialog{nullptr};
 };
 
 inline QString AnalysisRunPage::key() const {

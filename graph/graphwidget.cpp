@@ -260,6 +260,7 @@ void GraphWidget::openCalendar() {
   auto *dialog = new CalendarDialog(storage::RunStore::spans(), this);
   connect(dialog, &CalendarDialog::experimentSelected, this, &GraphWidget::showExperiment);
   connect(dialog, &CalendarDialog::liveSelected, this, &GraphWidget::showLive);
+  connect(dialog, &CalendarDialog::daySelected, this, &GraphWidget::showDay);
   dialog->open();
 }
 
@@ -271,6 +272,59 @@ void GraphWidget::showLive() {
   }
   updateDayButton();
   updateLegendMode();
+}
+
+void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> const &experiments) {
+  // the experiments of the day one after the other, with a gap between them, read in the background
+  m_loading = true;
+  m_dayBtn->setText(tr("Loading…"));
+  QStringList const names = m_resHolder->states->getNames();
+  struct Merged {
+    QVector<double>          times;
+    QVector<QVector<double>> states;
+    int                      loaded{0};
+  };
+  auto     merged  = std::make_shared<Merged>();
+  QThread *thread  = QThread::create([experiments, names, merged] {
+    merged->states.resize(names.size());
+    for (storage::ExperimentSpan const &experiment : experiments) {
+      storage::RunSamples samples;
+      if (!storage::RunStore::loadSamples(experiment.key, samples) || samples.times.isEmpty()) {
+        continue;
+      }
+      if (!merged->times.isEmpty()) { // gap: no line drawn between two experiments
+        merged->times.push_back((merged->times.last() + samples.times.first()) / 2.0);
+        for (auto &state : merged->states) {
+          state.push_back(qQNaN());
+        }
+      }
+      merged->times += samples.times;
+      for (int i{0}; i < names.size(); ++i) {
+        qsizetype const column = samples.columns.indexOf(names[i]);
+        merged->states[i] += (column >= 0) ? samples.values[column] : QVector<double>(samples.times.size(), qQNaN());
+      }
+      ++merged->loaded;
+    }
+  });
+  connect(thread, &QThread::finished, this, [this, thread, merged, day, names] {
+    thread->deleteLater();
+    m_loading = false;
+    if (merged->times.isEmpty()) {
+      QMessageBox::warning(this, tr("Chart"), tr("The experiments of %1 could not be read.").arg(day.toString("yyyy-MM-dd")));
+      updateDayButton();
+      return;
+    }
+    auto holder = std::make_shared<DataHolder>(static_cast<quint16>(names.size()), m_resHolder->logger,
+                                               utils::calculateKey(merged->times.first()));
+    holder->setSeries(merged->times, merged->states);
+    m_experimentName = (merged->loaded == 1) ? tr("%1 · 1 experiment").arg(day.toString("yyyy-MM-dd"))
+                                             : tr("%1 · %2 experiments").arg(day.toString("yyyy-MM-dd")).arg(merged->loaded);
+    m_dataViewer->setData(holder);
+    m_dataViewer->updateTextItem(m_experimentName);
+    updateDayButton();
+    updateLegendMode();
+  });
+  thread->start(QThread::LowPriority);
 }
 
 void GraphWidget::showExperiment(storage::ExperimentSpan const &experiment) {

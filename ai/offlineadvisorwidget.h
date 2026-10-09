@@ -19,6 +19,8 @@ class QProgressDialog;
 class QPushButton;
 class QTableWidget;
 
+class QDialog;
+
 namespace deepvaccontrol {
 class LineEditNum;
 
@@ -44,6 +46,9 @@ class OfflineAdvisorWidget : public QWidget {
 public:
   explicit OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent = nullptr);
   ~OfflineAdvisorWidget() override;
+
+protected:
+  void showEvent(QShowEvent *event) override;
 
 private:
   void initGui();
@@ -78,6 +83,11 @@ private:
 
   LineEditNum *m_durationEdit{nullptr};
   LineEditNum *m_targetTempEdit{nullptr};
+  LineEditNum *m_startTempEdit{nullptr}; // chamber temperature when the tab is first shown (0 offline), then the operator's
+  bool         m_startTempFilled{false}; // filled from the chamber once, when the tab is first shown
+  bool         m_predictionOnly{false};  // chamber not connected: calculate and predict, send no job
+  QDialog     *m_resultsDialog{nullptr};
+  void         updateStartTemp();
 
   QPushButton  *m_runBtn{nullptr};
   QPushButton  *m_stopBtn{nullptr};

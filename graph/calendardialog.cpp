@@ -109,9 +109,6 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   m_calendar = new CalendarCustomWidget(counts, this);
   m_calendar->setMinimumSize(320 * ssf, 260 * ssf);
   left->addWidget(m_calendar, 1);
-  auto *hint = new QLabel(tr("Bold days have saved experiments."), this);
-  hint->setProperty("muted", true);
-  left->addWidget(hint);
   mainLay->addLayout(left);
 
   // ---- right: the experiments of the selected day
@@ -129,12 +126,15 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   m_openBtn = new QPushButton(tr("Open"), this);
   m_openBtn->setObjectName("primaryButton");
   auto *cancelBtn = new QPushButton(tr("Cancel"), this);
-  for (QPushButton *button : {liveBtn, m_openBtn, cancelBtn}) {
+  m_openDayBtn    = new QPushButton(tr("Open whole day"), this);
+  m_openDayBtn->setToolTip(tr("All experiments of this day in one chart"));
+  for (QPushButton *button : {liveBtn, m_openBtn, cancelBtn, m_openDayBtn}) {
     button->setMinimumSize(90 * ssf, 30 * ssf);
   }
   buttons->addWidget(liveBtn);
   buttons->addStretch();
   buttons->addWidget(cancelBtn);
+  buttons->addWidget(m_openDayBtn);
   buttons->addWidget(m_openBtn);
   right->addLayout(buttons);
   mainLay->addLayout(right, 1);
@@ -147,6 +147,17 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   connect(m_list, &QListWidget::currentRowChanged, this, [this](int row) { m_openBtn->setEnabled(row >= 0); });
   connect(m_openBtn, &QPushButton::clicked, this, &CalendarDialog::openSelected);
   connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+  connect(m_openDayBtn, &QPushButton::clicked, this, [this] {
+    QDate const                      day = m_calendar->selectedDate();
+    QVector<storage::ExperimentSpan> experiments;
+    for (int index : m_byDay.value(day)) {
+      experiments.push_back(m_experiments[index]);
+    }
+    if (!experiments.isEmpty()) {
+      emit daySelected(day, experiments);
+      accept();
+    }
+  });
   connect(liveBtn, &QPushButton::clicked, this, [this] {
     emit liveSelected();
     accept();
@@ -188,6 +199,7 @@ void CalendarDialog::showDay(QDate const &date) {
     m_list->setCurrentRow(m_list->count() - 1); // the latest of the day
   }
   m_openBtn->setEnabled(m_list->currentRow() >= 0);
+  m_openDayBtn->setEnabled(!indexes.isEmpty());
 }
 
 void CalendarDialog::shiftMonth(int months) {

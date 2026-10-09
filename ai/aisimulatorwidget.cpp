@@ -1,5 +1,7 @@
 #include "aisimulatorwidget.h"
 
+#include <QButtonGroup>
+#include <QLabel>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
@@ -14,6 +16,7 @@
 #include "analysischart.h"
 #include "constants.h"
 #include "lineeditnum.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -40,122 +43,233 @@ AiSimulatorWidget::AiSimulatorWidget(ResHolder *resHolder, QWidget *parent)
 void AiSimulatorWidget::loadModel() {
   QDir const modelDir(QDir(QCoreApplication::applicationDirPath()).filePath("data/model"));
   bool const ok =
-    m_model.load(modelDir.filePath("gru_plant_model.onnx"), modelDir.filePath("gru_plant_model.json"));
+    m_model.load(modelDir.filePath("twin_model.onnx"), modelDir.filePath("twin_model.json"));
 
-  setStatusText(m_model.statusMessage(), !ok);
+  setStatusText(ok ? QString() : m_model.statusMessage(), !ok); // only problems are shown
   m_runBtn->setEnabled(ok);
 }
 
-void AiSimulatorWidget::initGui() {
-  auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(4 * utils::ssf(), 4 * utils::ssf(), 4 * utils::ssf(), 4 * utils::ssf());
-  mainLay->setSpacing(4 * utils::ssf());
+namespace {
+// a card with an optional title
+QFrame *makeCard(QWidget *parent, QString const &title) {
+  double const ssf{utils::ssf()};
+  auto        *card = new QFrame(parent);
+  card->setObjectName("pageCard");
+  auto *lay = new QVBoxLayout(card);
+  lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
+  lay->setSpacing(8 * ssf);
+  if (!title.isEmpty()) {
+    auto *label = new QLabel(title, card);
+    label->setObjectName("cardTitle");
+    lay->addWidget(label);
+  }
+  return card;
+}
 
-  mainLay->addWidget(buildFormCard());
-  mainLay->addWidget(buildStatsCard());
+// small uppercase caption over a group of fields
+QLabel *groupCaption(QString const &text, QWidget *parent) {
+  auto *label = new QLabel(text.toUpper(), parent);
+  label->setProperty("muted", true);
+  QFont font = label->font();
+  font.setPointSizeF(font.pointSizeF() * 0.85);
+  font.setLetterSpacing(QFont::PercentageSpacing, 106);
+  label->setFont(font);
+  return label;
+}
+} // namespace
+
+void AiSimulatorWidget::initGui() {
+  double const ssf{utils::ssf()};
+  auto        *mainLay = new QVBoxLayout(this);
+  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
+  mainLay->setSpacing(10 * ssf);
+
+  // scenario and results in one row (can be hidden from the chart header), the chart below
+  m_scenarioRow = makeCard(this, {});
+  auto *rowLay  = new QHBoxLayout();
+  rowLay->setSpacing(10 * ssf);
+  static_cast<QVBoxLayout *>(m_scenarioRow->layout())->addLayout(rowLay);
+  rowLay->addWidget(buildFormCard());
+  auto *divider = new QFrame(m_scenarioRow);
+  divider->setObjectName("cardDivider");
+  divider->setFixedWidth(qMax(1, static_cast<int>(1 * ssf)));
+  rowLay->addSpacing(6 * ssf);
+  rowLay->addWidget(divider);
+  rowLay->addSpacing(6 * ssf);
+  rowLay->addWidget(buildStatsCard(), 1);
+  mainLay->addWidget(m_scenarioRow);
   mainLay->addWidget(buildChartCard(), 1);
 }
 
 QWidget *AiSimulatorWidget::buildFormCard() {
-  auto *frame = new QFrame(this);
-  frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  double const ssf{utils::ssf()};
+  auto        *box = new QWidget(this);
+  auto        *row = new QHBoxLayout(box);
+  row->setContentsMargins(0, 0, 0, 0);
+  row->setSpacing(8 * ssf);
 
-  auto *lay = new QGridLayout(frame);
-  lay->setSpacing(3 * utils::ssf());
-
-  auto addField = [this, lay](int col, QString const &title, double min, double max, int prec, float defaultValue) {
-    auto *label = new QLabel(title, lay->parentWidget());
-    auto *edit  = new LineEditNum(min, max, prec, false, lay->parentWidget());
-    edit->setFixedWidth(110 * utils::ssf());
+  // label over field, all in one row
+  auto addField = [this, box, row, ssf](QString const &title, double min, double max, int prec, float defaultValue, int width) {
+    auto *column = new QVBoxLayout();
+    column->setSpacing(2 * ssf);
+    auto *label = new QLabel(title, box);
+    label->setProperty("muted", true);
+    auto *edit = new LineEditNum(min, max, prec, false, box);
+    edit->setFont(font());
+    edit->setFixedSize(static_cast<int>(width * ssf), static_cast<int>(32 * ssf));
     edit->setValue(defaultValue);
-    lay->addWidget(label, 0, col, Qt::AlignHCenter);
-    lay->addWidget(edit, 1, col);
+    column->addWidget(label);
+    column->addWidget(edit);
+    row->addLayout(column);
     return edit;
   };
 
-  m_kpEdit = addField(0, tr("Kp"), ai::KP_MIN, ai::KP_MAX, 2, ai::DEFAULT_KP);
-  m_kiEdit = addField(1, tr("Ki"), ai::KI_MIN, ai::KI_MAX, 1, ai::DEFAULT_KI);
-  m_kdEdit = addField(2, tr("Kd"), ai::KD_MIN, ai::KD_MAX, 2, ai::DEFAULT_KD);
-  m_startTempEdit  = addField(3, tr("Start temp, °C"), -100, 150, 1, ai::DEFAULT_START_TEMP);
-  m_targetTempEdit = addField(4, tr("Target, °C"), -100, 150, 1, ai::DEFAULT_TARGET_TEMP);
-  m_durationEdit   = addField(5, tr("Duration, s"), 1, 100000, 0, ai::DEFAULT_DURATION_S);
-  m_dtEdit         = addField(6, tr("Step, s"), 0.1, 60, 2, ai::DEFAULT_DT_S);
-  m_initialPEdit   = addField(7, tr("Initial P"), INITIAL_TERM_MIN, INITIAL_TERM_MAX, 3, 0.0f);
-  m_initialIEdit   = addField(8, tr("Initial I"), INITIAL_TERM_MIN, INITIAL_TERM_MAX, 3, 0.0f);
-  m_initialDEdit   = addField(9, tr("Initial D"), INITIAL_TERM_MIN, INITIAL_TERM_MAX, 3, 0.0f);
+  auto caption = [box](QString const &text) {
+    auto *label = groupCaption(text, box);
+    label->setAlignment(Qt::AlignBottom);
+    return label;
+  };
+  auto *gainsBox = new QVBoxLayout();
+  gainsBox->addWidget(caption(tr("PID coefficients")));
+  auto *gainsRow = new QHBoxLayout();
+  gainsRow->setSpacing(8 * ssf);
+  gainsBox->addLayout(gainsRow);
+  row->addLayout(gainsBox);
+  auto gainField = [this, box, gainsRow, ssf](QString const &title, double min, double max, int prec, float value) {
+    auto *column = new QVBoxLayout();
+    column->setSpacing(2 * ssf);
+    auto *label = new QLabel(title, box);
+    label->setProperty("muted", true);
+    auto *edit = new LineEditNum(min, max, prec, false, box);
+    edit->setFont(font());
+    edit->setFixedSize(static_cast<int>(80 * ssf), static_cast<int>(32 * ssf));
+    edit->setValue(value);
+    column->addWidget(label);
+    column->addWidget(edit);
+    gainsRow->addLayout(column);
+    return edit;
+  };
+  m_kpEdit = gainField(tr("P"), ai::KP_MIN, ai::KP_MAX, 2, ai::DEFAULT_KP);
+  m_kiEdit = gainField(tr("I"), ai::KI_MIN, ai::KI_MAX, 1, ai::DEFAULT_KI);
+  m_kdEdit = gainField(tr("D"), ai::KD_MIN, ai::KD_MAX, 2, ai::DEFAULT_KD);
+  row->addSpacing(10 * ssf);
 
-  m_runBtn = new QPushButton(tr("Run simulation"), frame);
-  m_runBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-  lay->addWidget(m_runBtn, 2, 0, 1, 5);
+  m_startTempEdit  = addField(tr("Start, °C"), -100, 150, 1, ai::DEFAULT_START_TEMP, 90);
+  m_targetTempEdit = addField(tr("Target, °C"), -100, 150, 1, ai::DEFAULT_TARGET_TEMP, 90);
+  m_durationEdit   = addField(tr("Duration, s"), 1, 100000, 0, ai::DEFAULT_DURATION_S, 90);
 
-  m_statusLabel = new QLabel(frame);
-  m_statusLabel->setWordWrap(true);
-  lay->addWidget(m_statusLabel, 2, 5, 1, 5);
+  // not shown: time step and the initial P / I / D terms keep their defaults
+  m_dtEdit       = new LineEditNum(0.1, 60, 2, false, box);
+  m_initialPEdit = new LineEditNum(INITIAL_TERM_MIN, INITIAL_TERM_MAX, 3, false, box);
+  m_initialIEdit = new LineEditNum(INITIAL_TERM_MIN, INITIAL_TERM_MAX, 3, false, box);
+  m_initialDEdit = new LineEditNum(INITIAL_TERM_MIN, INITIAL_TERM_MAX, 3, false, box);
+  m_dtEdit->setValue(ai::DEFAULT_DT_S);
+  for (LineEditNum *hidden : {m_dtEdit, m_initialPEdit, m_initialIEdit, m_initialDEdit}) {
+    if (hidden != m_dtEdit) {
+      hidden->setValue(0.0f);
+    }
+    hidden->setVisible(false);
+  }
 
-  lay->setColumnStretch(10, 1);
+  auto *runBox = new QVBoxLayout();
+  runBox->setSpacing(2 * ssf);
+  m_statusLabel = new QLabel(box);
+  m_statusLabel->setProperty("muted", true);
+  m_statusLabel->setMaximumWidth(static_cast<int>(260 * ssf));
+  runBox->addWidget(m_statusLabel);
+  m_runBtn = new QPushButton(tr("Run simulation"), box);
+  m_runBtn->setObjectName("primaryButton");
+  m_runBtn->setFixedHeight(static_cast<int>(32 * ssf));
+  m_runBtn->setMinimumWidth(static_cast<int>(140 * ssf));
+  runBox->addWidget(m_runBtn);
+  row->addSpacing(6 * ssf);
+  row->addLayout(runBox);
 
   connect(m_runBtn, &QPushButton::clicked, this, &AiSimulatorWidget::runSimulation);
 
-  return frame;
+  return box;
 }
 
 QLabel *AiSimulatorWidget::addStatTile(QGridLayout *lay, int column, QString const &title) {
   auto *titleLabel = new QLabel(title, lay->parentWidget());
-  auto  titleFont   = titleLabel->font();
-  titleFont.setPointSize(qMax(7, titleFont.pointSize() - 1));
-  titleLabel->setFont(titleFont);
+  titleLabel->setProperty("muted", true);
 
   auto *valueLabel = new QLabel(QStringLiteral("—"), lay->parentWidget());
-  auto  valueFont   = valueLabel->font();
+  auto  valueFont  = valueLabel->font();
   valueFont.setBold(true);
-  valueFont.setPointSize(valueFont.pointSize() + 2);
+  valueFont.setPointSizeF(valueFont.pointSizeF() * 1.5);
   valueLabel->setFont(valueFont);
 
-  lay->addWidget(titleLabel, 0, column, Qt::AlignHCenter);
-  lay->addWidget(valueLabel, 1, column, Qt::AlignHCenter);
+  lay->addWidget(titleLabel, 0, column);
+  lay->addWidget(valueLabel, 1, column);
 
   return valueLabel;
 }
 
 QWidget *AiSimulatorWidget::buildStatsCard() {
-  auto *frame = new QFrame(this);
-  frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  auto *box  = new QWidget(this);
+  auto *grid = new QGridLayout(box);
+  grid->setContentsMargins(0, 0, 0, 0);
+  grid->setHorizontalSpacing(18 * utils::ssf());
+  grid->setVerticalSpacing(0);
 
-  auto *lay = new QGridLayout(frame);
-  lay->setSpacing(3 * utils::ssf());
+  m_costTile      = addStatTile(grid, 0, tr("Cost"));
+  m_tailMaeTile   = addStatTile(grid, 1, tr("Tail MAE, °C"));
+  m_endTempTile   = addStatTile(grid, 2, tr("End, °C"));
+  m_overshootTile = addStatTile(grid, 3, tr("Overshoot, °C"));
+  m_settleTile    = addStatTile(grid, 4, tr("Settle, s"));
+  for (int column{0}; column < 5; ++column) {
+    grid->setColumnStretch(column, 1);
+  }
 
-  m_costTile      = addStatTile(lay, 0, tr("Cost"));
-  m_tailMaeTile    = addStatTile(lay, 1, tr("Tail MAE"));
-  m_endTempTile    = addStatTile(lay, 2, tr("End temp, °C"));
-  m_overshootTile  = addStatTile(lay, 3, tr("Overshoot, °C"));
-  m_settleTile     = addStatTile(lay, 4, tr("Settle time, s"));
-
-  lay->setColumnStretch(5, 1);
-
-  return frame;
+  return box;
 }
 
 QWidget *AiSimulatorWidget::buildChartCard() {
-  auto *frame = new QFrame(this);
-  frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  double const ssf{utils::ssf()};
+  QFrame      *frame = makeCard(this, {});
+  auto        *lay   = static_cast<QVBoxLayout *>(frame->layout());
 
-  auto *lay = new QVBoxLayout(frame);
-  lay->setContentsMargins(2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf());
-
+  // header: title and the channel as a segmented switch
   auto *topLay = new QHBoxLayout();
-  topLay->addWidget(new QLabel(tr("Channel:"), frame));
+  auto *title  = new QLabel(tr("Predicted response"), frame);
+  title->setObjectName("cardTitle");
+  topLay->addWidget(title);
+  topLay->addStretch();
+  auto *scenarioBtn = new QPushButton(tr("Scenario"), frame);
+  scenarioBtn->setCheckable(true);
+  scenarioBtn->setChecked(true);
+  scenarioBtn->setFixedHeight(static_cast<int>(28 * ssf));
+  scenarioBtn->setToolTip(tr("Show or hide the scenario and the results above the chart"));
+  connect(scenarioBtn, &QPushButton::toggled, this, [this](bool shown) { m_scenarioRow->setVisible(shown); });
+  topLay->addWidget(scenarioBtn);
+  topLay->addSpacing(8 * ssf);
 
-  // same channels as Deepvac Insight's simulator
+  // same channels as Deepvac Insight's simulator (the combo stays as the model of the switch)
   m_channelCombo = new QComboBox(frame);
   m_channelCombo->addItem(tr("Temperature"));
-  m_channelCombo->addItem(tr("Error (setpoint − temp)"));
+  m_channelCombo->addItem(tr("Error"));
   m_channelCombo->addItem(tr("Control (u)"));
-  m_channelCombo->addItem(tr("Predicted ΔT per step"));
-  topLay->addWidget(m_channelCombo);
-  topLay->addStretch();
+  m_channelCombo->addItem(tr("Predicted ΔT"));
+  m_channelCombo->setVisible(false);
+  auto *group    = new QButtonGroup(frame);
+  auto *segments = new QHBoxLayout();
+  segments->setSpacing(0);
+  for (int i{0}; i < m_channelCombo->count(); ++i) {
+    auto *button = new QPushButton(m_channelCombo->itemText(i), frame);
+    button->setCheckable(true);
+    button->setProperty("segment", true);
+    button->setProperty("segmentFirst", i == 0);
+    button->setProperty("segmentLast", i == m_channelCombo->count() - 1);
+    button->setFixedHeight(static_cast<int>(28 * ssf));
+    button->setMinimumWidth(static_cast<int>(100 * ssf));
+    group->addButton(button, i);
+    segments->addWidget(button);
+  }
+  group->button(0)->setChecked(true);
+  group->setExclusive(true);
+  connect(group, &QButtonGroup::idClicked, m_channelCombo, &QComboBox::setCurrentIndex);
+  topLay->addLayout(segments);
   lay->addLayout(topLay);
 
   // shared analysis chart: crosshair, hover values, pan / zoom, box zoom
@@ -170,7 +284,7 @@ QWidget *AiSimulatorWidget::buildChartCard() {
 
 void AiSimulatorWidget::setStatusText(QString const &text, bool isError) {
   m_statusLabel->setText(text);
-  m_statusLabel->setStyleSheet(isError ? "color: #b03030;" : "");
+  m_statusLabel->setStyleSheet(isError ? QStringLiteral("color: %1;").arg(theme::colors().danger.name()) : QString());
 }
 
 void AiSimulatorWidget::runSimulation() {
@@ -203,9 +317,9 @@ void AiSimulatorWidget::runSimulation() {
   }
 
   m_runBtn->setEnabled(false);
-  setStatusText(tr("Running simulation..."), false);
+  setStatusText(tr("Running…"), false);
 
-  m_runTitle = tr("Kp %1 / Ki %2 / Kd %3").arg(params.kp).arg(params.ki).arg(params.kd);
+  m_runTitle = tr("P %1 / I %2 / D %3").arg(params.kp).arg(params.ki).arg(params.kd);
   m_chart->setSeries({}, 0.0);
 
   m_stepsPerTick = std::max(1, static_cast<int>(std::ceil(m_sim.totalSteps() / static_cast<double>(ANIM_TARGET_TICKS))));

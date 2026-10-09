@@ -27,6 +27,7 @@ private:
   // the calendar: experiments of the experiment database, or the live data of today
   void              openCalendar();
   void              showExperiment(storage::ExperimentSpan const &experiment);
+  void              showDay(QDate const &day, QVector<storage::ExperimentSpan> const &experiments);
   void              showLive();
   QPushButton      *m_labelsBtn{nullptr};
   QPushButton      *m_valuesBtn{nullptr};

@@ -1,122 +1,149 @@
 #include "forceoutsinglewidget.h"
 
-#include <QCheckBox>
-#include <QVBoxLayout>
+#include <QDataStream>
+#include <QEvent>
+#include <QHBoxLayout>
 
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
 ForceOutSingleWidget::ForceOutSingleWidget(
   int index, QString const &stateLabel, SystemValue *sysValue, ForceType type, QWidget *parent)
-    : QWidget{parent}, m_index{index} {
-  auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(0, 0, 0, 0);
+    : QFrame{parent}, m_index{index}, m_sysValue{sysValue} {
+  double const ssf{utils::ssf()};
+  setObjectName("outputRow");
+  auto *mainLay = new QHBoxLayout(this);
+  mainLay->setContentsMargins(12 * ssf, 6 * ssf, 10 * ssf, 6 * ssf);
+  mainLay->setSpacing(10 * ssf);
 
+  // name and current state
   auto *label = new QLabel(stateLabel, this);
-  label->setFixedWidth(200);
+  label->setObjectName("rowTitle");
+  label->setMinimumWidth(200 * ssf);
+  mainLay->addWidget(label, 1);
+  m_stateBadge = new QLabel(this);
+  m_stateBadge->setAlignment(Qt::AlignCenter);
+  m_stateBadge->setFixedWidth(44 * ssf);
+  m_stateBadge->setToolTip(tr("Current state of the output"));
+  mainLay->addWidget(m_stateBadge);
+  mainLay->addSpacing(10 * ssf);
 
-  m_valueLabel = new QLabel(" ", this);
-  {
-    QFont font("Monospace");
-    font.setBold(true);
-    font.setStyleHint(QFont::TypeWriter);
-    font.setPointSize(20 * utils::ssf());
-    m_valueLabel->setFont(font);
-  }
-
-  auto *indicator = new QCheckBox(this);
-  indicator->setEnabled(false);
-  indicator->setStyleSheet("QCheckBox::indicator:unchecked{image: url(:/imgs/check_01.png);}"
-                           "QCheckBox::indicator:checked{image: url(:/imgs/check_11.png);}");
-
-  m_slider = new QSlider(this);
-  m_slider->setValue(0);
-  m_slider->setMinimum(0);
-  m_slider->setMaximum((type == ForceType::DUTY ? 3 : 2));
-  m_slider->setSingleStep(1);
-  m_slider->setPageStep(1);
-  m_slider->setOrientation(Qt::Horizontal);
-  m_slider->setTickPosition(QSlider::TicksBelow);
-  m_slider->setTickInterval(1);
-  m_slider->setFixedWidth(m_slider->maximum() * 75 * utils::ssf() + 40);
-
-  auto *bottomLay = new QHBoxLayout();
-  bottomLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->addWidget(label);
-  mainLay->addLayout(bottomLay);
-
-  bottomLay->addWidget(indicator);
-  bottomLay->addWidget(m_slider);
-  bottomLay->addWidget(m_valueLabel);
-
-  m_setBtn = new QPushButton(tr("Установить"), this);
-  m_setBtn->setFixedHeight(35 * utils::ssf());
-  resetSetBtn();
-
+  // how it is forced: one segmented control
+  m_modeGroup = new QButtonGroup(this);
+  m_modeGroup->setExclusive(true);
+  QStringList modes{tr("Auto"), tr("Off"), tr("On")};
   if (type == ForceType::DUTY) {
-    duty   = new LineEditNum(0, 1, 3, true, this);
-    period = new LineEditNum(0, 600, 1, true, this);
+    modes << tr("Duty");
+  }
+  auto *segments = new QHBoxLayout();
+  segments->setSpacing(0);
+  for (int mode{0}; mode < modes.size(); ++mode) {
+    auto *button = new QPushButton(modes[mode], this);
+    button->setCheckable(true);
+    button->setProperty("segment", true);
+    button->setProperty("segmentFirst", mode == 0);
+    button->setProperty("segmentLast", mode == modes.size() - 1);
+    button->setFixedSize(64 * ssf, 28 * ssf);
+    m_modeGroup->addButton(button, mode);
+    segments->addWidget(button);
+  }
+  m_modeGroup->button(0)->setToolTip(tr("Released: the PLC controls the output"));
+  m_modeGroup->button(0)->setChecked(true);
+  if (type != ForceType::DUTY) {
+    segments->addSpacing(64 * ssf); // rows line up with the rows that have a duty cycle
+  }
+  mainLay->addLayout(segments);
+
+  // duty cycle: share and period
+  m_dutyBox    = new QWidget(this);
+  auto *dutyLay = new QHBoxLayout(m_dutyBox);
+  dutyLay->setContentsMargins(0, 0, 0, 0);
+  dutyLay->setSpacing(6 * ssf);
+  if (type == ForceType::DUTY) {
+    duty   = new LineEditNum(0, 1, 3, true, m_dutyBox);
+    period = new LineEditNum(0, 600, 1, true, m_dutyBox);
     duty->setText("0.500");
     period->setText("4.0");
-
-    duty->setFixedWidth(90 * utils::ssf());
-    period->setFixedWidth(90 * utils::ssf());
-
-    duty->setVisible(false);
-    period->setVisible(false);
-
-    bottomLay->addWidget(duty);
-    bottomLay->addWidget(period);
-
-    connect(duty, &LineEditNum::userEditingFinished, this, [this] {
-      m_setBtn->setVisible(true);
-    });
-
-    connect(period, &LineEditNum::userEditingFinished, this, [this] {
-      m_setBtn->setVisible(true);
-    });
+    QFont fieldFont = font();
+    for (LineEditNum *edit : {duty, period}) {
+      edit->setFont(fieldFont);
+      edit->setFixedSize(70 * ssf, 28 * ssf);
+    }
+    auto muted = [this](QString const &text) {
+      auto *l = new QLabel(text, m_dutyBox);
+      l->setProperty("muted", true);
+      return l;
+    };
+    dutyLay->addWidget(muted(tr("Duty")));
+    dutyLay->addWidget(duty);
+    dutyLay->addWidget(muted(tr("Period, s")));
+    dutyLay->addWidget(period);
+    connect(duty, &LineEditNum::userEditingFinished, this, [this] { m_setBtn->setVisible(true); });
+    connect(period, &LineEditNum::userEditingFinished, this, [this] { m_setBtn->setVisible(true); });
   }
+  m_dutyBox->setFixedWidth(250 * ssf); // same width in every row, shown only for a duty cycle
+  m_dutyBox->setVisible(false);
+  QSizePolicy keep = m_dutyBox->sizePolicy();
+  keep.setRetainSizeWhenHidden(true);
+  m_dutyBox->setSizePolicy(keep);
+  mainLay->addWidget(m_dutyBox);
 
-  bottomLay->addWidget(m_setBtn);
-  bottomLay->addStretch();
+  // send the choice
+  m_setBtn = new QPushButton(tr("Set"), this);
+  m_setBtn->setObjectName("primaryButton");
+  m_setBtn->setFixedSize(70 * ssf, 28 * ssf);
+  QSizePolicy keepSet = m_setBtn->sizePolicy();
+  keepSet.setRetainSizeWhenHidden(true);
+  m_setBtn->setSizePolicy(keepSet);
+  resetSetBtn();
+  mainLay->addWidget(m_setBtn);
 
-  connect(m_slider, &QSlider::valueChanged, this, [this, type](int value) {
-    if (type == ForceType::DUTY) {
-      duty->setVisible(value == 3);
-      period->setVisible(value == 3);
-    }
-
-    plcType = value;
-    qDebug() << m_index;
-  });
-
-  connect(m_slider, &QSlider::sliderMoved, this, [this](int value) {
-    switch (value) {
-      case 0:
-        m_valueLabel->setText(" ");
-        break;
-      case 3:
-        m_valueLabel->setText("");
-        break;
-      default:
-        m_valueLabel->setText(QString::number(value - 1));
-        break;
-    }
-    m_valueLabel->setVisible(value != 3);
-
-    m_setBtn->setVisible(true);
-  });
-
+  connect(m_modeGroup, &QButtonGroup::idClicked, this, &ForceOutSingleWidget::selectMode);
   connect(m_setBtn, &QPushButton::clicked, this, [this] {
     m_setBtn->setVisible(false);
     emit generateRaw(1, getRawData());
   });
+  connect(sysValue, &SystemValue::valueChanged, this, &ForceOutSingleWidget::updateStateBadge);
+  updateStateBadge();
+}
 
-  connect(sysValue, &SystemValue::valueChanged, this, [indicator, index](float val) {
-    indicator->setChecked(utils::getBitOfFloat(val, index));
-  });
+void ForceOutSingleWidget::selectMode(int mode) {
+  plcType = static_cast<uint>(mode);
+  m_dutyBox->setVisible(mode == 3);
+  m_setBtn->setVisible(true);
+}
 
-  setStyleSheet(utils::readStyleFromFile(":/styles/forceOutSlider.qss"));
+void ForceOutSingleWidget::resetSelection() {
+  plcType = 0;
+  m_modeGroup->button(0)->setChecked(true);
+  m_dutyBox->setVisible(false);
+  resetSetBtn();
+}
+
+void ForceOutSingleWidget::resetSetBtn() {
+  m_setBtn->setVisible(false);
+}
+
+void ForceOutSingleWidget::changeEvent(QEvent *event) {
+  QFrame::changeEvent(event);
+  if ((event->type() == QEvent::PaletteChange) && !m_restyling) {
+    m_restyling = true;
+    updateStateBadge();
+    m_restyling = false;
+  }
+}
+
+void ForceOutSingleWidget::updateStateBadge() {
+  bool const           on{m_sysValue && utils::getBitOfFloat(m_sysValue->getValue(), m_index)};
+  theme::Colors const &c     = theme::colors();
+  QColor const         color = on ? c.active : c.off;
+  m_stateBadge->setText(on ? tr("ON") : tr("OFF"));
+  m_stateBadge->setStyleSheet(QStringLiteral("color: %1; border: %2px solid %1; border-radius: %3px; background: %4; font-weight: bold;")
+                                .arg(color.name())
+                                .arg(qMax(1, static_cast<int>(1 * utils::ssf())))
+                                .arg(static_cast<int>(3 * utils::ssf()))
+                                .arg(QColor(color.red(), color.green(), color.blue(), on ? 40 : 0).name(QColor::HexArgb)));
 }
 
 QByteArray ForceOutSingleWidget::getRawData() const {

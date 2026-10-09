@@ -34,7 +34,8 @@ public:
   explicit IntervalHelpWindow(QWidget *parent = nullptr);
 };
 
-class TempChangeSelector : public QGroupBox {
+// How the temperature changes over the interval: at maximum rate (and wait) or linear ramp.
+class TempChangeSelector : public QWidget {
   Q_OBJECT
 public:
   explicit TempChangeSelector(QString const &label, QWidget *parent = nullptr);
@@ -47,8 +48,8 @@ public:
   }
 
 private:
-  QRadioButton *ramp;
-  QRadioButton *setpoint;
+  QPushButton *ramp;
+  QPushButton *setpoint;
 };
 
 class IntervalEditDialog : public QDialog {

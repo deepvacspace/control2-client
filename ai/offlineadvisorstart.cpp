@@ -118,7 +118,7 @@ bool offerOfflineAdvisorBeforeStart(ResHolder *resHolder, ProgramModel *program,
 
   QDir const modelDir(QDir(QCoreApplication::applicationDirPath()).filePath("data/model"));
   GruOnnxModel model;
-  if (!model.load(modelDir.filePath("gru_rollout.onnx"), modelDir.filePath("gru_rollout.json"))) {
+  if (!model.load(modelDir.filePath("twin_model.onnx"), modelDir.filePath("twin_model.json"))) {
     QMessageBox::warning(parent, QObject::tr("AI Advisor"),
                          model.statusMessage() + QObject::tr("\n\nThe experiment was not started."));
     return false;

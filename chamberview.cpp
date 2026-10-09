@@ -4,6 +4,7 @@
 #include <QHelpEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QToolTip>
 #include <QtMath>
@@ -18,24 +19,21 @@
 namespace deepvaccontrol {
 
 namespace {
-constexpr double CANVAS_W{1000.0};
+constexpr double CANVAS_W{740.0};
 constexpr double CANVAS_H{620.0};
 
-// vessel and its test space
-QRectF const VESSEL{255, 70, 300, 315};
-QRectF const SPACE{283, 98, 244, 255};
-QRectF const EVAPORATOR{296, 140, 26, 175};
-QPointF const FAN{309, 121};
-QPointF const LAMP{405, 112};
-QPointF const PROBE{470, 200};
-double const  HEATER_Y{335};
-// refrigeration unit
-QPointF const COMP23{115, 250};
-QPointF const COMP404{115, 455};
-QRectF const  EXCHANGER{80, 340, 70, 34};
-QRectF const  CONDENSER{185, 536, 60, 26};
-QRectF const  PLC{525, 448, 64, 32};
-double const  COMP_R{26};
+// schematic geometry (canvas units)
+double const  FLANGE_Y{196};                      // top flange of the chamber
+QPointF const TMP{262, 112};                      // turbo pump
+double const  TMP_R{34};
+double const  VAC_Y{40};                          // top run of the vacuum line
+double const  MAIN_X{600};                        // main line (bellows)
+QPointF const JUNCTION{600, 352};
+QPointF const BP{600, 452};                       // backing pump
+double const  BP_R{30};
+QRectF const  DEWAR{548, 528, 96, 40};            // LN2 dewar
+QRectF const  FRIDGE{18, 470, 90, 66};            // refrigeration unit
+QRectF const  PLC{22, 26, 112, 58};               // PLC miniature
 
 QFont canvasFont(double pixels, bool bold = false) {
   QFont font;
@@ -46,9 +44,20 @@ QFont canvasFont(double pixels, bool bold = false) {
 
 QString valueText(double value, int decimals, QString const &unit) {
   if (std::isnan(value)) {
-    return QStringLiteral("--");
+    return QStringLiteral("—");
   }
   return QString::number(value, 'f', decimals).replace('-', QChar(0x2212)) + unit;
+}
+
+// the chamber outline: a vessel slightly wider in the middle, flat top flange and bottom
+QPainterPath chamberPath() {
+  QPainterPath path;
+  path.moveTo(150, FLANGE_Y + 8);
+  path.cubicTo(118, 300, 112, 470, 160, 586);
+  path.lineTo(460, 586);
+  path.cubicTo(508, 470, 502, 300, 470, FLANGE_Y + 8);
+  path.closeSubpath();
+  return path;
 }
 } // namespace
 
@@ -77,24 +86,25 @@ void ChamberView::detect() {
   // components are recognised by the configured output labels, so another chamber with another output list
   // shows only what it has
   struct Rule {
-    char const *key;
+    char const                          *key;
     std::function<bool(QString const &)> match;
   };
   auto has  = [](QString const &l, char const *w) { return l.contains(QLatin1String(w)); };
+  auto word = [](QString const &l, char const *w) {
+    return l.contains(QRegularExpression(QStringLiteral("\\b%1\\b").arg(QLatin1String(w))));
+  };
   QVector<Rule> const rules{
     {"light", [&](QString const &l) { return l == QLatin1String("light") || has(l, "chamber light"); }},
-    {"fan", [&](QString const &l) { return has(l, "fan"); }},
     {"heater", [&](QString const &l) { return l.startsWith(QLatin1String("heater")); }},
-    {"perimeter", [&](QString const &l) { return has(l, "perimeter") || has(l, "glass"); }},
     {"comp404", [&](QString const &l) { return has(l, "compressor") && has(l, "r404"); }},
     {"comp23", [&](QString const &l) { return has(l, "compressor") && has(l, "r23"); }},
     {"evap404", [&](QString const &l) { return has(l, "evaporator") && has(l, "r404"); }},
     {"evap23", [&](QString const &l) { return has(l, "evaporator") && has(l, "r23"); }},
-    {"bypass404", [&](QString const &l) { return has(l, "bypass") && has(l, "r404"); }},
-    {"bypass23", [&](QString const &l) { return has(l, "bypass") && has(l, "r23"); }},
-    {"hx404", [&](QString const &l) { return has(l, "heat exchanger") && has(l, "r404"); }},
-    {"sub404", [&](QString const &l) { return has(l, "subcooling") && has(l, "r404"); }},
-    {"sub23", [&](QString const &l) { return has(l, "subcooling") && has(l, "r23"); }},
+    {"vtmh", [&](QString const &l) { return has(l, "v-tmh") || (has(l, "valve") && (has(l, "tmp") || has(l, "turbo"))); }},
+    {"vk", [&](QString const &l) { return has(l, "v-k") || (has(l, "valve") && has(l, "chamber")); }},
+    {"ln2", [&](QString const &l) { return has(l, "ln2") || has(l, "ln₂") || has(l, "nitrogen"); }},
+    {"tmp", [&](QString const &l) { return word(l, "tmp") || has(l, "turbo"); }},
+    {"bp", [&](QString const &l) { return has(l, "backing") || has(l, "scroll") || has(l, "roughing") || word(l, "bp"); }},
   };
   for (QVariant const &entry : m_resHolder->settings->settingsMap().value("monitor").toList()) {
     QVariantMap const item = entry.toMap();
@@ -112,12 +122,15 @@ void ChamberView::detect() {
   }
 }
 
-bool ChamberView::has(QString const &key) const {
+bool ChamberView::fitted(QString const &key) const {
   if (key == QLatin1String("sensor")) {
     return m_resHolder->states->contains("temp");
   }
-  if (key == QLatin1String("pressure")) {
-    return m_resHolder->states->contains("pres_23_high");
+  if (key == QLatin1String("bp")) {
+    return true; // the backing pump is part of every chamber (with or without its own PLC output)
+  }
+  if (key == QLatin1String("fridge")) {
+    return m_outputs.contains("comp23") || m_outputs.contains("comp404") || m_outputs.contains("evap23") || m_outputs.contains("evap404");
   }
   return m_outputs.contains(key);
 }
@@ -127,17 +140,17 @@ bool ChamberView::online() const {
 }
 
 bool ChamberView::on(QString const &key) const {
+  if ((key == QLatin1String("bp")) && !m_outputs.contains(key)) {
+    return online(); // no output of its own: it runs while the chamber is on
+  }
   if (!online() || !m_outputs.contains(key) || !m_resHolder->states->contains("outputs")) {
     return false;
   }
   return utils::getBitOfFloat(m_resHolder->states->getSysValue("outputs")->getValue(), m_outputs.value(key).bit);
 }
 
-ChamberView::State ChamberView::outputState(QString const &key) const {
-  if (!online()) {
-    return State::OFF;
-  }
-  return on(key) ? State::ACTIVE : State::READY;
+bool ChamberView::cooling() const {
+  return on("comp23") || on("comp404") || on("evap23") || on("evap404");
 }
 
 double ChamberView::value(QString const &name) const {
@@ -149,7 +162,8 @@ double ChamberView::value(QString const &name) const {
 }
 
 void ChamberView::refreshAnimation() {
-  bool const moving = isVisible() && (on("fan") || on("comp23") || on("comp404"));
+  // online: the PLC link blinks, the backing pump turns and whatever is on animates
+  bool const moving = isVisible() && online();
   if (moving && !m_timer->isActive()) {
     m_timer->start(80);
   } else if (!moving && m_timer->isActive()) {
@@ -167,46 +181,48 @@ void ChamberView::hideEvent(QHideEvent *event) {
   refreshAnimation();
 }
 
-QVector<ChamberView::Card> ChamberView::cards() const {
-  QVector<Card> list;
-  auto          stateText = [](State s, QString const &active, QString const &ready) {
-    return s == State::ACTIVE ? active : (s == State::READY ? ready : tr("Off"));
+ChamberView::Tag ChamberView::tag(QString const &key) const {
+  Tag t;
+  auto onOff = [&](bool isOn, QString const &onText, QString const &offText) {
+    if (!t.fitted) {
+      t.status = QStringLiteral("—");
+    } else if (!online()) {
+      t.status = offText;
+    } else {
+      t.status = isOn ? onText : offText;
+      t.state  = isOn ? State::ACTIVE : State::READY;
+    }
   };
-  if (has("light")) {
-    State const s = outputState("light");
-    list.push_back({tr("Chamber light"), stateText(s, tr("On"), tr("Off")), s, LAMP});
+  if (key == QLatin1String("plc")) {
+    QString const state = APP_STATE_LIST.value(static_cast<int>(m_resHolder->status->getAppState())).section('=', -1).toLower();
+    t.status            = state.isEmpty() ? state : state.at(0).toUpper() + state.mid(1);
+    t.state  = online() ? State::ACTIVE : State::OFF;
+  } else if (key == QLatin1String("sensor")) {
+    t.fitted        = fitted("sensor");
+    double const v  = value("temp");
+    t.status        = valueText(v, 1, QStringLiteral(" °C"));
+    t.state         = std::isnan(v) ? State::OFF : State::ACTIVE;
+  } else if (key == QLatin1String("evap")) {
+    t.fitted = fitted("fridge");
+    onOff(on("evap23") || on("evap404") || on("comp23"), tr("Cooling"), tr("Off"));
+  } else if (key == QLatin1String("fridge")) {
+    t.fitted = fitted("fridge");
+    onOff(on("comp23") || on("comp404"), tr("On"), tr("Off"));
+  } else if (key == QLatin1String("heater")) {
+    t.fitted = fitted("heater");
+    onOff(on("heater"), tr("On"), tr("Off"));
+    double const u{value("temp_u")};
+    if ((t.state == State::ACTIVE) && !std::isnan(u) && (u > 0.0)) {
+      t.status = tr("On · %1").arg(valueText(u, 0, QStringLiteral(" %")));
+    }
+  } else if ((key == QLatin1String("ln2")) || (key == QLatin1String("vk")) || (key == QLatin1String("vtmh"))) {
+    t.fitted = fitted(key);
+    onOff(on(key), tr("Open"), tr("Closed"));
+  } else {
+    t.fitted = fitted(key);
+    onOff(on(key), tr("On"), tr("Off"));
   }
-  if (has("sensor")) {
-    double const t = value("temp");
-    list.push_back({tr("Chamber sensor"), valueText(t, 1, QStringLiteral(" °C")), std::isnan(t) ? State::OFF : State::ACTIVE, PROBE});
-  }
-  if (has("fan")) {
-    State const s = outputState("fan");
-    list.push_back({tr("Chamber fan"), stateText(s, tr("Running"), tr("Stopped")), s, FAN});
-  }
-  double const u{value("temp_u")};
-  if (has("evap23") || has("evap404") || has("comp23")) {
-    bool const  cooling = on("evap23") || on("comp23");
-    State const s       = !online() ? State::OFF : (cooling ? State::ACTIVE : State::READY);
-    list.push_back({tr("Evaporator"), stateText(s, tr("Cooling"), tr("Idle")), s, QPointF(EVAPORATOR.center().x(), 180)});
-  }
-  if (has("heater")) {
-    State const   s       = outputState("heater");
-    QString const percent = valueText(std::isnan(u) ? u : std::max(0.0, u), 0, QStringLiteral(" %"));
-    list.push_back({tr("Heater"), stateText(s, tr("Active · %1").arg(percent), tr("Ready · %1").arg(percent)), s, QPointF(425, HEATER_Y)});
-  }
-  if (has("comp23") || has("comp404")) {
-    bool const    running = on("comp23") || on("comp404");
-    State const   s       = !online() ? State::OFF : (running ? State::ACTIVE : State::READY);
-    QString const percent = valueText(std::isnan(u) ? u : std::min(0.0, u), 0, QStringLiteral(" %"));
-    list.push_back({tr("Refrigeration unit"), stateText(s, tr("Active · %1").arg(percent), tr("Ready")), s,
-                    QPointF(EXCHANGER.right(), EXCHANGER.center().y())});
-  }
-  {
-    QString const text = APP_STATE_LIST.value(static_cast<int>(m_resHolder->status->getAppState()));
-    list.push_back({tr("PLC"), text, online() ? State::ACTIVE : State::OFF, QPointF(PLC.left(), PLC.center().y())});
-  }
-  return list;
+  return t;
 }
 
 // ---------------------------------------------------------------- painting
@@ -223,38 +239,9 @@ void ChamberView::paintEvent(QPaintEvent *) {
   p.setBrush(c.panel);
   p.drawRoundedRect(panel, 8 * s, 8 * s);
 
-  // title, legend and note in widget coordinates, at the panel edges
-  QFont label = font();
-  p.setFont(label);
-  p.setPen(c.muted);
-  p.drawText(QPointF(14 * s, 24 * s), tr("Chamber · live"));
-  {
-    QFont small = font();
-    small.setPointSizeF(font().pointSizeF() * 0.8);
-    QFontMetricsF const fm(small);
-    QList<std::pair<State, QString>> const items{{State::ACTIVE, tr("Active")}, {State::READY, tr("Ready")}, {State::OFF, tr("Off")}};
-    double width{0};
-    for (auto const &item : items) {
-      width += 16 * s + fm.horizontalAdvance(item.second);
-    }
-    double x = panel.right() - 14 * s - width;
-    p.setFont(small);
-    for (auto const &[state, text] : items) {
-      QColor const color = state == State::ACTIVE ? c.active : (state == State::READY ? c.ready : c.off);
-      p.setPen(state == State::READY ? QPen(color, 1.4 * s) : Qt::NoPen);
-      p.setBrush(state == State::READY ? Qt::NoBrush : QBrush(color));
-      p.drawEllipse(QPointF(x + 3 * s, 20 * s), 3 * s, 3 * s);
-      p.setPen(c.muted);
-      p.drawText(QPointF(x + 9 * s, 24 * s), text);
-      x += 16 * s + fm.horizontalAdvance(text);
-    }
-    p.drawText(QPointF(14 * s, panel.bottom() - 10 * s), online() ? tr("Live view · components update while ONLINE")
-                                                                    : tr("Live view · waiting for the chamber (not ONLINE)"));
-  }
-
-  // sketch and cards: canvas content (0, 50)-(1000, 595) fitted into the panel
-  QRectF const content(0, 50, CANVAS_W, 545);
-  QRectF const area = QRectF(rect()).adjusted(10 * s, 34 * s, -10 * s, -24 * s);
+  // canvas fitted into the panel
+  QRectF const content(0, 0, CANVAS_W, CANVAS_H);
+  QRectF const area  = QRectF(rect()).adjusted(12 * s, 12 * s, -12 * s, -12 * s);
   double const scale = std::min(area.width() / content.width(), area.height() / content.height());
   m_transform        = QTransform();
   m_transform.translate(area.center().x() - content.center().x() * scale, area.center().y() - content.center().y() * scale);
@@ -262,460 +249,412 @@ void ChamberView::paintEvent(QPaintEvent *) {
   p.setTransform(m_transform);
   m_tips.clear();
 
-  drawCards(p); // leader lines under the sketch, cards on top of everything right of it
-  drawRefrigeration(p);
-  drawVessel(p);
-
-  // anchor dots of the cards above the sketch
-  for (Card const &card : cards()) {
-    QColor const color = card.state == State::ACTIVE ? c.active : (card.state == State::READY ? c.ready : c.off);
-    p.setPen(Qt::NoPen);
-    p.setBrush(color);
-    p.drawEllipse(card.anchor, 3.2, 3.2);
-  }
+  drawSupply(p);
+  drawVacuum(p);
+  drawChamber(p);
+  drawPlc(p);
 }
 
-void ChamberView::drawPipe(QPainter &p, QVector<QPointF> const &points, QColor const &color, bool flowing) {
-  QPainterPath path;
+void ChamberView::drawLine(QPainter &p, QVector<QPointF> const &points, bool isFitted, bool flowing, QColor const &flowColor) {
+  theme::Colors const &c = theme::colors();
+  QPainterPath         path;
   path.moveTo(points.first());
   for (int i{1}; i < points.size(); ++i) {
     path.lineTo(points[i]);
   }
-  // casing and fluid like the insulated lines of the reference drawing
   p.setBrush(Qt::NoBrush);
-  p.setPen(QPen(QColor(120, 132, 146), 7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-  p.drawPath(path);
-  p.setPen(QPen(QColor(205, 212, 220), 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-  p.drawPath(path);
-  p.setPen(QPen(flowing ? color : color.darker(170), 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+  QPen base(isFitted ? c.muted : c.off, 3, isFitted ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap, Qt::RoundJoin);
+  p.setPen(base);
   p.drawPath(path);
   if (flowing) {
-    QPen dash(color.lighter(150), 1.6, Qt::CustomDashLine, Qt::FlatCap, Qt::RoundJoin);
-    dash.setDashPattern({3, 5});
-    dash.setDashOffset(-m_phase * 1.2);
+    QPen dash(flowColor, 3, Qt::CustomDashLine, Qt::FlatCap, Qt::RoundJoin);
+    dash.setDashPattern({2.5, 2.5});
+    dash.setDashOffset(-m_phase * 0.6);
     p.setPen(dash);
     p.drawPath(path);
   }
 }
 
-void ChamberView::drawBadge(QPainter &p, QPointF const &topLeft, QString const &text, bool on) {
-  QFont const          font = canvasFont(10, true);
-  double const         w    = QFontMetricsF(font).horizontalAdvance(text) + 12;
-  QRectF const         r(topLeft, QSizeF(w, 15));
-  p.setPen(Qt::NoPen);
-  p.setBrush(on ? QColor(34, 197, 94) : QColor(100, 116, 139));
-  p.drawRoundedRect(r, 3, 3);
-  p.setPen(on ? QColor(5, 46, 22) : QColor(226, 232, 240));
-  p.setFont(font);
-  p.drawText(r, Qt::AlignCenter, text);
-}
-
-void ChamberView::drawReadout(QPainter &p, QPointF const &topLeft, QString const &tag, QString const &text, bool live) {
+void ChamberView::drawValve(QPainter &p, QPointF const &at, QString const &key, QString const &title, QString const &tip, bool tagAbove) {
   theme::Colors const &c = theme::colors();
-  QFont const          tagFont  = canvasFont(10, true);
-  QFont const          textFont = canvasFont(12, true);
-  double const         w        = 22 + QFontMetricsF(tagFont).horizontalAdvance(tag) + QFontMetricsF(textFont).horizontalAdvance(text);
-  QRectF const         r(topLeft, QSizeF(w, 22));
-  p.setPen(QPen(QColor(71, 85, 105), 1));
-  p.setBrush(QColor(15, 23, 42, 230));
-  p.drawRoundedRect(r, 4, 4);
-  p.setPen(Qt::NoPen);
-  p.setBrush(live ? c.active : c.off);
-  p.drawEllipse(QPointF(r.left() + 8, r.center().y()), 3, 3);
-  p.setFont(tagFont);
-  p.setPen(QColor(203, 213, 225));
-  double const tagW = QFontMetricsF(tagFont).horizontalAdvance(tag);
-  p.drawText(QRectF(r.left() + 15, r.top(), tagW, r.height()), Qt::AlignVCenter, tag);
-  p.setFont(textFont);
-  p.setPen(Qt::white);
-  p.drawText(QRectF(r.left() + 19 + tagW, r.top(), w, r.height()), Qt::AlignVCenter, text);
-}
-
-void ChamberView::drawValve(QPainter &p, QPointF const &at, QString const &key, QString const &tag, bool vertical,
-                            QPointF const &labelOffset) {
-  if (!has(key)) {
-    return;
-  }
-  bool const open = on(key);
-  p.save();
-  p.translate(at);
-  if (vertical) {
-    p.rotate(90);
-  }
-  // bow tie body and actuator, as in the reference drawing
-  p.setPen(QPen(QColor(71, 85, 105), 1));
-  p.setBrush(open ? QColor(34, 197, 94) : QColor(148, 163, 184));
-  p.drawPolygon(QPolygonF({QPointF(-9, -7), QPointF(0, 0), QPointF(-9, 7)}));
-  p.drawPolygon(QPolygonF({QPointF(9, -7), QPointF(0, 0), QPointF(9, 7)}));
-  p.setBrush(QColor(203, 213, 225));
-  p.drawLine(QPointF(0, 0), QPointF(0, -10));
-  p.drawRect(QRectF(-5, -15, 10, 5));
-  p.restore();
-  // tag and state
-  QPointF const label = at + labelOffset;
-  p.setFont(canvasFont(10, true));
-  p.setPen(theme::colors().text);
-  p.drawText(label, tag);
-  double const tagW = QFontMetricsF(canvasFont(10, true)).horizontalAdvance(tag);
-  drawBadge(p, QPointF(label.x() + tagW + 4, label.y() - 11.5), open ? tr("OPEN") : tr("CLOSED"), open);
-  addTip(QRectF(at - QPointF(12, 12), QSizeF(24, 24)), m_outputs.value(key).label);
-}
-
-void ChamberView::drawCompressor(QPainter &p, QPointF const &at, QString const &key, QString const &title, QString const &tag) {
-  if (!has(key)) {
-    return;
-  }
-  bool const running = on(key);
-  // base plate and motor body
-  p.setPen(QPen(QColor(71, 85, 105), 1));
-  QLinearGradient base(at.x(), at.y() + COMP_R, at.x(), at.y() + COMP_R + 8);
-  base.setColorAt(0, QColor(148, 163, 184));
-  base.setColorAt(1, QColor(71, 85, 105));
-  p.setBrush(base);
-  p.drawRoundedRect(QRectF(at.x() - COMP_R - 6, at.y() + COMP_R - 2, 2 * COMP_R + 12, 8), 2, 2);
-  QRadialGradient body(at - QPointF(8, 8), COMP_R * 1.4);
-  body.setColorAt(0, QColor(241, 245, 249));
-  body.setColorAt(0.6, QColor(160, 172, 186));
-  body.setColorAt(1, QColor(90, 102, 118));
-  p.setBrush(body);
-  p.setPen(QPen(QColor(51, 65, 85), 1.4));
-  p.drawEllipse(at, COMP_R, COMP_R);
-  p.setBrush(QColor(71, 85, 105));
-  p.drawEllipse(at, COMP_R * 0.55, COMP_R * 0.55);
-  // impeller
-  p.save();
-  p.translate(at);
-  p.rotate(running ? m_phase * 24 : 0);
-  p.setPen(QPen(QColor(226, 232, 240), 2));
-  for (int i{0}; i < 4; ++i) {
-    p.drawLine(QPointF(0, 0), QPointF(COMP_R * 0.45, 0));
-    p.rotate(90);
-  }
-  p.restore();
-  p.setBrush(QColor(226, 232, 240));
-  p.setPen(Qt::NoPen);
-  p.drawEllipse(at, 3, 3);
-  // title, tag, state
-  QPointF const label(at.x() + COMP_R + 8, at.y() - 4);
-  p.setFont(canvasFont(11));
-  p.setPen(theme::colors().text);
-  p.drawText(label, title);
-  p.setFont(canvasFont(10, true));
-  p.drawText(label + QPointF(0, 17), tag);
-  double const tagW = QFontMetricsF(canvasFont(10, true)).horizontalAdvance(tag);
-  drawBadge(p, label + QPointF(tagW + 5, 5.5), running ? tr("RUNNING") : tr("OFF"), running);
-  addTip(QRectF(at - QPointF(COMP_R, COMP_R), QSizeF(2 * COMP_R, 2 * COMP_R)), m_outputs.value(key).label);
-}
-
-void ChamberView::drawRefrigeration(QPainter &p) {
-  theme::Colors const &c = theme::colors();
-  bool const           run23{on("comp23")}, run404{on("comp404")};
-  QColor const         cold = c.cold, hot = c.heat, liquid = QColor("#7dd3fc");
-  if (has("comp23")) {
-    // R23 stage: evaporator in the chamber -> compressor -> cascade exchanger -> back to the evaporator
-    drawPipe(p, {QPointF(EVAPORATOR.left(), 200), QPointF(COMP23.x(), 200), QPointF(COMP23.x(), COMP23.y() - COMP_R)}, cold, run23);
-    drawPipe(p, {QPointF(COMP23.x(), COMP23.y() + COMP_R), QPointF(COMP23.x(), EXCHANGER.top())}, hot, run23);
-    drawPipe(p, {QPointF(EXCHANGER.right(), 348), QPointF(240, 348), QPointF(240, 262), QPointF(EVAPORATOR.left(), 262)}, liquid, run23);
-    if (has("bypass23")) {
-      drawPipe(p, {QPointF(COMP23.x(), 318), QPointF(55, 318), QPointF(55, 200), QPointF(COMP23.x(), 200)}, hot, on("bypass23"));
-    }
-  }
-  if (has("comp404")) {
-    // R404A stage: cascade exchanger (its evaporator) -> compressor -> condenser -> back to the exchanger
-    drawPipe(p, {QPointF(EXCHANGER.left(), 357), QPointF(45, 357), QPointF(45, COMP404.y()), QPointF(COMP404.x() - COMP_R, COMP404.y())}, cold, run404);
-    drawPipe(p, {QPointF(COMP404.x(), COMP404.y() + COMP_R + 6), QPointF(COMP404.x(), CONDENSER.center().y()), QPointF(CONDENSER.left(), CONDENSER.center().y())}, hot, run404);
-    drawPipe(p, {QPointF(232, CONDENSER.top()), QPointF(232, 366), QPointF(EXCHANGER.right(), 366)}, liquid, run404);
-    if (has("bypass404")) {
-      drawPipe(p, {QPointF(COMP404.x(), 512), QPointF(70, 512), QPointF(70, COMP404.y())}, hot, on("bypass404"));
-    }
-  }
-
-  // cascade heat exchanger
-  if (has("comp23") || has("comp404")) {
-    QLinearGradient g(EXCHANGER.topLeft(), EXCHANGER.bottomLeft());
-    g.setColorAt(0, QColor(203, 213, 225));
-    g.setColorAt(1, QColor(100, 116, 139));
-    p.setPen(QPen(QColor(51, 65, 85), 1.2));
-    p.setBrush(g);
-    p.drawRoundedRect(EXCHANGER, 4, 4);
-    p.setPen(QPen(QColor(71, 85, 105), 1));
-    for (double x = EXCHANGER.left() + 8; x < EXCHANGER.right() - 4; x += 6) {
-      p.drawLine(QPointF(x, EXCHANGER.top() + 5), QPointF(x, EXCHANGER.bottom() - 5));
-    }
-    p.setFont(canvasFont(10, true));
-    p.setPen(QColor(15, 23, 42));
-    p.drawText(EXCHANGER, Qt::AlignCenter, QStringLiteral("HX"));
-    addTip(EXCHANGER, tr("Cascade heat exchanger (R23 condenser / R404A evaporator)"));
-  }
-  if (has("comp404")) {
-    QLinearGradient g(CONDENSER.topLeft(), CONDENSER.bottomLeft());
-    g.setColorAt(0, QColor(203, 213, 225));
-    g.setColorAt(1, QColor(100, 116, 139));
-    p.setPen(QPen(QColor(51, 65, 85), 1.2));
-    p.setBrush(g);
-    p.drawRoundedRect(CONDENSER, 3, 3);
-    p.setPen(QPen(QColor(71, 85, 105), 1));
-    for (double x = CONDENSER.left() + 6; x < CONDENSER.right() - 3; x += 5) {
-      p.drawLine(QPointF(x, CONDENSER.top() + 4), QPointF(x, CONDENSER.bottom() - 4));
-    }
-    p.setFont(canvasFont(10));
-    p.setPen(c.muted);
-    p.drawText(QPointF(CONDENSER.right() + 6, CONDENSER.center().y() + 4), tr("Condenser"));
-    addTip(CONDENSER, tr("R404A condenser"));
-  }
-
-  drawCompressor(p, COMP23, "comp23", tr("R23 compressor"), QStringLiteral("C-23"));
-  drawCompressor(p, COMP404, "comp404", tr("R404A compressor"), QStringLiteral("C-404"));
-
-  // valves (tags as on the reference drawing; full names in the tool tips)
-  drawValve(p, QPointF(240, 305), "evap23", QStringLiteral("EV-23"), true, QPointF(-64, -14));
-  drawValve(p, QPointF(195, 348), "sub23", QStringLiteral("SC-23"), false, QPointF(-40, 32));
-  drawValve(p, QPointF(55, 262), "bypass23", QStringLiteral("BP-23"), true, QPointF(-46, 28));
-  drawValve(p, QPointF(45, 410), "hx404", QStringLiteral("HX-404"), true, QPointF(-36, -12));
-  drawValve(p, QPointF(232, 412), "evap404", QStringLiteral("EV-404"), true, QPointF(-104, 4));
-  drawValve(p, QPointF(232, 504), "sub404", QStringLiteral("SC-404"), true, QPointF(-104, 4));
-  drawValve(p, QPointF(70, 512), "bypass404", QStringLiteral("BP-404"), false, QPointF(-56, 22));
-
-  // R23 discharge pressure
-  if (has("pressure") && has("comp23")) {
-    QPointF const gauge(146, 318);
-    p.setPen(QPen(QColor(120, 132, 146), 2));
-    p.drawLine(QPointF(COMP23.x(), 318), gauge - QPointF(9, 0));
-    p.setPen(QPen(QColor(51, 65, 85), 1.2));
-    p.setBrush(QColor(241, 245, 249));
-    p.drawEllipse(gauge, 9, 9);
-    double const pressure = value("pres_23_high");
-    double const angle    = std::isnan(pressure) ? 220.0 : 220.0 - std::clamp(pressure / 25.0, 0.0, 1.0) * 260.0;
-    p.setPen(QPen(QColor(220, 38, 38), 1.4));
-    p.drawLine(gauge, gauge + QPointF(std::cos(qDegreesToRadians(angle)) * 7, -std::sin(qDegreesToRadians(angle)) * 7));
-    drawReadout(p, QPointF(160, 306), QStringLiteral("P"), valueText(pressure, 1, QStringLiteral(" bar")), !std::isnan(pressure));
-    addTip(QRectF(gauge - QPointF(10, 10), QSizeF(20, 20)), m_resHolder->states->getSysValue("pres_23_high")->getLabel());
-  }
-
-  // PLC
-  p.setPen(QPen(QColor(100, 116, 139), 1.4, Qt::DashLine));
-  p.drawLine(QPointF(PLC.center().x(), PLC.top()), QPointF(PLC.center().x(), 360));
-  p.drawLine(QPointF(PLC.center().x(), 360), QPointF(VESSEL.right(), 360));
-  QLinearGradient plc(PLC.topLeft(), PLC.bottomLeft());
-  plc.setColorAt(0, QColor(71, 85, 105));
-  plc.setColorAt(1, QColor(30, 41, 59));
-  p.setPen(QPen(QColor(100, 116, 139), 1));
-  p.setBrush(plc);
-  p.drawRoundedRect(PLC, 4, 4);
-  p.setPen(Qt::NoPen);
-  p.setBrush(online() ? c.active : c.danger);
-  p.drawEllipse(QPointF(PLC.left() + 10, PLC.center().y()), 3.5, 3.5);
-  p.setFont(canvasFont(12, true));
-  p.setPen(QColor(226, 232, 240));
-  p.drawText(PLC.adjusted(16, 0, 0, 0), Qt::AlignCenter, QStringLiteral("PLC"));
-}
-
-void ChamberView::drawVessel(QPainter &p) {
-  theme::Colors const &c       = theme::colors();
-  bool const           cooling = on("comp23") || on("comp404");
-  bool const           heating = on("heater");
-
-  // legs and top nozzle
-  QLinearGradient steel(VESSEL.left(), 0, VESSEL.right(), 0);
-  steel.setColorAt(0, QColor(120, 131, 145));
-  steel.setColorAt(0.3, QColor(226, 232, 240));
-  steel.setColorAt(0.65, QColor(170, 180, 192));
-  steel.setColorAt(1, QColor(96, 107, 121));
-  p.setPen(QPen(QColor(51, 65, 85), 1.2));
-  p.setBrush(steel);
-  for (double x : {290.0, 510.0}) {
-    p.drawPolygon(QPolygonF({QPointF(x - 10, VESSEL.bottom() - 4), QPointF(x + 10, VESSEL.bottom() - 4), QPointF(x + 14, 428),
-                             QPointF(x - 14, 428)}));
-    p.drawRoundedRect(QRectF(x - 24, 428, 48, 6), 2, 2);
-  }
-  p.drawRect(QRectF(VESSEL.center().x() - 9, VESSEL.top() - 14, 18, 16));
-  p.drawRoundedRect(QRectF(VESSEL.center().x() - 15, VESSEL.top() - 18, 30, 6), 2, 2);
-
-  // shell
-  p.setBrush(steel);
-  p.setPen(QPen(QColor(51, 65, 85), 1.6));
-  p.drawRoundedRect(VESSEL, 30, 30);
-  // door frame with bolts
-  QRectF const frame = SPACE.adjusted(-10, -10, 10, 10);
-  p.setPen(QPen(QColor(71, 85, 105), 6));
+  bool const           isFitted{fitted(key)};
+  bool const           open{on(key)};
+  QColor const         color = !isFitted ? c.off : (open ? c.active : c.muted);
+  double const         w{15}, h{11};
+  // actuator
+  p.setPen(QPen(color, 2));
   p.setBrush(Qt::NoBrush);
-  p.drawRoundedRect(frame, 20, 20);
-  p.setPen(Qt::NoPen);
-  p.setBrush(QColor(71, 85, 105));
-  for (double x = frame.left() + 26; x < frame.right() - 20; x += 24) {
-    p.drawEllipse(QPointF(x, frame.top() - 7), 2.2, 2.2);
-    p.drawEllipse(QPointF(x, frame.bottom() + 7), 2.2, 2.2);
-  }
-  for (double y = frame.top() + 28; y < frame.bottom() - 20; y += 24) {
-    p.drawEllipse(QPointF(frame.left() - 7, y), 2.2, 2.2);
-    p.drawEllipse(QPointF(frame.right() + 7, y), 2.2, 2.2);
-  }
-  // side flanges (hinge and latch)
-  p.setBrush(QColor(100, 116, 139));
-  p.setPen(QPen(QColor(51, 65, 85), 1));
-  p.drawRoundedRect(QRectF(VESSEL.left() - 8, VESSEL.center().y() - 26, 10, 52), 2, 2);
-  p.drawRoundedRect(QRectF(VESSEL.right() - 2, VESSEL.center().y() - 18, 10, 36), 2, 2);
+  p.drawLine(at, at + QPointF(0, -20));
+  p.setBrush(theme::colors().panel);
+  p.drawEllipse(at + QPointF(0, -26), 6, 6);
+  // body: two triangles tip to tip
+  QPolygonF left;
+  left << at + QPointF(-w, -h) << at << at + QPointF(-w, h);
+  QPolygonF right;
+  right << at + QPointF(w, -h) << at << at + QPointF(w, h);
+  p.setPen(QPen(color, 2, isFitted ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap, Qt::RoundJoin));
+  p.setBrush(open ? QBrush(QColor(color.red(), color.green(), color.blue(), 170)) : QBrush(c.panel));
+  p.drawPolygon(left);
+  p.drawPolygon(right);
+  drawTag(p, at + QPointF(0, tagAbove ? -36 : 14), Qt::AlignHCenter | (tagAbove ? Qt::AlignBottom : Qt::AlignTop), key, title);
+  addTip(QRectF(at.x() - 22, at.y() - 34, 44, 50), isFitted ? tip : tr("%1: not fitted on this chamber").arg(tip));
+}
 
-  // test space and its thermal glow
-  QLinearGradient inside(SPACE.topLeft(), SPACE.bottomLeft());
-  inside.setColorAt(0, QColor(15, 30, 52));
-  inside.setColorAt(1, QColor(10, 20, 36));
-  p.setPen(QPen(QColor(30, 41, 59), 2));
-  p.setBrush(inside);
-  p.drawRoundedRect(SPACE, 14, 14);
-  if (cooling || heating) {
-    QColor const glow = heating ? QColor(249, 115, 22) : QColor(56, 189, 248);
-    for (int i{0}; i < 5; ++i) {
-      QColor g = glow;
-      g.setAlpha(150 - i * 28);
-      p.setPen(QPen(g, 2.2));
-      p.setBrush(Qt::NoBrush);
-      p.drawRoundedRect(SPACE.adjusted(2 + i * 2.2, 2 + i * 2.2, -2 - i * 2.2, -2 - i * 2.2), 13 - i, 13 - i);
-    }
-  }
-  if (has("perimeter")) {
-    QPen pen(on("perimeter") ? QColor(249, 115, 22) : QColor(100, 116, 139), 1.4, Qt::DashLine);
-    p.setPen(pen);
-    p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(SPACE.adjusted(-4, -4, 4, 4), 17, 17);
-    addTip(QRectF(SPACE.left() - 6, SPACE.top() - 6, SPACE.width() + 12, 6), m_outputs.value("perimeter").label);
-  }
-  p.setFont(canvasFont(11));
-  p.setPen(QColor(148, 163, 184));
-  p.drawText(QPointF(SPACE.left() + 52, SPACE.top() + 26), tr("Test space"));
+void ChamberView::drawChamber(QPainter &p) {
+  theme::Colors const &c = theme::colors();
 
-  // evaporator coil
-  if (has("comp23") || has("evap23") || has("evap404")) {
-    QColor const coil = cooling ? QColor(56, 189, 248) : QColor(100, 116, 139);
+  // ports on the top flange
+  p.setPen(QPen(c.muted, 4, Qt::SolidLine, Qt::FlatCap));
+  p.drawLine(QPointF(132, FLANGE_Y), QPointF(488, FLANGE_Y));
+
+  // vessel
+  QPainterPath const vessel = chamberPath();
+  p.setPen(QPen(c.muted, 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+  p.setBrush(theme::isDark() ? c.window : c.panelAlt);
+  p.drawPath(vessel);
+  p.setFont(canvasFont(13, true));
+  p.setPen(c.text);
+  p.drawText(QPointF(166, FLANGE_Y + 30), tr("Chamber"));
+
+  // light: a lamp at the top, glowing when on
+  QPointF const lamp{430, FLANGE_Y + 24};
+  bool const    lightOn{on("light")};
+  if (lightOn) {
+    double const    radius = 56 + 6 * std::sin(m_phase * 0.2);
+    QRadialGradient glow(lamp, radius);
+    glow.setColorAt(0.0, QColor(250, 204, 21, 120));
+    glow.setColorAt(1.0, QColor(250, 204, 21, 0));
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(30, 41, 59));
-    p.drawRoundedRect(EVAPORATOR, 3, 3);
-    p.setPen(QPen(coil.darker(130), 1));
-    for (double y = EVAPORATOR.top() + 4; y < EVAPORATOR.bottom(); y += 6) {
-      p.drawLine(QPointF(EVAPORATOR.left() + 2, y), QPointF(EVAPORATOR.right() - 2, y));
-    }
-    QPainterPath zig;
-    zig.moveTo(EVAPORATOR.left() + 4, EVAPORATOR.top() + 4);
-    bool right{true};
-    for (double y = EVAPORATOR.top() + 14; y <= EVAPORATOR.bottom() - 4; y += 12) {
-      zig.lineTo(right ? EVAPORATOR.right() - 4 : EVAPORATOR.left() + 4, y);
-      right = !right;
-    }
-    p.setPen(QPen(coil, 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    p.setBrush(Qt::NoBrush);
-    p.drawPath(zig);
-    addTip(EVAPORATOR, tr("Evaporator"));
+    p.setBrush(glow);
+    p.drawEllipse(lamp, radius, radius);
   }
+  p.setPen(QPen(fitted("light") ? c.muted : c.off, 2, fitted("light") ? Qt::SolidLine : Qt::DotLine));
+  p.setBrush(lightOn ? QColor(250, 204, 21) : c.panel);
+  p.drawEllipse(lamp, 8, 8);
+  addTip(QRectF(lamp.x() - 12, lamp.y() - 12, 24, 24), fitted("light") ? tr("Chamber light") : tr("Chamber light: not fitted on this chamber"));
+  drawTag(p, QPointF(lamp.x() - 14, lamp.y() + 2), Qt::AlignRight | Qt::AlignVCenter, "light", tr("Chamber light"));
 
-  // fan
-  if (has("fan")) {
-    bool const running = on("fan");
-    p.setPen(QPen(QColor(100, 116, 139), 1.2));
-    p.setBrush(QColor(30, 41, 59));
-    p.drawEllipse(FAN, 11, 11);
-    p.save();
-    p.translate(FAN);
-    p.rotate(running ? m_phase * 30 : 15);
-    p.setPen(Qt::NoPen);
-    p.setBrush(running ? QColor(148, 210, 255) : QColor(100, 116, 139));
-    for (int i{0}; i < 3; ++i) {
-      QPainterPath blade;
-      blade.moveTo(0, 0);
-      blade.cubicTo(3, -4, 9, -5, 9, 0);
-      blade.cubicTo(6, 1, 3, 1, 0, 0);
-      p.drawPath(blade);
-      p.rotate(120);
-    }
-    p.restore();
-    addTip(QRectF(FAN - QPointF(11, 11), QSizeF(22, 22)), m_outputs.value("fan").label);
+  // temperature and setpoint, large in the middle
+  double const temp{value("temp")};
+  double const ref{value("temp_ref")};
+  p.setPen(c.text);
+  p.setFont(canvasFont(54, true));
+  p.drawText(QRectF(150, 262, 320, 70), Qt::AlignCenter, valueText(temp, 1, QString()));
+  p.setFont(canvasFont(15));
+  p.setPen(c.muted);
+  p.drawText(QRectF(150, 330, 320, 22), Qt::AlignCenter,
+             std::isnan(ref) ? QStringLiteral("°C") : tr("°C  →  %1").arg(valueText(ref, 1, QStringLiteral(" °C"))));
+  addTip(QRectF(170, 262, 280, 92), tr("Chamber temperature and setpoint"));
+
+  // sensor T1
+  QPointF const probe{310, 420};
+  bool const    sensorFitted{fitted("sensor")};
+  p.setPen(QPen(sensorFitted ? c.muted : c.off, 2));
+  p.setBrush(c.panel);
+  p.drawEllipse(probe, 26, 26);
+  p.drawLine(probe + QPointF(-26, 0), probe + QPointF(26, 0));
+  p.setFont(canvasFont(12, true));
+  p.setPen(c.text);
+  p.drawText(QRectF(probe.x() - 26, probe.y() - 22, 52, 20), Qt::AlignCenter, QStringLiteral("T1"));
+  p.setFont(canvasFont(12));
+  p.setPen(std::isnan(temp) ? c.muted : c.accent);
+  p.drawText(QRectF(probe.x() - 26, probe.y() + 2, 52, 20), Qt::AlignCenter, valueText(temp, 1, QString()));
+  addTip(QRectF(probe.x() - 26, probe.y() - 26, 52, 52), tr("Temperature sensor T1"));
+  drawTag(p, QPointF(probe.x() + 34, probe.y()), Qt::AlignLeft | Qt::AlignVCenter, "sensor", tr("Temperature sensor"));
+
+  // evaporator coil along the left wall (fed by the refrigeration unit)
+  bool const   cold{cooling()};
+  QColor const coldColor = !fitted("fridge") ? c.off : (cold ? c.cold : c.muted);
+  QPainterPath coil;
+  coil.moveTo(170, 252);
+  for (int i{0}; i < 10; ++i) {
+    coil.lineTo((i % 2 == 0) ? 192 : 170, 266 + i * 22);
   }
-
-  // heater coil
-  if (has("heater")) {
-    bool const   lit = on("heater");
-    QPainterPath coil;
-    coil.moveTo(340, HEATER_Y);
-    bool up{true};
-    for (double x = 348; x <= 512; x += 8) {
-      coil.lineTo(x, HEATER_Y + (up ? -6 : 6));
-      up = !up;
-    }
-    if (lit) {
-      p.setPen(QPen(QColor(249, 115, 22, 90), 7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-      p.drawPath(coil);
-    }
-    p.setPen(QPen(lit ? QColor(251, 146, 60) : QColor(146, 64, 14), 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    p.setBrush(Qt::NoBrush);
+  p.setPen(QPen(coldColor, 2.5, fitted("fridge") ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap, Qt::RoundJoin));
+  p.setBrush(Qt::NoBrush);
+  p.drawPath(coil);
+  if (cold) {
+    QPen flow(c.cold.lighter(160), 2.5, Qt::CustomDashLine, Qt::FlatCap, Qt::RoundJoin);
+    flow.setDashPattern({2, 4});
+    flow.setDashOffset(-m_phase * 0.8);
+    p.setPen(flow);
     p.drawPath(coil);
-    addTip(QRectF(336, HEATER_Y - 10, 180, 20), m_outputs.value("heater").label);
   }
+  addTip(QRectF(160, 245, 40, 230), fitted("fridge") ? tr("Evaporator") : tr("Evaporator: not fitted on this chamber"));
+  drawTag(p, QPointF(202, 376), Qt::AlignLeft | Qt::AlignVCenter, "evap", tr("Evaporator"));
 
-  // lamp
-  if (has("light")) {
-    bool const lit = on("light");
-    if (lit) {
-      QRadialGradient glow(LAMP, 46);
-      glow.setColorAt(0, QColor(253, 224, 71, 110));
-      glow.setColorAt(1, QColor(253, 224, 71, 0));
-      p.setPen(Qt::NoPen);
-      p.setBrush(glow);
-      p.drawEllipse(LAMP, 46, 46);
+  // heater: an element across the bottom, glowing when on
+  bool const   heating{on("heater")};
+  QColor const heatColor = !fitted("heater") ? c.off : (heating ? c.heat : c.muted);
+  QRectF const element(190, 520, 240, 22);
+  if (heating) {
+    int const   alpha = 30 + static_cast<int>(30 * (0.5 + 0.5 * std::sin(m_phase * 0.25))); // pulsing glow
+    QRectF const halo = element.adjusted(-10, -12, 10, 12);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(c.heat.red(), c.heat.green(), c.heat.blue(), alpha));
+    p.drawRoundedRect(halo, 10, 10);
+  }
+  p.setPen(QPen(heatColor, 2));
+  p.setBrush(heating ? QBrush(QColor(c.heat.red(), c.heat.green(), c.heat.blue(), 40)) : QBrush(Qt::NoBrush));
+  p.drawRoundedRect(element, 4, 4);
+  QPainterPath zigzag;
+  zigzag.moveTo(element.left() + 8, element.center().y());
+  for (int i{0}; i < 22; ++i) {
+    zigzag.lineTo(element.left() + 18 + i * 10, element.center().y() + ((i % 2 == 0) ? -6 : 6));
+  }
+  p.setBrush(Qt::NoBrush);
+  p.drawPath(zigzag);
+  addTip(element, fitted("heater") ? tr("Heater") : tr("Heater: not fitted on this chamber"));
+  drawTag(p, QPointF(element.center().x(), element.top() - 14), Qt::AlignHCenter | Qt::AlignBottom, "heater", tr("Heater"));
+}
+
+void ChamberView::drawVacuum(QPainter &p) {
+  theme::Colors const &c = theme::colors();
+  bool const           tmpOn{on("tmp")};
+  bool const           bpOn{on("bp")};
+  bool const           vtmhOpen{on("vtmh")};
+  bool const           vkOpen{on("vk")};
+  bool const           anyFitted{fitted("tmp") || fitted("bp")};
+
+  // lines: TMP -> V-TMH -> main line -> junction; chamber -> V-K -> junction; junction -> BP
+  QPointF const vtmh{440, VAC_Y};
+  QPointF const vk{548, JUNCTION.y()};
+  drawLine(p, {TMP + QPointF(0, -TMP_R), QPointF(TMP.x(), VAC_Y), vtmh}, fitted("tmp"), tmpOn && vtmhOpen && bpOn, c.accent);
+  drawLine(p, {vtmh, QPointF(MAIN_X, VAC_Y), QPointF(MAIN_X, 78)}, anyFitted, vtmhOpen && bpOn, c.accent);
+  // main line: bellows
+  {
+    QPainterPath bellows;
+    bellows.moveTo(MAIN_X, 78);
+    for (int i{0}; i < 14; ++i) {
+      double const y = 78 + i * 16;
+      bellows.cubicTo(MAIN_X + 14, y + 2, MAIN_X + 14, y + 14, MAIN_X, y + 16);
     }
-    p.setPen(QPen(QColor(100, 116, 139), 1));
-    p.setBrush(QColor(71, 85, 105));
-    p.drawRoundedRect(QRectF(LAMP.x() - 16, SPACE.top() + 2, 32, 5), 2, 2);
-    p.setBrush(lit ? QColor(253, 230, 138) : QColor(71, 85, 105));
-    p.drawEllipse(LAMP, 6, 6);
-    addTip(QRectF(LAMP - QPointF(10, 10), QSizeF(20, 20)), m_outputs.value("light").label);
+    p.setPen(QPen(anyFitted ? c.muted : c.off, 3, anyFitted ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap));
+    p.setBrush(Qt::NoBrush);
+    p.drawPath(bellows);
+    if ((vtmhOpen || vkOpen) && bpOn) {
+      QPen dash(c.accent, 3, Qt::CustomDashLine, Qt::FlatCap);
+      dash.setDashPattern({2.5, 2.5});
+      dash.setDashOffset(-m_phase * 0.6);
+      p.setPen(dash);
+      p.drawPath(bellows);
+    }
+    addTip(QRectF(MAIN_X - 6, 78, 26, 226), tr("Main line"));
   }
+  drawLine(p, {QPointF(MAIN_X, 302), JUNCTION}, anyFitted, vtmhOpen && bpOn, c.accent);
+  drawLine(p, {QPointF(492, JUNCTION.y()), vk, JUNCTION}, fitted("vk") || fitted("bp"), vkOpen && bpOn, c.accent);
+  drawLine(p, {JUNCTION, BP + QPointF(0, -BP_R)}, fitted("bp"), bpOn && (vkOpen || vtmhOpen), c.accent);
+  // exhaust
+  drawLine(p, {BP + QPointF(BP_R, 0), QPointF(BP.x() + 72, BP.y())}, fitted("bp"), bpOn, c.accent);
+  {
+    QPointF const tip{BP.x() + 80, BP.y()};
+    p.setPen(QPen(fitted("bp") ? c.muted : c.off, 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawLine(tip, tip + QPointF(-9, -7));
+    p.drawLine(tip, tip + QPointF(-9, 7));
+  }
+  p.setPen(Qt::NoPen);
+  p.setBrush(anyFitted ? c.muted : c.off);
+  p.drawEllipse(JUNCTION, 5, 5);
 
-  // temperature probe and reading
-  if (has("sensor")) {
-    double const t = value("temp");
-    p.setPen(QPen(QColor(148, 163, 184), 1.6));
-    p.drawLine(QPointF(PROBE.x(), SPACE.top()), PROBE - QPointF(0, 4));
-    p.setPen(QPen(QColor(15, 23, 42), 1));
-    p.setBrush(std::isnan(t) ? c.off : QColor(34, 211, 238));
-    p.drawEllipse(PROBE, 4, 4);
-    drawReadout(p, QPointF(PROBE.x() - 54, PROBE.y() + 12), QStringLiteral("T1"), valueText(t, 1, QStringLiteral(" °C")), !std::isnan(t));
-    addTip(QRectF(PROBE - QPointF(8, 8), QSizeF(16, 16)), m_resHolder->states->getSysValue("temp")->getLabel());
+  drawValve(p, vtmh, "vtmh", QStringLiteral("V-TMH"), tr("Valve between the turbo pump and the main line"), false);
+  drawValve(p, vk, "vk", QStringLiteral("V-K"), tr("Valve between the chamber and the backing pump"), true);
+
+  // turbo pump on the top flange: reducer, then the pump with its rotor
+  QColor const tmpColor = !fitted("tmp") ? c.off : (tmpOn ? c.active : c.muted);
+  QPolygonF    reducer;
+  reducer << QPointF(TMP.x() - 12, TMP.y() + TMP_R + 4) << QPointF(TMP.x() + 12, TMP.y() + TMP_R + 4)
+          << QPointF(TMP.x() + 22, FLANGE_Y - 4) << QPointF(TMP.x() - 22, FLANGE_Y - 4);
+  p.setPen(QPen(fitted("tmp") ? c.muted : c.off, 2, fitted("tmp") ? Qt::SolidLine : Qt::DotLine));
+  p.setBrush(c.panel);
+  p.drawPolygon(reducer);
+  p.setPen(QPen(tmpColor, 2.5, fitted("tmp") ? Qt::SolidLine : Qt::DotLine));
+  p.setBrush(tmpOn ? QColor(c.active.red(), c.active.green(), c.active.blue(), 40) : c.panel);
+  p.drawEllipse(TMP, TMP_R, TMP_R);
+  if (tmpOn) {
+    QPen ring(c.accent, 1.5, Qt::DashLine);
+    p.setPen(ring);
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(TMP, TMP_R + 7, TMP_R + 7);
+  }
+  p.save();
+  p.translate(TMP);
+  p.rotate(tmpOn ? m_phase * 18.0 : 0.0);
+  p.setPen(QPen(tmpColor, 2.5, Qt::SolidLine, Qt::RoundCap));
+  for (int i{0}; i < 6; ++i) {
+    p.rotate(60);
+    p.drawLine(QPointF(5, 0), QPointF(TMP_R - 9, -8));
+  }
+  p.drawEllipse(QPointF(0, 0), 5, 5);
+  p.restore();
+  drawTag(p, QPointF(TMP.x() - TMP_R - 12, TMP.y()), Qt::AlignRight | Qt::AlignVCenter, "tmp", QStringLiteral("TMP"));
+  addTip(QRectF(TMP.x() - TMP_R, TMP.y() - TMP_R, 2 * TMP_R, 2 * TMP_R),
+         fitted("tmp") ? tr("Turbomolecular pump (TMP)") : tr("Turbomolecular pump: not fitted on this chamber"));
+
+  // backing pump: a scroll
+  QColor const bpColor = !fitted("bp") ? c.off : (bpOn ? c.active : c.muted);
+  p.setPen(QPen(bpColor, 2.5, fitted("bp") ? Qt::SolidLine : Qt::DotLine));
+  p.setBrush(bpOn ? QColor(c.active.red(), c.active.green(), c.active.blue(), 40) : c.panel);
+  p.drawEllipse(BP, BP_R, BP_R);
+  {
+    QPainterPath spiral;
+    double const turn = bpOn ? m_phase * 0.25 : 0.0;
+    for (int i{0}; i <= 80; ++i) {
+      double const a = i * 0.22 + turn;
+      double const r = 2 + i * 0.28;
+      QPointF const pt(BP.x() + r * std::cos(a), BP.y() + r * std::sin(a));
+      i == 0 ? spiral.moveTo(pt) : spiral.lineTo(pt);
+    }
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(bpColor, 2, Qt::SolidLine, Qt::RoundCap));
+    p.drawPath(spiral);
+  }
+  drawTag(p, QPointF(BP.x() + BP_R + 8, BP.y() + 12), Qt::AlignLeft | Qt::AlignTop, "bp", tr("Backing pump"));
+  addTip(QRectF(BP.x() - BP_R, BP.y() - BP_R, 2 * BP_R, 2 * BP_R),
+         fitted("bp") ? tr("Backing pump (BP)") : tr("Backing pump: not fitted on this chamber"));
+}
+
+void ChamberView::drawSupply(QPainter &p) {
+  theme::Colors const &c = theme::colors();
+
+  // LN2: chamber -> valve -> dewar
+  bool const    ln2Open{on("ln2")};
+  QPointF const valve{518, 548};
+  drawLine(p, {QPointF(470, 548), valve, QPointF(DEWAR.left(), 548)}, fitted("ln2"), ln2Open, c.cold);
+  drawValve(p, valve, "ln2", QStringLiteral("LN₂"), tr("LN₂ valve"), false);
+  p.setPen(QPen(fitted("ln2") ? c.accent : c.off, 2, fitted("ln2") ? Qt::SolidLine : Qt::DotLine));
+  p.setBrush(c.panel);
+  p.drawRoundedRect(DEWAR, 6, 6);
+  p.setFont(canvasFont(14, true));
+  p.setPen(fitted("ln2") ? c.text : c.off);
+  p.drawText(DEWAR, Qt::AlignCenter, QStringLiteral("LN₂"));
+  addTip(DEWAR, fitted("ln2") ? tr("LN₂ dewar") : tr("LN₂ supply: not fitted on this chamber"));
+
+  // refrigeration unit -> evaporator coil (supply and return)
+  bool const cold{cooling()};
+  drawLine(p, {QPointF(FRIDGE.right(), FRIDGE.top() + 18), QPointF(140, FRIDGE.top() + 18), QPointF(140, 252), QPointF(170, 252)},
+           fitted("fridge"), cold, c.cold);
+  drawLine(p, {QPointF(FRIDGE.right(), FRIDGE.bottom() - 18), QPointF(152, FRIDGE.bottom() - 18), QPointF(152, 464), QPointF(170, 464)},
+           fitted("fridge"), cold, c.cold);
+  p.setPen(QPen(!fitted("fridge") ? c.off : (cold ? c.cold : c.muted), 2, fitted("fridge") ? Qt::SolidLine : Qt::DotLine));
+  p.setBrush(c.panel);
+  p.drawRoundedRect(FRIDGE, 8, 8);
+  // the snowflake turns while cooling
+  p.save();
+  p.translate(FRIDGE.center());
+  p.rotate(cold ? m_phase * 3.0 : 0.0);
+  drawSnowflake(p, QPointF(0, 0), 13, !fitted("fridge") ? c.off : (cold ? c.cold : c.muted));
+  p.restore();
+  addTip(FRIDGE, fitted("fridge") ? tr("Cooling unit") : tr("Cooling unit: not fitted on this chamber"));
+  drawTag(p, QPointF(FRIDGE.center().x(), FRIDGE.bottom() + 8), Qt::AlignHCenter | Qt::AlignTop, "fridge", tr("Cooling unit"));
+}
+
+void ChamberView::drawSnowflake(QPainter &p, QPointF const &center, double radius, QColor const &color) {
+  p.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap));
+  p.setBrush(Qt::NoBrush);
+  for (int i{0}; i < 3; ++i) {
+    double const  a = i * M_PI / 3.0;
+    QPointF const d = QPointF(std::cos(a), std::sin(a)) * radius;
+    p.drawLine(center + d, center - d);
   }
 }
 
-void ChamberView::drawCards(QPainter &p) {
-  theme::Colors const &c    = theme::colors();
-  QVector<Card> const  list = cards();
-  double const         top{64}, bottom{580}, left{622}, right{978};
-  double const         h{48};
-  double const         gap = list.size() > 1 ? std::min(18.0, (bottom - top - h * list.size()) / (list.size() - 1)) : 0.0;
-  double const         blockH = h * list.size() + gap * (list.size() - 1);
-  double               y      = top + (bottom - top - blockH) / 2.0;
-  for (Card const &card : list) {
-    QRectF const r(left, y, right - left, h);
-    QColor const color = card.state == State::ACTIVE ? c.active : (card.state == State::READY ? c.ready : c.off);
-    // leader line
-    p.setPen(QPen(QColor(c.muted.red(), c.muted.green(), c.muted.blue(), 150), 1));
-    p.setBrush(Qt::NoBrush);
-    QPainterPath leader;
-    leader.moveTo(r.left(), r.center().y());
-    leader.lineTo(r.left() - 18, r.center().y());
-    leader.lineTo(card.anchor);
-    p.drawPath(leader);
-    // card
-    p.setPen(QPen(c.border, 1));
-    p.setBrush(theme::isDark() ? c.window : c.panelAlt);
-    p.drawRoundedRect(r, 6, 6);
-    p.setPen(card.state == State::READY ? QPen(color, 1.8) : Qt::NoPen);
-    p.setBrush(card.state == State::READY ? Qt::NoBrush : QBrush(color));
-    p.drawEllipse(QPointF(r.left() + 20, r.center().y()), 5, 5);
-    p.setFont(canvasFont(15, true));
-    p.setPen(c.text);
-    p.drawText(r.adjusted(36, 0, -10, 0), Qt::AlignVCenter | Qt::AlignLeft, card.title);
-    p.setFont(canvasFont(13));
-    p.setPen(card.state == State::OFF ? c.muted : color);
-    p.drawText(r.adjusted(36, 0, -14, 0), Qt::AlignVCenter | Qt::AlignRight, card.status);
-    y += h + gap;
+void ChamberView::drawTag(QPainter &p, QPointF const &anchor, Qt::Alignment align, QString const &key, QString const &title) {
+  theme::Colors const &c = theme::colors();
+  Tag const            t = tag(key);
+  bool const           active{t.state == State::ACTIVE};
+  QFont const          titleFont  = canvasFont(12, true);
+  QFont const          statusFont = canvasFont(11, active);
+  double const         dot{3.5}, gap{5}, pad{7}, height{36};
+  double const         statusW = 2 * dot + gap + QFontMetricsF(statusFont).horizontalAdvance(t.status);
+  double const         width   = std::max(QFontMetricsF(titleFont).horizontalAdvance(title), statusW) + 2 * pad;
+  QPointF              corner  = anchor;
+  if (align & Qt::AlignRight) {
+    corner.rx() -= width;
+  } else if (align & Qt::AlignHCenter) {
+    corner.rx() -= width / 2;
   }
+  if (align & Qt::AlignBottom) {
+    corner.ry() -= height;
+  } else if (align & Qt::AlignVCenter) {
+    corner.ry() -= height / 2;
+  }
+  QRectF const box(corner, QSizeF(width, height));
+
+  // lit while the component is on
+  if (active) {
+    p.setPen(QPen(QColor(c.active.red(), c.active.green(), c.active.blue(), 120), 1));
+    p.setBrush(QColor(c.active.red(), c.active.green(), c.active.blue(), theme::isDark() ? 50 : 30));
+    p.drawRoundedRect(box, 7, 7);
+  }
+  Qt::Alignment const horizontal = (align & Qt::AlignRight)     ? Qt::AlignRight
+                                   : (align & Qt::AlignHCenter) ? Qt::AlignHCenter
+                                                                : Qt::AlignLeft;
+  p.setFont(titleFont);
+  p.setPen(t.fitted ? c.text : c.off);
+  p.drawText(box.adjusted(pad, 3, -pad, -height / 2), horizontal | Qt::AlignVCenter, title);
+
+  // state: a dot (pulsing while on) and the text
+  QRectF const  line = box.adjusted(pad, height / 2 - 1, -pad, -3);
+  double const  x    = (horizontal == Qt::AlignRight)     ? line.right() - statusW
+                       : (horizontal == Qt::AlignHCenter) ? line.center().x() - statusW / 2
+                                                          : line.left();
+  QPointF const at(x + dot, line.center().y());
+  if (active) {
+    double const pulse = 0.5 + 0.5 * std::sin(m_phase * 0.3);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(c.active.red(), c.active.green(), c.active.blue(), static_cast<int>(40 + 60 * pulse)));
+    p.drawEllipse(at, dot + 1.5 + 2 * pulse, dot + 1.5 + 2 * pulse);
+    p.setBrush(c.active);
+  } else {
+    p.setPen(QPen(t.fitted && (t.state == State::READY) ? c.muted : c.off, 1.2));
+    p.setBrush(t.state == State::READY ? QBrush(c.ready) : QBrush(Qt::NoBrush));
+  }
+  p.drawEllipse(at, dot, dot);
+  p.setFont(statusFont);
+  p.setPen(active ? c.active : (t.fitted ? c.muted : c.off));
+  p.drawText(QRectF(x + 2 * dot + gap, line.top(), statusW, line.height()), Qt::AlignLeft | Qt::AlignVCenter, t.status);
+}
+
+void ChamberView::drawPlc(QPainter &p) {
+  theme::Colors const &c = theme::colors();
+  auto const           state = m_resHolder->status->getAppState();
+  bool const           live{online()};
+  bool const           blink{(static_cast<int>(m_phase / 4) % 2) == 0};
+
+  // a small rack: the CPU module and three I/O modules
+  p.setPen(QPen(live ? c.active : c.muted, 2));
+  p.setBrush(c.panel);
+  p.drawRoundedRect(PLC, 5, 5);
+  double const module{PLC.width() / 4};
+  p.setPen(QPen(c.border, 1.5));
+  for (int i{1}; i < 4; ++i) {
+    p.drawLine(QPointF(PLC.left() + i * module, PLC.top() + 4), QPointF(PLC.left() + i * module, PLC.bottom() - 4));
+  }
+  auto led = [&](QPointF const &at, QColor const &color, bool lit) {
+    p.setPen(QPen(lit ? color : c.off, 1));
+    p.setBrush(lit ? QBrush(color) : QBrush(Qt::NoBrush));
+    p.drawEllipse(at, 3, 3);
+  };
+  // CPU: link (blinking while connecting), run, communication (blinks while data flows)
+  double const cpuX{PLC.left() + module / 2};
+  bool const   linking{state == StatusManager::AppState::CONNECTING};
+  bool const   linked{live || (state == StatusManager::AppState::CONNECTED)};
+  led(QPointF(cpuX, PLC.top() + 14), linking ? c.warning : c.active, linked || (linking && blink));
+  led(QPointF(cpuX, PLC.top() + 29), c.active, live);
+  led(QPointF(cpuX, PLC.top() + 44), c.accent, live && blink);
+  // I/O modules: one LED per output bit
+  double const outputs = (live && m_resHolder->states->contains("outputs")) ? m_resHolder->states->getSysValue("outputs")->getValue() : 0.0;
+  for (int m{1}; m < 4; ++m) {
+    double const left{PLC.left() + m * module};
+    for (int row{0}; row < 5; ++row) {
+      double const y{PLC.top() + 10 + row * 9.5};
+      p.setPen(QPen(c.border, 1.5, Qt::SolidLine, Qt::RoundCap));
+      p.drawLine(QPointF(left + 12, y), QPointF(left + module - 6, y));
+      led(QPointF(left + 7, y), c.active, live && utils::getBitOfFloat(outputs, (m - 1) * 5 + row));
+    }
+  }
+  addTip(PLC, tr("PLC: %1").arg(tag("plc").status));
+  drawTag(p, QPointF(PLC.center().x(), PLC.bottom() + 8), Qt::AlignHCenter | Qt::AlignTop, "plc", QStringLiteral("PLC"));
 }
 
 void ChamberView::addTip(QRectF const &rect, QString const &text) {

@@ -21,6 +21,12 @@
 #include <QSpinBox>
 #include <QScrollArea>
 #include <QSplitter>
+#include <QGridLayout>
+#include <QMessageBox>
+#include <QRegularExpression>
+#include <QActionGroup>
+#include <functional>
+#include <QScrollBar>
 #include <QTableWidget>
 #include <QTabBar>
 #include <QTabWidget>
@@ -90,7 +96,7 @@ QColor eventColor(int type) {
 constexpr int MAX_COMPARE_MENU_RUNS{40};
 
 int buttonHeight() {
-  return static_cast<int>(40 * utils::ssf());
+  return static_cast<int>(28 * utils::ssf());
 }
 
 // Holds a wrapping (flow) layout and keeps its minimum height equal to the wrapped rows, so splitters and box
@@ -128,6 +134,26 @@ private:
       }
     }
   }
+};
+
+// Calls back with the new size whenever the watched widget is resized.
+class ViewportSizer : public QObject {
+public:
+  ViewportSizer(QWidget *watched, std::function<void(QSize const &)> onResize)
+      : QObject{watched}, m_onResize{std::move(onResize)} {
+    watched->installEventFilter(this);
+  }
+
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override {
+    if (event->type() == QEvent::Resize) {
+      m_onResize(static_cast<QWidget *>(watched)->size());
+    }
+    return QObject::eventFilter(watched, event);
+  }
+
+private:
+  std::function<void(QSize const &)> m_onResize;
 };
 
 QPushButton *makeButton(QString const &text, QWidget *parent) {
@@ -205,59 +231,77 @@ AnalysisRunPage::AnalysisRunPage(ResHolder          *resHolder,
   QTimer::singleShot(0, this, &AnalysisRunPage::load);
 }
 
+void AnalysisRunPage::updateToolIcons() {
+  theme::Colors const &c = theme::colors();
+  int const            size{static_cast<int>(16 * utils::ssf())};
+  for (auto const &[button, kind] : std::as_const(m_iconButtons)) {
+    button->setIcon(theme::menuIcon(kind, c.text, c.text, size));
+  }
+}
+
+void AnalysisRunPage::changeEvent(QEvent *event) {
+  QWidget::changeEvent(event);
+  if (event->type() == QEvent::PaletteChange) {
+    updateToolIcons();
+  }
+}
+
+QString AnalysisRunPage::tabTitle() const {
+  QString text = m_run.title;
+  // "... (test)", "... (alarm)": the part in brackets at the end
+  static QRegularExpression const trailing(QStringLiteral("\\s*\\([^()]*\\)\\s*$"));
+  while (trailing.match(text).hasMatch()) {
+    text.remove(trailing);
+  }
+  // imported logger runs: "yyyy-MM-dd HH:mm <folder> run_..." -> without the folder
+  static QRegularExpression const imported(QStringLiteral("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}) \\S+ (run_\\S+)$"));
+  if (QRegularExpressionMatch const match = imported.match(text); match.hasMatch()) {
+    text = match.captured(1) + QLatin1Char(' ') + match.captured(2);
+  }
+  return text.trimmed().isEmpty() ? m_run.title : text.trimmed();
+}
+
 void AnalysisRunPage::buildUi() {
   setObjectName("pageCard");
   setAttribute(Qt::WA_StyledBackground);
   auto *root = new QVBoxLayout(this);
-  root->setContentsMargins(14 * utils::ssf(), 12 * utils::ssf(), 14 * utils::ssf(), 10 * utils::ssf());
-  root->setSpacing(4 * utils::ssf());
+  root->setContentsMargins(12 * utils::ssf(), 8 * utils::ssf(), 12 * utils::ssf(), 8 * utils::ssf());
+  root->setSpacing(6 * utils::ssf());
 
-  // title / stats
+  // title on the left, the main tools on the right, everything else in the ⋮ menu
   m_titleLabel = new QLabel(tr("Loading…"), this);
   {
     QFont font = m_titleLabel->font();
     font.setBold(true);
-    font.setPointSizeF(font.pointSizeF() * 1.2);
+    font.setPointSizeF(font.pointSizeF() * 1.1);
     m_titleLabel->setFont(font);
   }
-  m_statsLabel = new QLabel(this);
-  m_statsLabel->setProperty("muted", true);
-  m_integrityBadge = new QLabel(this);
+  // long texts must not force the pane wider when tabs are split
+  m_titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  m_statsLabel = new QLabel(this); // only shows a load error
+  m_statsLabel->setVisible(false);
+  m_statsLabel->setWordWrap(true);
+  m_integrityBadge = new QLabel(this); // integrity: Statistics -> Experiment record
   m_integrityBadge->setVisible(false);
-  for (QLabel *label : {m_titleLabel, m_statsLabel}) {
-    // long texts must not force the pane wider when tabs are split
-    label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-  }
-  auto *headerLay = new QHBoxLayout();
-  headerLay->addWidget(m_titleLabel, 1);
-  headerLay->addWidget(m_integrityBadge, 0, Qt::AlignTop);
-  root->addLayout(headerLay);
-  root->addWidget(m_statsLabel);
 
-  // tools (wrap to more rows in narrow panes)
-  m_channelsBtn = makeButton(tr("Channels ▾"), this);
-  connect(m_channelsBtn, &QPushButton::clicked, this, &AnalysisRunPage::openChannelsMenu);
+  auto toolButton = [this](QString const &text, QString const &icon) {
+    auto *button = new QPushButton(text, this);
+    button->setFixedHeight(static_cast<int>(30 * utils::ssf()));
+    button->setIconSize(QSize(16 * utils::ssf(), 16 * utils::ssf()));
+    button->setFocusPolicy(Qt::NoFocus);
+    m_iconButtons.push_back({button, icon});
+    return button;
+  };
 
-  m_compareBtn = makeButton(tr("Compare ▾"), this);
+  m_compareBtn = toolButton(tr("Compare"), "compare");
   m_compareBtn->setToolTip(tr("Overlay the first selected channel of other experiments"));
   connect(m_compareBtn, &QPushButton::clicked, this, &AnalysisRunPage::openCompareMenu);
 
-  m_modeCombo = new QComboBox(this);
-  m_modeCombo->addItem(tr("Line"));
-  m_modeCombo->addItem(tr("Scatter"));
-  m_modeCombo->setMinimumHeight(buttonHeight());
-  connect(m_modeCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
-    m_chart->setMode(index == 1 ? AnalysisChart::Mode::SCATTER : AnalysisChart::Mode::LINE);
-  });
+  m_channelsBtn = toolButton(tr("Channels"), "channels");
+  m_channelsBtn->setToolTip(tr("Channels shown and their colours"));
+  connect(m_channelsBtn, &QPushButton::clicked, this, &AnalysisRunPage::openChannelsMenu);
 
-  auto *resetBtn = makeButton(tr("Reset view"), this);
-  resetBtn->setToolTip(tr("Fit the whole experiment.\nDrag to pan, wheel to zoom,\nright-drag or Ctrl+drag to zoom into a box."));
-  connect(resetBtn, &QPushButton::clicked, this, [this] {
-    m_chart->resetView();
-    updateTimeControls();
-  });
-
-  m_annotateBtn = makeButton(tr("Annotate"), this);
+  m_annotateBtn = toolButton(tr("Annotate"), "annotate");
   m_annotateBtn->setCheckable(true);
   m_annotateBtn->setToolTip(tr("Drag across the chart to mark and label a time range"));
   connect(m_annotateBtn, &QPushButton::toggled, this, [this](bool checked) {
@@ -265,15 +309,33 @@ void AnalysisRunPage::buildUi() {
     m_annotateBtn->setText(checked ? tr("Done") : tr("Annotate"));
   });
 
-  auto *notesBtn = makeButton(tr("Rules && notes"), this);
-  notesBtn->setCheckable(true);
+  auto *resetBtn = toolButton(tr("Reset view"), "fit");
+  resetBtn->setToolTip(tr("Fit the whole experiment.\nDrag to pan, wheel to zoom,\nright-drag or Ctrl+drag to zoom into a box."));
+  connect(resetBtn, &QPushButton::clicked, this, [this] {
+    m_chart->resetView();
+    updateTimeControls();
+  });
 
-  auto *statisticsBtn = makeButton(tr("Statistics"), this);
-  statisticsBtn->setCheckable(true);
-  statisticsBtn->setToolTip(tr("Statistics of the visible range, experiment KPIs and automatic stages"));
+  auto *statisticsBtn = toolButton(tr("Statistics"), "stats");
+  statisticsBtn->setToolTip(tr("Statistics of the visible range, experiment KPIs, stages, anomalies, comparison, events and record"));
 
-  m_exportBtn      = makeButton(tr("Export ▾"), this);
-  auto *exportMenu = new QMenu(m_exportBtn);
+  m_moreBtn = toolButton(QString(), "dots");
+  m_moreBtn->setFixedWidth(static_cast<int>(34 * utils::ssf()));
+  m_moreBtn->setToolTip(tr("More: line style, labels, view options, rules & notes, export"));
+
+  // line / scatter (kept as a hidden combo: the ⋮ menu drives it)
+  m_modeCombo = new QComboBox(this);
+  m_modeCombo->addItem(tr("Line"));
+  m_modeCombo->addItem(tr("Scatter"));
+  m_modeCombo->setVisible(false);
+  connect(m_modeCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
+    m_chart->setMode(index == 1 ? AnalysisChart::Mode::SCATTER : AnalysisChart::Mode::LINE);
+  });
+
+  // export (in the ⋮ menu; the hidden button keeps the menu)
+  m_exportBtn      = new QPushButton(tr("Export"), this);
+  m_exportBtn->setVisible(false);
+  auto *exportMenu = new QMenu(tr("Export"), this);
   exportMenu->addAction(tr("Chart PNG"), this, &AnalysisRunPage::exportChartPng);
   exportMenu->addAction(tr("Experiment CSV"), this, &AnalysisRunPage::exportRunCsv);
   exportMenu->addAction(tr("Comparison CSV"), this, &AnalysisRunPage::exportComparisonCsv);
@@ -288,12 +350,42 @@ void AnalysisRunPage::buildUi() {
     ->setEnabled(m_run.storeKey.isEmpty());
   m_exportBtn->setMenu(exportMenu);
 
-  auto *tools = new FlowLayout(nullptr, 4 * utils::ssf());
-  for (QWidget *widget : std::initializer_list<QWidget *>{
-         m_channelsBtn, m_compareBtn, m_modeCombo, resetBtn, m_annotateBtn, notesBtn, statisticsBtn, m_exportBtn}) {
-    tools->addWidget(widget);
+  // ⋮ menu
+  m_moreMenu       = new QMenu(this);
+  auto *styleGroup = new QActionGroup(m_moreMenu);
+  QAction *lineAct = m_moreMenu->addAction(tr("Line"));
+  QAction *dotsAct = m_moreMenu->addAction(tr("Scatter"));
+  for (QAction *action : {lineAct, dotsAct}) {
+    action->setCheckable(true);
+    styleGroup->addAction(action);
   }
-  root->addLayout(tools);
+  lineAct->setChecked(true);
+  connect(lineAct, &QAction::triggered, this, [this] { m_modeCombo->setCurrentIndex(0); });
+  connect(dotsAct, &QAction::triggered, this, [this] { m_modeCombo->setCurrentIndex(1); });
+  m_moreMenu->addSeparator();
+  QAction *labelsAct = m_moreMenu->addAction(tr("Show labels"));
+  labelsAct->setCheckable(true);
+  labelsAct->setChecked(true);
+  QAction *optionsAct = m_moreMenu->addAction(tr("View options (range, smoothing, overlays)"));
+  optionsAct->setCheckable(true);
+  m_moreMenu->addSeparator();
+  QAction *annotationsAct = m_moreMenu->addAction(tr("Annotations…"));
+  QAction *notesAct       = m_moreMenu->addAction(tr("Variable rules…"));
+  m_moreMenu->addSeparator();
+  m_moreMenu->addMenu(exportMenu);
+  connect(m_moreBtn, &QPushButton::clicked, this, [this] {
+    m_moreMenu->exec(m_moreBtn->mapToGlobal(QPoint(m_moreBtn->width() - m_moreMenu->sizeHint().width(), m_moreBtn->height())));
+  });
+
+  auto *headerLay = new QHBoxLayout();
+  headerLay->setSpacing(6 * utils::ssf());
+  headerLay->addWidget(m_titleLabel, 1);
+  for (QPushButton *button : {m_compareBtn, m_channelsBtn, m_annotateBtn, resetBtn, statisticsBtn, m_moreBtn}) {
+    headerLay->addWidget(button);
+  }
+  root->addLayout(headerLay);
+  root->addWidget(m_statsLabel);
+  updateToolIcons();
 
   // chart
   m_chart = new AnalysisChart(this);
@@ -386,52 +478,89 @@ void AnalysisRunPage::buildUi() {
   connect(m_setpointCheck, &QCheckBox::toggled, this, &AnalysisRunPage::refreshSetpoint);
   connect(m_setpointEdit, &LineEditNum::userEditingFinished, this, &AnalysisRunPage::refreshSetpoint);
 
-  // chart and its controls above, rules / notes and statistics below: a splitter shares the height
-  // (on a small screen the panels would otherwise squeeze the chart into the controls)
-  auto *splitter = new QSplitter(Qt::Vertical, this);
-  splitter->setChildrenCollapsible(false);
-  auto *chartArea = new QWidget(splitter);
-  auto *chartLay  = new QVBoxLayout(chartArea);
-  chartLay->setContentsMargins(0, 0, 0, 0);
-  chartLay->addWidget(m_chart, 1);
-  auto *controlsBox = new FlowBox(chartArea);
+  // the chart fills the visible height; view options, rules / notes and statistics open below it
+  // and the page scrolls to them, so the chart never gets squeezed
+  auto *page = new QScrollArea(this);
+  page->setWidgetResizable(true);
+  page->setFrameShape(QFrame::NoFrame);
+  page->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
+  auto *pageContent = new QWidget(page);
+  pageContent->setAutoFillBackground(false);
+  page->viewport()->setAutoFillBackground(false);
+  page->setWidget(pageContent);
+  auto *pageLay = new QVBoxLayout(pageContent);
+  pageLay->setContentsMargins(0, 0, 0, 0);
+  pageLay->setSpacing(6 * utils::ssf());
+  m_chart->setParent(pageContent);
+  pageLay->addWidget(m_chart);
+  auto *controlsBox = new FlowBox(pageContent);
   controlsBox->setLayout(controls);
-  chartLay->addWidget(controlsBox);
-  // the panels scroll when the window is too low for them and the chart together (compare mode)
-  auto *panels = new QScrollArea(splitter);
-  panels->setWidgetResizable(true);
-  panels->setFrameShape(QFrame::NoFrame);
-  panels->setMinimumHeight(90 * utils::ssf());
-  auto *panelsContent = new QWidget(panels);
-  panelsContent->setAutoFillBackground(false);
-  panels->viewport()->setAutoFillBackground(false);
-  panels->setWidget(panelsContent);
-  auto *panelsLay = new QVBoxLayout(panelsContent);
-  panelsLay->setContentsMargins(0, 0, 0, 0);
-  splitter->addWidget(chartArea);
-  splitter->addWidget(panels);
-  splitter->setStretchFactor(0, 3);
-  splitter->setStretchFactor(1, 2);
-  panels->setVisible(false);
-  root->addWidget(splitter, 1);
+  controlsBox->setVisible(false);
+  pageLay->addWidget(controlsBox);
+  pageLay->addStretch();
+  root->addWidget(page, 1);
 
-  m_notesPanel = buildNotesPanel();
-  m_notesPanel->setVisible(false);
-  panelsLay->addWidget(m_notesPanel);
-
-  m_statisticsPanel = buildStatisticsPanel();
-  m_statisticsPanel->setVisible(false);
-  panelsLay->addWidget(m_statisticsPanel, 1);
-  auto showPanels = [this, panels] {
-    panels->setVisible(!m_notesPanel->isHidden() || !m_statisticsPanel->isHidden());
-  };
-  connect(notesBtn, &QPushButton::toggled, this, [this, showPanels](bool visible) {
-    m_notesPanel->setVisible(visible);
-    showPanels();
+  // the chart fills the visible height
+  auto *sizer = new ViewportSizer(page->viewport(), [this](QSize const &size) {
+    m_chart->setFixedHeight(qMax(static_cast<int>(200 * utils::ssf()), size.height()));
   });
-  connect(statisticsBtn, &QPushButton::toggled, this, [this, showPanels](bool visible) {
-    m_statisticsPanel->setVisible(visible);
-    showPanels();
+  (void)sizer;
+
+  // statistics and rules & notes open in their own windows over the page; they stay open while
+  // the chart is zoomed or panned (the statistics follow the visible range)
+  auto makeDialog = [this](QWidget *panel, QString const &title) {
+    auto *dialog = new QDialog(this);
+    dialog->setWindowTitle(title);
+    auto *lay = new QVBoxLayout(dialog);
+    lay->setContentsMargins(14 * utils::ssf(), 12 * utils::ssf(), 14 * utils::ssf(), 12 * utils::ssf());
+    panel->setParent(dialog);
+    lay->addWidget(panel);
+    return dialog;
+  };
+  m_notesPanel       = buildNotesPanel();
+  m_statisticsPanel  = buildStatisticsPanel();
+  m_notesDialog       = makeDialog(m_notesPanel, tr("Variable rules · %1").arg(tabTitle()));
+  m_annotationsDialog = makeDialog(buildAnnotationsPanel(), tr("Annotations · %1").arg(tabTitle()));
+  refreshAnnotationsList();
+  m_statisticsDialog = makeDialog(m_statisticsPanel, m_run.title.isEmpty() ? tr("Statistics") : tr("Statistics · %1").arg(tabTitle()));
+
+  // scroll down to the view options when they open; back to the chart when they close
+  connect(labelsAct, &QAction::toggled, this, [this](bool visible) { m_chart->setLegendVisible(visible); });
+  connect(optionsAct, &QAction::toggled, this, [controlsBox, page](bool visible) {
+    controlsBox->setVisible(visible);
+    QTimer::singleShot(0, page, [page, controlsBox, visible] {
+      page->verticalScrollBar()->setValue(visible ? controlsBox->mapTo(page->widget(), QPoint(0, 0)).y() : 0);
+    });
+  });
+  // open over the main window, most of its size
+  auto placeDialog = [this](QDialog *dialog) {
+    QRect const area = window()->geometry();
+    dialog->resize(static_cast<int>(area.width() * 0.85), static_cast<int>(area.height() * 0.8));
+    dialog->move(area.center() - QPoint(dialog->width() / 2, dialog->height() / 2));
+  };
+  connect(annotationsAct, &QAction::triggered, this, [this, placeDialog] {
+    if (!m_annotationsDialog->isVisible()) {
+      placeDialog(m_annotationsDialog);
+    }
+    m_annotationsDialog->show();
+    m_annotationsDialog->raise();
+    m_annotationsDialog->activateWindow();
+  });
+  connect(notesAct, &QAction::triggered, this, [this, placeDialog] {
+    if (!m_notesDialog->isVisible()) {
+      placeDialog(m_notesDialog);
+    }
+    m_notesDialog->show();
+    m_notesDialog->raise();
+    m_notesDialog->activateWindow();
+  });
+  connect(statisticsBtn, &QPushButton::clicked, this, [this, placeDialog] {
+    if (!m_statisticsDialog->isVisible()) {
+      placeDialog(m_statisticsDialog);
+    }
+    m_statisticsDialog->show();
+    m_statisticsDialog->raise();
+    m_statisticsDialog->activateWindow();
     refreshRangeStatistics();
   });
   // follow zoom / pan, without recomputing on every intermediate step
@@ -485,7 +614,7 @@ QWidget *AnalysisRunPage::buildNotesPanel() {
 
   auto *rulesListLay = new QHBoxLayout();
   m_rulesList        = new QListWidget(rulesPage);
-  m_rulesList->setFixedHeight(100 * utils::ssf());
+  m_rulesList->setMinimumHeight(100 * utils::ssf());
   auto *removeRuleBtn = makeButton(tr("Remove"), rulesPage);
   connect(removeRuleBtn, &QPushButton::clicked, this, [this] {
     if (auto *item = m_rulesList->currentItem()) {
@@ -494,33 +623,184 @@ QWidget *AnalysisRunPage::buildNotesPanel() {
   });
   rulesListLay->addWidget(m_rulesList, 1);
   rulesListLay->addWidget(removeRuleBtn, 0, Qt::AlignTop);
-  rulesLay->addLayout(rulesListLay);
-
-  // annotations
-  auto *annotationsPage = new QWidget(panel);
-  auto *annotationsLay  = new QVBoxLayout(annotationsPage);
-  annotationsLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
-  auto *hint = new QLabel(tr("Press \"Annotate\", then drag across the chart to mark and label a time range."),
-                          annotationsPage);
-  hint->setWordWrap(true);
-  hint->setStyleSheet("color: #64748b;");
-  auto *annotationsListLay = new QHBoxLayout();
-  m_annotationsList        = new QListWidget(annotationsPage);
-  m_annotationsList->setFixedHeight(100 * utils::ssf());
-  auto *removeAnnotationBtn = makeButton(tr("Remove"), annotationsPage);
-  connect(removeAnnotationBtn, &QPushButton::clicked, this, [this] {
-    if (auto *item = m_annotationsList->currentItem()) {
-      m_notes->removeAnnotation(item->data(Qt::UserRole).toString());
-    }
-  });
-  annotationsListLay->addWidget(m_annotationsList, 1);
-  annotationsListLay->addWidget(removeAnnotationBtn, 0, Qt::AlignTop);
-  annotationsLay->addWidget(hint);
-  annotationsLay->addLayout(annotationsListLay);
+  rulesLay->addLayout(rulesListLay, 1); // the list takes the free height
 
   panel->addTab(rulesPage, tr("Variable rules"));
-  panel->addTab(annotationsPage, tr("Annotations"));
   return panel;
+}
+
+QWidget *AnalysisRunPage::buildAnnotationsPanel() {
+  double const ssf{utils::ssf()};
+  auto        *panel = new QWidget(this);
+  auto        *lay   = new QVBoxLayout(panel);
+  lay->setContentsMargins(0, 0, 0, 0);
+  lay->setSpacing(8 * ssf);
+
+  auto *hint = new QLabel(tr("Annotations of this experiment's time span. To add one, press Annotate and drag across the chart."), panel);
+  hint->setProperty("muted", true);
+  hint->setWordWrap(true);
+  lay->addWidget(hint);
+
+  m_annotationsTable = new QTableWidget(0, 6, panel);
+  m_annotationsTable->setObjectName("flatTable");
+  m_annotationsTable->setHorizontalHeaderLabels(
+    {QString(), tr("Label").toUpper(), tr("From").toUpper(), tr("To").toUpper(), tr("Duration").toUpper(), tr("By").toUpper()});
+  m_annotationsTable->verticalHeader()->setVisible(false);
+  m_annotationsTable->verticalHeader()->setDefaultSectionSize(static_cast<int>(30 * ssf));
+  m_annotationsTable->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  m_annotationsTable->horizontalHeader()->setHighlightSections(false);
+  m_annotationsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+  m_annotationsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  m_annotationsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_annotationsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_annotationsTable->setSelectionMode(QAbstractItemView::SingleSelection);
+  m_annotationsTable->setShowGrid(false);
+  m_annotationsTable->setWordWrap(false);
+  lay->addWidget(m_annotationsTable, 1);
+
+  auto *buttons = new QHBoxLayout();
+  buttons->setSpacing(8 * ssf);
+  auto *showBtn   = makeButton(tr("Show on chart"), panel);
+  auto *editBtn   = makeButton(tr("Edit…"), panel);
+  auto *removeBtn = makeButton(tr("Remove"), panel);
+  removeBtn->setProperty("outline", true);
+  auto *closeBtn = makeButton(tr("Close"), panel);
+  closeBtn->setObjectName("primaryButton");
+  for (QPushButton *button : {showBtn, editBtn, removeBtn, closeBtn}) {
+    button->setMinimumWidth(110 * ssf);
+  }
+  buttons->addWidget(showBtn);
+  buttons->addWidget(editBtn);
+  buttons->addWidget(removeBtn);
+  buttons->addStretch();
+  buttons->addWidget(closeBtn);
+  lay->addLayout(buttons);
+
+  auto selectedRow = [this] {
+    QList<QTableWidgetItem *> const items = m_annotationsTable->selectedItems();
+    return items.isEmpty() ? -1 : items.first()->row();
+  };
+  auto updateButtons = [this, showBtn, editBtn, removeBtn, selectedRow] {
+    bool const any{selectedRow() >= 0};
+    showBtn->setEnabled(any);
+    editBtn->setEnabled(any);
+    removeBtn->setEnabled(any);
+  };
+  connect(m_annotationsTable, &QTableWidget::itemSelectionChanged, this, updateButtons);
+  connect(m_notes, &AnalysisNotesStore::annotationsChanged, this, updateButtons);
+  updateButtons();
+
+  connect(showBtn, &QPushButton::clicked, this, [this, selectedRow] {
+    int const row{selectedRow()};
+    if (row < 0) {
+      return;
+    }
+    double const x0{m_annotationsTable->item(row, 2)->data(Qt::UserRole).toDouble() - m_run.start};
+    double const x1{m_annotationsTable->item(row, 3)->data(Qt::UserRole).toDouble() - m_run.start};
+    double const margin{std::max(30.0, 0.15 * (x1 - x0))};
+    m_chart->setTimeRange(std::max(0.0, x0 - margin), x1 + margin);
+    updateTimeControls();
+  });
+  connect(editBtn, &QPushButton::clicked, this, [this, selectedRow] { editAnnotation(selectedRow()); });
+  connect(m_annotationsTable, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
+    editAnnotation(row);
+  });
+  connect(removeBtn, &QPushButton::clicked, this, [this, selectedRow] {
+    int const row{selectedRow()};
+    if (row < 0) {
+      return;
+    }
+    QString const label = m_annotationsTable->item(row, 1)->text();
+    if (QMessageBox::question(this, tr("Remove annotation"), tr("Remove the annotation \"%1\"?").arg(label)) == QMessageBox::Yes) {
+      m_notes->removeAnnotation(m_annotationsTable->item(row, 0)->data(Qt::UserRole).toString());
+    }
+  });
+  connect(closeBtn, &QPushButton::clicked, panel, [panel] { panel->window()->close(); });
+  return panel;
+}
+
+void AnalysisRunPage::editAnnotation(int row) {
+  if ((row < 0) || (row >= m_annotationsTable->rowCount())) {
+    return;
+  }
+  QString const id = m_annotationsTable->item(row, 0)->data(Qt::UserRole).toString();
+  AnalysisNotesStore::Annotation current;
+  bool                           found{false};
+  for (auto const &annotation : m_notes->annotations(m_run.start, m_run.end, m_run.key)) {
+    if (annotation.id == id) {
+      current = annotation;
+      found   = true;
+      break;
+    }
+  }
+  if (!found) {
+    return;
+  }
+
+  QDialog dialog(this);
+  dialog.setWindowTitle(tr("Edit annotation"));
+  auto *lay  = new QVBoxLayout(&dialog);
+  auto *grid = new QGridLayout();
+  grid->setHorizontalSpacing(10 * utils::ssf());
+  grid->setVerticalSpacing(8 * utils::ssf());
+  auto *labelEdit = new QLineEdit(current.label, &dialog);
+  labelEdit->setMinimumHeight(buttonHeight());
+  auto *colorCombo = makeColorCombo(&dialog);
+  for (int i{0}; i < colorCombo->count(); ++i) {
+    if (QColor(colorCombo->itemData(i).toString()) == current.color) {
+      colorCombo->setCurrentIndex(i);
+    }
+  }
+  auto timeSpin = [&dialog](double minutes) {
+    auto *spin = new QDoubleSpinBox(&dialog);
+    spin->setDecimals(2);
+    spin->setSuffix(QObject::tr(" min"));
+    spin->setRange(-1e6, 1e6);
+    spin->setValue(minutes);
+    spin->setMinimumHeight(buttonHeight());
+    return spin;
+  };
+  auto *fromSpin = timeSpin((current.start - m_run.start) / 60.0);
+  auto *toSpin   = timeSpin((current.end - m_run.start) / 60.0);
+  grid->addWidget(new QLabel(tr("Label"), &dialog), 0, 0);
+  grid->addWidget(labelEdit, 0, 1, 1, 3);
+  grid->addWidget(new QLabel(tr("Colour"), &dialog), 1, 0);
+  grid->addWidget(colorCombo, 1, 1, 1, 3);
+  grid->addWidget(new QLabel(tr("From"), &dialog), 2, 0);
+  grid->addWidget(fromSpin, 2, 1);
+  grid->addWidget(new QLabel(tr("to"), &dialog), 2, 2);
+  grid->addWidget(toSpin, 2, 3);
+  lay->addLayout(grid);
+  auto *hint = new QLabel(tr("Times from the start of this experiment."), &dialog);
+  hint->setProperty("muted", true);
+  lay->addWidget(hint);
+  auto *buttons   = new QHBoxLayout();
+  auto *cancelBtn = makeButton(tr("Cancel"), &dialog);
+  auto *saveBtn   = makeButton(tr("Save"), &dialog);
+  saveBtn->setObjectName("primaryButton");
+  saveBtn->setDefault(true);
+  buttons->addStretch();
+  buttons->addWidget(cancelBtn);
+  buttons->addWidget(saveBtn);
+  lay->addLayout(buttons);
+  connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+  connect(saveBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+  dialog.resize(460 * utils::ssf(), dialog.sizeHint().height());
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  AnalysisNotesStore::Annotation changed = current;
+  changed.label = labelEdit->text().trimmed().isEmpty() ? current.label : labelEdit->text().trimmed();
+  changed.color = QColor(colorCombo->currentData().toString());
+  double const from{m_run.start + std::min(fromSpin->value(), toSpin->value()) * 60.0};
+  double const to{m_run.start + std::max(fromSpin->value(), toSpin->value()) * 60.0};
+  changed.start = from;
+  changed.end   = to;
+  if (m_resHolder->users) {
+    changed.user = m_resHolder->users->getCurrentUserName();
+  }
+  m_notes->updateAnnotation(id, changed);
 }
 
 bool AnalysisRunPage::ensureLoaded() {
@@ -578,6 +858,7 @@ void AnalysisRunPage::load() {
     m_titleLabel->setText(m_run.title);
     m_statsLabel->setText(error);
     m_statsLabel->setStyleSheet("color: #b03030;");
+    m_statsLabel->setVisible(true);
     return;
   }
   m_run      = m_data->run;
@@ -774,10 +1055,10 @@ void AnalysisRunPage::refreshStats() {
       }
     }
   }
-  QString const when = QStringLiteral("%1 → %2").arg(start.toString("yyyy-MM-dd HH:mm"),
+  QString const when = QStringLiteral("%1 – %2").arg(start.toString("yyyy-MM-dd HH:mm"),
                                                     end.date() == start.date() ? end.toString("HH:mm") : end.toString("yyyy-MM-dd HH:mm"));
-  QString const head = m_run.custom ? tr("Range %1").arg(when) : (number > 0 ? QStringLiteral("#%1 · %2").arg(number).arg(when) : when);
-  m_titleLabel->setText(tr("%1  ·  %2  ·  %3 samples").arg(head, ExperimentLibrary::formatDuration(m_run.duration())).arg(QLocale().toString(m_run.samples)));
+  QString const head = m_run.custom ? tr("Range · %1").arg(when) : (number > 0 ? tr("Experiment #%1 · %2").arg(number).arg(when) : when);
+  m_titleLabel->setText(head);
 
   core::RunMetadata const &details = m_manifest.metadata;
   QStringList              about{m_run.title};
@@ -793,12 +1074,13 @@ void AnalysisRunPage::refreshStats() {
   if (!details.tags.isEmpty()) {
     about << QStringLiteral("#") + details.tags.join(QStringLiteral(" #"));
   }
-  m_statsLabel->setText(about.join(QStringLiteral("    ")));
+  about << tr("Duration %1 · %2 samples").arg(ExperimentLibrary::formatDuration(m_run.duration())).arg(QLocale().toString(m_run.samples));
+  m_titleLabel->setToolTip(about.join(QStringLiteral("\n")));
 
   // integrity: verified / modified (nothing for experiments without a fingerprint)
   theme::Colors const &c = theme::colors();
   bool const           known{m_manifestStored && (m_integrity != 2)};
-  m_integrityBadge->setVisible(known);
+  m_integrityBadge->setVisible(false); // shown in Statistics -> Experiment record
   if (known) {
     QColor const color = (m_integrity == 0) ? c.active : c.danger;
     m_integrityBadge->setText(m_integrity == 0 ? tr("VERIFIED") : tr("MODIFIED"));
@@ -1466,19 +1748,30 @@ void AnalysisRunPage::refreshRulesList() {
 }
 
 void AnalysisRunPage::refreshAnnotationsList() {
-  m_annotationsList->clear();
+  if (!m_annotationsTable) {
+    return;
+  }
+  m_annotationsTable->setRowCount(0);
+  auto elapsed = [this](double epoch) { return ExperimentLibrary::formatDuration(epoch - m_run.start); };
   for (auto const &annotation : m_notes->annotations(m_run.start, m_run.end, m_run.key)) {
+    int const row{m_annotationsTable->rowCount()};
+    m_annotationsTable->insertRow(row);
     QPixmap swatch(14, 14);
     swatch.fill(annotation.color);
-    auto *item = new QListWidgetItem(
-      QIcon(swatch),
-      QStringLiteral("%1 · %2 – %3 · %4")
-        .arg(annotation.label,
-             QDateTime::fromSecsSinceEpoch(static_cast<qint64>(annotation.start)).toString("dd.MM HH:mm:ss"),
-             QDateTime::fromSecsSinceEpoch(static_cast<qint64>(annotation.end)).toString("HH:mm:ss"),
-             annotation.user),
-      m_annotationsList);
-    item->setData(Qt::UserRole, annotation.id);
+    auto *colorItem = new QTableWidgetItem(QIcon(swatch), QString());
+    colorItem->setData(Qt::UserRole, annotation.id);
+    auto *fromItem = new QTableWidgetItem(elapsed(annotation.start));
+    fromItem->setData(Qt::UserRole, annotation.start);
+    fromItem->setToolTip(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(annotation.start)).toString("yyyy-MM-dd HH:mm:ss"));
+    auto *toItem = new QTableWidgetItem(elapsed(annotation.end));
+    toItem->setData(Qt::UserRole, annotation.end);
+    toItem->setToolTip(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(annotation.end)).toString("yyyy-MM-dd HH:mm:ss"));
+    m_annotationsTable->setItem(row, 0, colorItem);
+    m_annotationsTable->setItem(row, 1, new QTableWidgetItem(annotation.label));
+    m_annotationsTable->setItem(row, 2, fromItem);
+    m_annotationsTable->setItem(row, 3, toItem);
+    m_annotationsTable->setItem(row, 4, new QTableWidgetItem(ExperimentLibrary::formatDuration(annotation.end - annotation.start)));
+    m_annotationsTable->setItem(row, 5, new QTableWidgetItem(annotation.user));
   }
 }
 
@@ -2176,7 +2469,11 @@ void AnalysisRunPage::saveToDatabase() {
 
 void AnalysisRunPage::handleAccessChange(QString const &name, AccessManager::AccessLevel level) {
   Q_UNUSED(name)
-  m_exportBtn->setEnabled(level >= AccessManager::AccessLevel::USER_START_1);
+  bool const canExport{level >= AccessManager::AccessLevel::USER_START_1};
+  m_exportBtn->setEnabled(canExport);
+  if (QMenu *exportMenu = m_exportBtn->menu()) {
+    exportMenu->menuAction()->setEnabled(canExport); // the Export entry of the ⋮ menu
+  }
 }
 
 } // namespace deepvaccontrol

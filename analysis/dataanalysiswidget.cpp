@@ -9,6 +9,7 @@
 #include <QFrame>
 #include <QStyledItemDelegate>
 #include <QPainter>
+#include <functional>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSplitter>
@@ -36,6 +37,7 @@ constexpr int DAY_ROLE{Qt::UserRole + 1};
 constexpr int SUB_ROLE{Qt::UserRole + 2};    // second line of an experiment: duration · samples
 constexpr int HEADER_ROLE{Qt::UserRole + 3}; // section title (saved in database / recorded days)
 constexpr int COUNT_ROLE{Qt::UserRole + 4};  // count shown on the right of sections and days
+constexpr int SEARCH_ROLE{Qt::UserRole + 5}; // text the filter looks in (name, DUT, purpose, tags, job, …)
 
 // Experiments as two-line entries, sections as small capitals, days as plain rows.
 class ExperimentItemDelegate : public QStyledItemDelegate {
@@ -136,7 +138,7 @@ DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
   hideBtn->setToolTip(tr("Hide the experiment list"));
 
   m_filterEdit = new QLineEdit(m_browser);
-  m_filterEdit->setPlaceholderText(tr("Filter: date, name, DUT, tag…"));
+  m_filterEdit->setPlaceholderText(tr("Filter: date, name, DUT…"));
   m_filterEdit->setClearButtonEnabled(true);
   m_filterEdit->setMinimumHeight(34 * utils::ssf());
   connect(m_filterEdit, &QLineEdit::textChanged, this, &DataAnalysisWidget::applyFilter);
@@ -306,18 +308,45 @@ void DataAnalysisWidget::populateTree() {
     dbItem->setData(0, HEADER_ROLE, true);
     dbItem->setData(0, COUNT_ROLE, QString::number(m_library->storedRuns().size()));
     dbItem->setFlags(Qt::ItemIsEnabled);
+    QHash<QDate, QTreeWidgetItem *> storedDays;
+    QTreeWidgetItem                *newestStoredDay{nullptr};
     for (ExperimentRun const &run : m_library->storedRuns()) {
-      auto *item = new QTreeWidgetItem(dbItem);
-      item->setText(0, QStringLiteral("#%1 · %2").arg(numbers.value(run.key)).arg(run.title));
+      QDate const      day     = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(run.start)).date();
+      QTreeWidgetItem *dayItem = storedDays.value(day);
+      if (!dayItem) {
+        dayItem = new QTreeWidgetItem(dbItem);
+        dayItem->setText(0, day == QDate::currentDate() ? tr("%1 (today)").arg(day.toString("yyyy-MM-dd"))
+                                                        : day.toString("yyyy-MM-dd, ddd"));
+        dayItem->setData(0, SEARCH_ROLE, dayItem->text(0));
+        dayItem->setData(0, DAY_ROLE, day);
+        storedDays.insert(day, dayItem);
+        if (!newestStoredDay) {
+          newestStoredDay = dayItem; // stored runs come newest first
+        }
+      }
+      QDateTime const start = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(run.start));
+      QString         name  = run.title;
+      if (name.startsWith(start.toString("yyyy-MM-dd HH:mm"))) {
+        name = name.mid(17); // the date is the group; the time stays
+      }
+      auto *item = new QTreeWidgetItem(dayItem);
+      item->setText(0, QStringLiteral("#%1 · %2 %3").arg(numbers.value(run.key)).arg(start.toString("HH:mm"), name.trimmed()));
       item->setText(1, ExperimentLibrary::formatDuration(run.duration()));
       item->setText(2, QString::number(run.samples));
       item->setData(0, SUB_ROLE, subtitle(run));
       item->setData(0, RUN_KEY_ROLE, run.key);
-      item->setToolTip(0, run.details.isEmpty() ? QStringLiteral("%1\n%2").arg(run.title, run.chamber)
-                                                : QStringLiteral("%1\n%2\n%3").arg(run.title, run.chamber, run.details));
+      item->setData(0, SEARCH_ROLE, QStringList{QStringLiteral("#%1").arg(numbers.value(run.key)), run.title, run.chamber, run.details}.join(QLatin1Char(' ')));
+      // the full name (shortened in the list)
+      item->setToolTip(0, run.chamber.isEmpty() ? run.title : tr("%1\nChamber: %2").arg(run.title, run.chamber));
       if (run.key == selectedKey) {
         selected = item;
       }
+    }
+    for (QTreeWidgetItem *dayItem : std::as_const(storedDays)) {
+      dayItem->setData(0, COUNT_ROLE, QString::number(dayItem->childCount()));
+    }
+    if (newestStoredDay) {
+      newestStoredDay->setExpanded(true);
     }
     dbItem->setExpanded(true);
   }
@@ -336,6 +365,7 @@ void DataAnalysisWidget::populateTree() {
       dayItem = new QTreeWidgetItem(m_tree);
       dayItem->setText(0, day == QDate::currentDate() ? tr("%1 (today)").arg(day.toString("yyyy-MM-dd")) : day.toString("yyyy-MM-dd, ddd"));
       dayItem->setData(0, DAY_ROLE, day);
+      dayItem->setData(0, SEARCH_ROLE, dayItem->text(0));
       dayItems.insert(day, dayItem);
     }
 
@@ -349,6 +379,7 @@ void DataAnalysisWidget::populateTree() {
     item->setData(0, SUB_ROLE, subtitle(run));
     item->setData(0, RUN_KEY_ROLE, run.key);
     item->setData(0, DAY_ROLE, day);
+    item->setData(0, SEARCH_ROLE, QStringList{QStringLiteral("#%1").arg(numbers.value(run.key)), run.title, run.details}.join(QLatin1Char(' ')));
     item->setToolTip(0, run.title);
     if (run.key == selectedKey) {
       selected = item;
@@ -366,7 +397,9 @@ void DataAnalysisWidget::populateTree() {
     }
   }
   if (selected) {
-    selected->parent()->setExpanded(true);
+    for (QTreeWidgetItem *parent = selected->parent(); parent; parent = parent->parent()) {
+      parent->setExpanded(true);
+    }
     m_tree->setCurrentItem(selected);
   }
 
@@ -382,17 +415,40 @@ void DataAnalysisWidget::populateTree() {
 
 void DataAnalysisWidget::applyFilter() {
   QString const filter = m_filterEdit->text().trimmed();
-  for (int i{0}; i < m_tree->topLevelItemCount(); ++i) {
-    QTreeWidgetItem *dayItem = m_tree->topLevelItem(i);
-    bool const       dayMatches{filter.isEmpty() || dayItem->text(0).contains(filter, Qt::CaseInsensitive)};
-    bool             anyChild{false};
-    for (int c{0}; c < dayItem->childCount(); ++c) {
-      QTreeWidgetItem *item = dayItem->child(c);
-      bool const       matches{dayMatches || item->toolTip(0).contains(filter, Qt::CaseInsensitive)};
-      item->setHidden(!matches);
-      anyChild = anyChild || matches;
+  // returns whether the item (or something under it) stays visible
+  std::function<bool(QTreeWidgetItem *, bool)> apply = [&](QTreeWidgetItem *item, bool parentMatches) {
+    bool const header{item->data(0, HEADER_ROLE).toBool()};
+    bool const matches{parentMatches || (!header && item->data(0, SEARCH_ROLE).toString().contains(filter, Qt::CaseInsensitive))};
+    if (item->childCount() == 0) {
+      bool const show{filter.isEmpty() || (matches && !header)};
+      item->setHidden(!show);
+      return show && !header;
     }
-    dayItem->setHidden(!anyChild);
+    bool any{false};
+    for (int c{0}; c < item->childCount(); ++c) {
+      any = apply(item->child(c), matches) || any;
+    }
+    item->setHidden(!filter.isEmpty() && !any);
+    if (!filter.isEmpty() && any) {
+      item->setExpanded(true); // show what was found
+    }
+    return any;
+  };
+  bool anyRecordedDay{false};
+  QTreeWidgetItem *recordedHeader{nullptr};
+  for (int i{0}; i < m_tree->topLevelItemCount(); ++i) {
+    QTreeWidgetItem *item = m_tree->topLevelItem(i);
+    if (item->data(0, HEADER_ROLE).toBool() && (item->childCount() == 0)) {
+      recordedHeader = item; // "Recorded days": shown when one of its days is
+      continue;
+    }
+    bool const visible{apply(item, false)};
+    if (item->data(0, DAY_ROLE).isValid()) {
+      anyRecordedDay = anyRecordedDay || visible;
+    }
+  }
+  if (recordedHeader) {
+    recordedHeader->setHidden(!filter.isEmpty() && !anyRecordedDay);
   }
 }
 

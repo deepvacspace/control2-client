@@ -104,18 +104,14 @@ AnalysisChart::AnalysisChart(QWidget *parent) : QWidget{parent}, m_plot{new QCus
     font.setPointSizeF(font.pointSizeF() * 0.9);
     m_plot->legend->setFont(font);
   }
-  // legend in its own row below the plot so it never hides data; columns follow the width
-  m_plot->axisRect()->insetLayout()->take(m_plot->legend);
-  m_plot->axisRect()->insetLayout()->simplify();
-  m_plot->plotLayout()->addElement(1, 0, m_plot->legend);
-  m_plot->plotLayout()->setRowStretchFactor(1, 0.001);
-  m_plot->legend->setBorderPen(Qt::NoPen);
-  m_plot->legend->setBrush(Qt::NoBrush);
-  m_plot->legend->setMargins(QMargins(4, 0, 4, 2));
-  m_plot->legend->setWrap(3);
+  // legend: a box over the top left of the plot (the plot keeps the whole height); can be hidden
+  m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft | Qt::AlignTop);
+  m_plot->legend->setMargins(QMargins(6, 4, 8, 4));
+  m_plot->legend->setWrap(1);
   m_plot->legend->setFillOrder(QCPLegend::foColumnsFirst);
   m_plot->legend->setVisible(true);
   theme::stylePlot(m_plot);
+  styleLegendBox();
 
   m_plot->selectionRect()->setPen(QPen(QColor("#2563eb"), 1, Qt::DashLine));
   m_plot->selectionRect()->setBrush(QBrush(QColor(37, 99, 235, 40)));
@@ -826,10 +822,23 @@ void AnalysisChart::replotCrosshair() {
 
 void AnalysisChart::resizeEvent(QResizeEvent *event) {
   QWidget::resizeEvent(event);
-  int const columns{std::clamp(static_cast<int>(width() / (240 * utils::ssf())), 1, 6)};
-  if (columns != m_plot->legend->wrap()) {
-    m_plot->legend->setWrap(columns);
-    m_plot->legend->setFillOrder(QCPLegend::foColumnsFirst, true);
+}
+
+void AnalysisChart::setLegendVisible(bool visible) {
+  m_plot->legend->setVisible(visible);
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void AnalysisChart::styleLegendBox() {
+  theme::Colors const &c = theme::colors();
+  m_plot->legend->setBrush(QColor(c.panel.red(), c.panel.green(), c.panel.blue(), 235));
+  m_plot->legend->setBorderPen(QPen(c.border));
+}
+
+void AnalysisChart::changeEvent(QEvent *event) {
+  QWidget::changeEvent(event);
+  if (event->type() == QEvent::PaletteChange) {
+    styleLegendBox(); // the box follows the theme
     m_plot->replot(QCustomPlot::rpQueuedReplot);
   }
 }
