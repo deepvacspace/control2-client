@@ -9,7 +9,6 @@
 #include <QHeaderView>
 #include <QDialog>
 #include <QProgressBar>
-#include <QProgressDialog>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -23,7 +22,6 @@
 #include "advisorcem.h"
 #include "confdialog.h"
 #include "constants.h"
-#include "experimentsyncserver.h"
 #include "gatetcp.h"
 #include "lineeditnum.h"
 #include "programmodel.h"
@@ -47,6 +45,13 @@ QString formatPid(double kp, double ki, double kd) {
 }
 
 constexpr qint64 TELEMETRY_TIMEOUT_MS{10'000}; // no telemetry for this long aborts the run
+
+// the search cannot be interrupted: Escape does not close its window
+class BusyDialog : public QDialog {
+public:
+  using QDialog::QDialog;
+  void reject() override {}
+};
 } // namespace
 
 OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent)
@@ -85,9 +90,6 @@ OfflineAdvisorWidget::~OfflineAdvisorWidget() {
   if (m_running) {
     m_progressTimer.stop();
     m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor experiment"));
-    if (m_resHolder->experimentSync) {
-      m_resHolder->experimentSync->endExperiment(m_runId);
-    }
   }
   if (m_tuneWorker) {
     m_tuneWorker->wait();
@@ -510,13 +512,37 @@ void OfflineAdvisorWidget::startTuning() {
 
   int const totalCandidates = ai::CEM_POPULATION * ai::CEM_ITERATIONS;
 
-  m_tuneDialog = new QProgressDialog(tr("Computing optimal PID coefficients with the digital twin..."), QString(), 0,
-                                      totalCandidates, this);
+  double const ssf{utils::ssf()};
+  m_tuneDialog = new BusyDialog(this);
   m_tuneDialog->setWindowTitle(tr("Advisor"));
+  m_tuneDialog->setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint);
   m_tuneDialog->setWindowModality(Qt::WindowModal);
-  m_tuneDialog->setMinimumDuration(0);
-  m_tuneDialog->setCancelButton(nullptr);
-  m_tuneDialog->setValue(0);
+  auto *lay = new QVBoxLayout(m_tuneDialog);
+  lay->setContentsMargins(22 * ssf, 18 * ssf, 22 * ssf, 18 * ssf);
+  lay->setSpacing(10 * ssf);
+  auto *title = new QLabel(tr("Computing optimal setting with the digital twin..."), m_tuneDialog);
+  title->setObjectName("cardTitle");
+  title->setWordWrap(true);
+  lay->addWidget(title);
+  m_tuneBar = new QProgressBar(m_tuneDialog);
+  m_tuneBar->setObjectName("slimProgress");
+  m_tuneBar->setTextVisible(false);
+  m_tuneBar->setFixedHeight(static_cast<int>(8 * ssf));
+  m_tuneBar->setRange(0, totalCandidates);
+  m_tuneBar->setValue(0);
+  lay->addWidget(m_tuneBar);
+  auto *info = new QHBoxLayout();
+  m_tuneCount = new QLabel(m_tuneDialog);
+  m_tuneCount->setProperty("muted", true);
+  m_tunePercent = new QLabel(m_tuneDialog);
+  m_tunePercent->setProperty("muted", true);
+  info->addWidget(m_tuneCount);
+  info->addStretch();
+  info->addWidget(m_tunePercent);
+  lay->addLayout(info);
+  onTuneProgress(0, totalCandidates);
+  m_tuneDialog->setFixedWidth(static_cast<int>(460 * ssf));
+  m_tuneDialog->adjustSize();
   m_tuneDialog->show();
 
   setStatusText(tr("Running the AI Advisor over the digital twin..."), false);
@@ -530,8 +556,10 @@ void OfflineAdvisorWidget::startTuning() {
 
 void OfflineAdvisorWidget::onTuneProgress(int done, int total) {
   if (m_tuneDialog) {
-    m_tuneDialog->setMaximum(total);
-    m_tuneDialog->setValue(done);
+    m_tuneBar->setMaximum(total);
+    m_tuneBar->setValue(done);
+    m_tuneCount->setText(tr("%1 of %2 candidates simulated").arg(done).arg(total));
+    m_tunePercent->setText(QStringLiteral("%1 %").arg(total > 0 ? (100 * done) / total : 0));
   }
 }
 
@@ -648,9 +676,6 @@ void OfflineAdvisorWidget::startRealRun() {
   m_runClock.start();
   m_lastTelemetryMs = 0;
   m_manualRestored  = false;
-  if (m_resHolder->experimentSync) {
-    m_runId = m_resHolder->experimentSync->beginExperiment(QStringLiteral("offline_advisor"));
-  }
 
   m_runBtn->setEnabled(false);
   m_stopBtn->setVisible(true);
@@ -753,10 +778,6 @@ void OfflineAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
     return;
   }
   m_running = false;
-  if (m_resHolder->experimentSync) {
-    m_resHolder->experimentSync->endExperiment(m_runId);
-  }
-  m_runId.clear();
   m_progressTimer.stop();
   // manual PID table first, then stop the job the advisor started
   ai::ManualPidGuard::Result const restored =

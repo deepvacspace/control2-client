@@ -104,6 +104,25 @@ void GateTcp::onConnected() {
   setState(ConnectionState::CONNECTED);
 }
 
+void GateTcp::setServer(QHostAddress const &serverIp4Address, quint16 port) {
+  m_logger->stream(Logger::Level::INFO)
+    << QString("Switching the chamber connection from %1 to %2:%3").arg(serverAddress(), serverIp4Address.toString()).arg(port);
+  m_serverIp4Address = serverIp4Address;
+  m_port             = port;
+  emit serverChanged();
+  // a fresh start: no "connection lost / restored" notices for the switch itself
+  m_contConnectingTryCount = 0;
+  m_successConnectionCount = 0;
+  m_connectingTimer->stop();
+  setState(ConnectionState::ABORTING);
+  m_socket->abort();
+  setState(ConnectionState::ERROR_CON); // reconnects, now to the new address, and reports the disconnection
+}
+
+QString GateTcp::serverAddress() const {
+  return QStringLiteral("%1:%2").arg(m_serverIp4Address.toString()).arg(m_port);
+}
+
 void GateTcp::onDisconnected() {
   m_logger->stream(Logger::Level::WAR)
     << QString("Disconnected from server %1 somehow.").arg(m_serverIp4Address.toString());

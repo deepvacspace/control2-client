@@ -41,11 +41,14 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     m_dataViewer->setIndexesForLogAxis(notationIndexes);
   }
   m_dataViewer->setStyles(resHolder->settings->settingsMap()["states"].toList());
-  if (resHolder->settings->settingsMap()["app_settings"].isValid()
-      && resHolder->settings->settingsMap()["app_settings"].toMap()["graphUpdatePeriod"].isValid()) {
-    m_dataViewer->setRefreshPeriodMs(
-      1000 * resHolder->settings->settingsMap()["app_settings"].toMap()["graphUpdatePeriod"].toString().toInt());
-  }
+  auto applyRefreshPeriod = [this, resHolder] {
+    QVariant const period = resHolder->settings->settingsMap()["app_settings"].toMap()["graphUpdatePeriod"];
+    if (period.isValid() && (period.toString().toInt() > 0)) {
+      m_dataViewer->setRefreshPeriodMs(1000 * period.toString().toInt());
+    }
+  };
+  applyRefreshPeriod();
+  connect(resHolder->settings, &SettingsManager::appSettingsChanged, this, applyRefreshPeriod); // Settings -> Application
   m_styleEditor = new GraphStyleEditor(resHolder, this);
   double const         ssf{utils::ssf()};
   theme::Colors const &c = theme::colors();
@@ -62,8 +65,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
 
   auto iconButton = [&](QString const &kind, QString const &tip) {
     auto *button = new QPushButton(card);
-    button->setIcon(theme::menuIcon(kind, c.text, c.text, static_cast<int>(14 * ssf)));
-    button->setIconSize(QSize(14 * ssf, 14 * ssf));
+    theme::setThemedIcon(button, kind, static_cast<int>(14 * ssf));
     button->setFixedSize(26 * ssf, 26 * ssf);
     button->setToolTip(tip);
     return button;
@@ -113,8 +115,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_valuesBtn->setToolTip(tr("Also show the values and a line where the mouse points in the chart"));
   auto *calendarBtn = textButton(QString());
   m_dayBtn          = calendarBtn;
-  calendarBtn->setIcon(theme::menuIcon("calendar", c.text, c.text, static_cast<int>(13 * ssf)));
-  calendarBtn->setIconSize(QSize(13 * ssf, 13 * ssf));
+  theme::setThemedIcon(calendarBtn, "calendar", static_cast<int>(13 * ssf));
   calendarBtn->setMinimumWidth(110 * ssf);
   calendarBtn->setToolTip(tr("Open a saved experiment, or go back to the live data of today"));
 

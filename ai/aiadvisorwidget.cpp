@@ -21,7 +21,6 @@
 #include "experimentrecorder.h"
 #include "confdialog.h"
 #include "constants.h"
-#include "experimentsyncserver.h"
 #include "gatetcp.h"
 #include "lineeditnum.h"
 #include "programmodel.h"
@@ -95,9 +94,6 @@ AiAdvisorWidget::~AiAdvisorWidget() {
     m_shadowPidTimer.stop();
     m_twinCheckTimer.stop();
     m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor experiment"));
-    if (m_resHolder->experimentSync) {
-      m_resHolder->experimentSync->endExperiment(m_runId);
-    }
   }
   if (m_comparisonWorker) {
     m_comparisonWorker->wait();
@@ -729,9 +725,6 @@ void AiAdvisorWidget::runExperiment() {
   m_running = true;
   m_runClock.start();
   m_lastTelemetryMs = 0;
-  if (m_resHolder->experimentSync) {
-    m_runId = m_resHolder->experimentSync->beginExperiment(QStringLiteral("online_advisor"));
-  }
 
   m_runBtn->setEnabled(false);
   m_stopBtn->setVisible(true);
@@ -890,10 +883,6 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
     return;
   }
   m_running = false;
-  if (m_resHolder->experimentSync) {
-    m_resHolder->experimentSync->endExperiment(m_runId);
-  }
-  m_runId.clear();
   m_decisionTimer.stop();
   m_progressTimer.stop();
   m_shadowPidTimer.stop();

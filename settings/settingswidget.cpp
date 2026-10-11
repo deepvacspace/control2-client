@@ -1,5 +1,9 @@
 #include "settingswidget.h"
 
+#include "applicationsettingswidget.h"
+
+#include <algorithm>
+
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QFrame>
@@ -77,7 +81,7 @@ void SettingsWidget::initGui() {
   mainLay->setSpacing(3 * utils::ssf());
 
   auto *tabWidget = new QTabWidget(this);
-  tabWidget->setStyleSheet(theme::flatTabStyleSheet());
+  theme::setFlatTabs(tabWidget);
   mainLay->addWidget(tabWidget);
 
   // 1 - general plc settings
@@ -144,7 +148,7 @@ void SettingsWidget::initGui() {
     rowLay->setSpacing(12 * ssf);
     auto *icon = new QLabel(row);
     int const iconSize{static_cast<int>(22 * ssf)};
-    icon->setPixmap(theme::menuIcon("ai", theme::colors().muted, theme::colors().muted, iconSize).pixmap(iconSize));
+    theme::setThemedIcon(icon, "ai", iconSize, "muted");
     rowLay->addWidget(icon);
     auto *texts = new QVBoxLayout();
     texts->setSpacing(2 * ssf);
@@ -184,7 +188,10 @@ void SettingsWidget::initGui() {
   tabWidget->addTab(aiSettingsWidget, tr("AI"));
 
   // App-only network links: chamber gate, Deepvac Insight, OPC UA
-  tabWidget->addTab(new ConnectionsWidget(m_resHolder, this), tr("Connections"));
+  tabWidget->addTab(new ConnectionsWidget(m_resHolder, ConnectionsWidget::Page::TCP, this), tr("TCP"));
+  tabWidget->addTab(new ConnectionsWidget(m_resHolder, ConnectionsWidget::Page::OPC, this), tr("OPC"));
+  // app-only values of settings.json: refresh / polling periods, setpoint limits, program at start
+  tabWidget->addTab(new ApplicationSettingsWidget(m_resHolder, this), tr("Application"));
   // databases and their backups
   tabWidget->addTab(new DataWidget(m_resHolder, this), tr("Data"));
 
@@ -201,6 +208,17 @@ void SettingsWidget::initGui() {
   btnsLay->addWidget(getBtn);
   btnsLay->addWidget(sendBtn);
   btnsLay->addStretch();
+
+  // the PLC exchange belongs to the PLC parameter tabs only
+  auto updateButtons = [this, tabWidget, settingsList, getBtn, sendBtn] {
+    QWidget *page = tabWidget->currentWidget();
+    bool const plcPage{(page == settingsList) || std::any_of(m_pidWidgets.cbegin(), m_pidWidgets.cend(), [page](auto *w) { return w == page; }) ||
+                       std::any_of(m_calibWidgets.cbegin(), m_calibWidgets.cend(), [page](auto *w) { return w == page; })};
+    getBtn->setVisible(plcPage);
+    sendBtn->setVisible(plcPage);
+  };
+  connect(tabWidget, &QTabWidget::currentChanged, this, updateButtons);
+  updateButtons();
 
   connect(sendBtn, &QPushButton::clicked, this, &SettingsWidget::commitSettings);
   connect(getBtn, &QPushButton::clicked, this, [this] {

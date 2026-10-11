@@ -4,14 +4,23 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QHash>
+#include <QFileInfo>
+#include <QProcess>
+#include <QSaveFile>
 #include <QMessageBox>
 #include <QThread>
 
+#include "confdialog.h"
 #include "connectiondialog.h"
 #include "constants.h"
 #include "messagedialog.h"
 #include "programmodel.h"
 #include "settingsdiff.h"
+#include "settingsrecoverydialog.h"
+#include "statemismatchdialog.h"
 
 namespace deepvaccontrol {
 
@@ -27,7 +36,6 @@ App::App(bool windowMode, bool debugMode, QObject *parent)
     , m_states{&m_logger, this}
     , m_settings{&m_logger, SETTINGS_FILE, this}
     , m_dataManager{nullptr}
-    , m_experimentSyncServer{nullptr}
     , m_actions{&m_logger, ACTIONS_FILE, this}
     , m_hardStatus{&m_resHolder}
     , m_opcThread{nullptr}
@@ -77,6 +85,11 @@ App::~App() {
 
 void App::start() {
   m_status.setAppState(StatusManager::AppState::IDLE);
+  if (!m_settingsNotice.isEmpty()) {
+    // settings.json was replaced by a backup at start (initSettings)
+    m_actions.addAction(ActionManager::ActionType::ERR, m_settingsNotice);
+    QTimer::singleShot(0, this, [this] { (new MessageDialog(tr("Warning"), m_settingsNotice, m_mainWindow))->open(); });
+  }
 }
 
 UiLanguage App::uiLanguage() const noexcept {
@@ -84,14 +97,73 @@ UiLanguage App::uiLanguage() const noexcept {
 }
 
 void App::initSettings() {
-  bool const result{m_settings.loadFromSettingsFile()};
-  if (!result) {
-    QMessageBox::critical(
-      nullptr, tr("Критическая ошибка"), QString(tr("Не удалось прочитать файл настроек '%1'")).arg(SETTINGS_FILE));
-    // todo: maybe there is better solution
-    m_logger.stream(Logger::Level::ERR) << tr("Не удалось прочитать файл настроек") << SETTINGS_FILE;
-    exit(1);
+  if (m_settings.loadFromSettingsFile()) {
+    keepSettingsBackup();
+    return;
   }
+  QString problem = SettingsManager::fileProblem(SETTINGS_FILE);
+  m_logger.stream(Logger::Level::ERR) << SETTINGS_FILE << "cannot be used:" << problem;
+
+  // the last copy that loaded correctly replaces it without asking
+  if (SettingsManager::fileProblem(SETTINGS_BACKUP_FILE).isEmpty() && restoreSettings(SETTINGS_BACKUP_FILE)) {
+    m_settingsNotice = tr("settings.json could not be used: %1 It was replaced by settings_backup.json, the last copy that "
+                          "loaded correctly (saved %2). Changes made after that copy are lost.")
+                         .arg(problem, QFileInfo(SETTINGS_BACKUP_FILE).lastModified().toString("yyyy-MM-dd HH:mm"));
+    return;
+  }
+
+  // nothing to fall back on: explain and let the operator choose
+  SettingsRecoveryDialog dialog(SETTINGS_FILE, problem);
+  while (true) {
+    int const choice = dialog.exec();
+    if (SettingsRecoveryDialog::RETRY == choice) {
+      if (m_settings.loadFromSettingsFile()) {
+        keepSettingsBackup();
+        return;
+      }
+      problem = SettingsManager::fileProblem(SETTINGS_FILE);
+    } else if (SettingsRecoveryDialog::RESTORE == choice) {
+      QString const backup = dialog.selectedBackup();
+      if (restoreSettings(backup)) {
+        m_settingsNotice = tr("settings.json could not be used: %1 It was replaced by %2.").arg(problem, QFileInfo(backup).fileName());
+        return;
+      }
+      problem = tr("%1 could not be restored either: %2").arg(QFileInfo(backup).fileName(), SettingsManager::fileProblem(backup));
+    } else {
+      m_logger.stream(Logger::Level::ERR) << "Closed at start: no usable settings file";
+      exit(1);
+    }
+    m_logger.stream(Logger::Level::ERR) << SETTINGS_FILE << "cannot be used:" << problem;
+    dialog.setProblem(problem);
+  }
+}
+
+void App::keepSettingsBackup() {
+  // copy of a settings.json that loads correctly, written safely (never a half copy)
+  QFile source(SETTINGS_FILE);
+  QSaveFile copy(SETTINGS_BACKUP_FILE);
+  if (source.open(QIODevice::ReadOnly) && copy.open(QIODevice::WriteOnly)) {
+    copy.write(source.readAll());
+    if (!copy.commit()) {
+      m_logger.stream(Logger::Level::WAR) << "Could not update" << SETTINGS_BACKUP_FILE;
+    }
+  }
+}
+
+bool App::restoreSettings(QString const &backup) {
+  if (!m_settings.loadFrom(backup)) {
+    return false;
+  }
+  // the unusable file is kept aside for a look, then settings.json is written from the backup
+  if (QFile::exists(SETTINGS_FILE)) {
+    QString const aside = QStringLiteral("settings_unusable_%1.json").arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
+    QFile::rename(SETTINGS_FILE, aside);
+    m_logger.stream(Logger::Level::WAR) << "Unusable" << SETTINGS_FILE << "kept as" << aside;
+  }
+  m_settings.saveToSettingsFile();
+  m_logger.stream(Logger::Level::WAR) << SETTINGS_FILE << "restored from" << backup;
+  keepSettingsBackup(); // a broken settings_backup.json is replaced as well
+  return true;
 }
 
 void App::runtimeSetups() {
@@ -108,6 +180,12 @@ void App::runtimeSetups() {
 
   connect(m_gateTcp, &GateTcp::connected, this, &App::onConnectToServer);
   connect(m_gateTcp, &GateTcp::disconnected, this, &App::onDisconnectFromServer);
+  // another chamber (Settings -> TCP): its value list and settings are checked again before it is used
+  connect(m_gateTcp, &GateTcp::serverChanged, this, [this] {
+    m_status.setStatesIdentical(false);
+    m_status.setSettingsListIdentical(false);
+    m_mismatchAddress.clear();
+  });
   connect(m_gateTcp, &GateTcp::stateListReceived, this, &App::onStateNamesReceive);
   connect(m_gateTcp, &GateTcp::settingsReceived, this, &App::onSettingsMapReceived);
   connect(m_gateTcp, &GateTcp::stateValuesListReceived, this, &App::onStateValuesReceive);
@@ -121,15 +199,6 @@ void App::runtimeSetups() {
   m_dataManager           = new DataManager(&m_resHolder, m_states.size(), deepvaccontrol::INTERVAL_DURATION, this);
   m_resHolder.dataManager = m_dataManager;
 
-  // Read-only LAN telemetry endpoint consumed by Deepvac Insight.
-  QVariantMap const insightServerMap = settingMapVariant["insight_server"].toMap();
-  m_experimentSyncServer     = new ExperimentSyncServer(&m_logger, this);
-  m_resHolder.experimentSync = m_experimentSyncServer;
-  connect(&m_settings,
-          &SettingsManager::insightSyncEnabledChanged,
-          this,
-          &App::setExperimentSyncEnabled);
-  setExperimentSyncEnabled(insightServerMap.value("enabled", false).toBool());
   connect(&m_settings, &SettingsManager::opcSettingsChanged, this, &App::restartOpc);
 
   // Make default program, todo: add settings checks
@@ -192,20 +261,121 @@ void App::onDisconnectFromServer() {
 
 void App::onStateNamesReceive(QStringList states) {
   m_paramsRequestTimer->stop();
-  if (states == m_states.getNames()) {
-    m_status.setStatesIdentical(true);
-    m_logger.stream(Logger::Level::INFO) << tr("Список переменных состояний на ПЛК и ПК совпадают");
-  } else {
-    QMessageBox::critical(
-      nullptr, tr("Критическая ошибка"), QString(tr("Переменные состояний на ПЛК и ПК отличаются")));
-    m_logger.stream(Logger::Level::ERR) << tr("Список переменных состояний на ПЛК и ПК отличаются");
-    m_logger.stream(Logger::Level::ERR) << "PLC:" << states;
-    m_logger.stream(Logger::Level::ERR) << "PC:" << m_states.getNames();
-    // todo: maybe there is better solution
-    exit(1);
+  if (states != m_states.getNames()) {
+    handleStateMismatch(states);
+    return;
   }
+  m_status.setStatesIdentical(true);
+  m_lastGoodAddress = m_gateTcp->serverAddress();
+  m_mismatchAddress.clear();
+  m_logger.stream(Logger::Level::INFO) << tr("Список переменных состояний на ПЛК и ПК совпадают");
+  requestSettingList(); // compared once the values are known to match
 
   checkConfigIdentical();
+}
+
+void App::handleStateMismatch(QStringList const &chamberStates) {
+  QString const address = m_gateTcp->serverAddress();
+  m_status.setStatesIdentical(false);
+  m_settingsRequestTimer->stop();
+  m_status.setAppState(StatusManager::AppState::OFFLINE); // values ignored, nothing sent
+  m_logger.stream(Logger::Level::ERR) << "Chamber" << address << "reports another value list than settings.json";
+  m_logger.stream(Logger::Level::ERR) << "PLC:" << chamberStates;
+  m_logger.stream(Logger::Level::ERR) << "PC:" << m_states.getNames();
+  if (m_mismatchAddress == address) {
+    return; // explained already (a reconnection of the same chamber)
+  }
+  m_mismatchAddress = address;
+  m_actions.addAction(ActionManager::ActionType::ERR,
+                      tr("Chamber %1 not used: its values differ from this application's configuration").arg(address));
+
+  // values this application cannot work without: adopting a list that lacks them is not offered
+  QVariantMap const settings = m_settings.settingsMap();
+  QStringList       needed{"temp", "temp_ref", "status_condition"};
+  for (QVariant const &entry : settings.value("monitor").toList()) {
+    needed.push_back(entry.toMap().value("name").toString());
+  }
+  for (QVariant const &entry : settings.value("plc_settings").toMap().value("calibrations").toList()) {
+    QString const state = entry.toMap().value("state_name").toString();
+    needed << state << state + "_raw";
+  }
+  QStringList missing;
+  for (QString const &name : std::as_const(needed)) {
+    if (!name.isEmpty() && m_states.contains(name) && !chamberStates.contains(name) && !missing.contains(name)) {
+      missing.push_back(name);
+    }
+  }
+
+  auto *dialog = new StateMismatchDialog(address, chamberStates, m_states.getNames(),
+                                         m_lastGoodAddress == address ? QString() : m_lastGoodAddress, missing, m_mainWindow);
+  connect(dialog, &QDialog::finished, this, [this, chamberStates](int choice) {
+    if (StateMismatchDialog::BACK == choice) {
+      switchBack();
+    } else if (StateMismatchDialog::ADOPT == choice) {
+      adoptChamberStates(chamberStates);
+    }
+  });
+  dialog->open();
+}
+
+void App::switchBack() {
+  QString const   address = m_lastGoodAddress;
+  qsizetype const colon   = address.lastIndexOf(':');
+  if (colon <= 0) {
+    return;
+  }
+  QString const host = address.left(colon);
+  auto const    port = static_cast<quint16>(address.mid(colon + 1).toUInt());
+  m_settings.setTcpServer(host, port);
+  m_gateTcp->setServer(QHostAddress(host), port);
+  m_mainWindow->setWindowTitle(QStringLiteral("Deepvac Control (%1)").arg(host));
+}
+
+void App::adoptChamberStates(QStringList const &chamberStates) {
+  QString const backup = QStringLiteral("settings_backup_%1.json").arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
+  auto *confirm = new ConfDialog(
+    tr("Use the chamber's value list?"),
+    tr("settings.json gets the chamber's %1 values: the known ones keep their names, units and colours, new ones are "
+       "added hidden on the chart, and OPC variables of values that are gone are dropped. The current file is kept as "
+       "%2. The application then restarts.")
+      .arg(chamberStates.size())
+      .arg(backup),
+    tr("Use and restart"), tr("Cancel"), m_mainWindow);
+  connect(confirm, &QDialog::accepted, this, [this, chamberStates, backup] {
+    if (!QFile::copy(SETTINGS_FILE, backup)) {
+      (new MessageDialog(tr("Error"), tr("No backup of settings.json could be written, nothing was changed."), m_mainWindow))->open();
+      return;
+    }
+    QVariantMap const           settings = m_settings.settingsMap();
+    QHash<QString, QVariantMap> known;
+    for (QVariant const &entry : settings.value("states").toList()) {
+      known.insert(entry.toMap().value("name").toString(), entry.toMap());
+    }
+    QVariantList states;
+    for (QString const &name : chamberStates) {
+      states.push_back(known.contains(name) ? known.value(name)
+                                            : QVariantMap{{"name", name}, {"label", name}, {"visible", false},
+                                                          {"color", "#64748b"}, {"width", 2}, {"pen", 1}});
+    }
+    QVariantMap  opc = settings.value("opc_settings").toMap();
+    QVariantList tags;
+    for (QVariant const &tag : opc.value("tags").toList()) {
+      if (chamberStates.contains(tag.toMap().value("state").toString())) {
+        tags.push_back(tag);
+      }
+    }
+    opc["tags"] = tags;
+    if (!m_settings.setEntries({{"states", states}, {"opc_settings", opc}})) {
+      (new MessageDialog(tr("Error"), tr("settings.json could not be written; the backup %1 is unchanged.").arg(backup), m_mainWindow))
+        ->open();
+      return;
+    }
+    m_logger.stream(Logger::Level::INFO) << "settings.json takes the value list of" << m_gateTcp->serverAddress()
+                                         << "(backup" << backup << ") - restarting";
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1), QDir::currentPath());
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+  });
+  confirm->open();
 }
 
 void App::onSettingsMapReceived(QMap<QString, float> plcSettings) {
@@ -308,7 +478,6 @@ void App::onStateValuesReceive(QVector<float> stateValues) {
   if (m_resHolder.recorder) {
     m_resHolder.recorder->addSample(static_cast<double>(timestampMs) / 1000.0, valuesDouble); // experiment database
   }
-  m_experimentSyncServer->publishSample(m_states.getNames(), stateValues, timestampMs);
 
   if (m_opcServer && (0 == m_status.getOpcStatus())) {
     QVector<double> opcStateValuesVector;
@@ -366,8 +535,10 @@ void App::setupOpc() {
 
 // После установления соединения с оборудованием
 void App::startOnline() {
-  // start OPC if need
-  setupOpc();
+  // start OPC if need (after a reconnection or a chamber switch the running server is kept)
+  if (!m_opcThread) {
+    setupOpc();
+  }
 
   if (m_states.contains("status_condition")) {
     m_hardStatus.setup(true, m_states.getSysValue("status_condition"));
@@ -393,35 +564,6 @@ void App::restartOpc() {
   }
 }
 
-void App::setExperimentSyncEnabled(bool enabled) {
-  if (!m_experimentSyncServer) {
-    return;
-  }
-  if (!enabled) {
-    m_experimentSyncServer->close();
-    m_logger.stream(Logger::Level::INFO) << "Database synchronization disabled";
-    return;
-  }
-
-  QVariantMap const insightServerMap = m_settings.settingsMap().value("insight_server").toMap();
-  QString const insightAddressText = insightServerMap.value("listen_address", "0.0.0.0").toString();
-  uint const    configuredInsightPort = insightServerMap.value("port", 5555).toUInt();
-  quint16 const insightPort = (configuredInsightPort > 0U) && (configuredInsightPort <= 65535U)
-                                ? static_cast<quint16>(configuredInsightPort)
-                                : static_cast<quint16>(5555);
-  if (configuredInsightPort != insightPort) {
-    m_logger.stream(Logger::Level::WAR) << "Invalid Insight port" << configuredInsightPort << "- using 5555";
-  }
-
-  QHostAddress insightAddress{insightAddressText};
-  if (insightAddress.isNull()) {
-    m_logger.stream(Logger::Level::WAR)
-      << "Invalid Insight listen address" << insightAddressText << "- using 0.0.0.0";
-    insightAddress = QHostAddress::AnyIPv4;
-  }
-  m_experimentSyncServer->listen(insightAddress, insightPort);
-}
-
 void App::requestStateList() {
   if (m_status.getStatesIdentical()) {
     return;
@@ -433,8 +575,8 @@ void App::requestStateList() {
 }
 
 void App::requestSettingList() {
-  if (m_status.getSettingsListIdentical()) {
-    return;
+  if (m_status.getSettingsListIdentical() || !m_status.getStatesIdentical()) {
+    return; // asked again by onStateNamesReceive() once the value list matches
   }
   auto period = m_settings.settingsMap()["communication"].toMap()["base_params_request_period_sec"].toInt();
   m_settingsRequestTimer->start(1000 * period);

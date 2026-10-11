@@ -18,14 +18,15 @@ class LineEditScreen;
 struct ResHolder;
 
 /**
- * @brief Settings tab with the app's network links (app-only, not sent to the PLC):
- * - chamber (PLC gate) connection with a list of saved chambers;
- * - OPC UA server broadcasting the chamber's live values.
+ * @brief Settings tabs with the app's network links (app-only, not sent to the PLC):
+ * - TCP: chamber (PLC gate) connection with a list of saved chambers, local network sharing;
+ * - OPC: OPC UA server broadcasting the chamber's live values.
  */
 class ConnectionsWidget : public QWidget {
   Q_OBJECT
 public:
-  explicit ConnectionsWidget(ResHolder *resHolder, QWidget *parent = nullptr);
+  enum class Page { TCP, OPC };
+  explicit ConnectionsWidget(ResHolder *resHolder, Page page, QWidget *parent = nullptr);
 
 private:
   QWidget *buildChamberBox();
@@ -37,7 +38,7 @@ private:
   void         refreshChamberStatus();
   void         saveChamber(bool asNew);
   void         deleteChamber();
-  void         useChamber();
+  void         connectChamber();
   QVariantList chambers() const;
 
   // opc
@@ -57,7 +58,7 @@ private:
   LineEditScreen *m_chamberName{nullptr};
   LineEditScreen *m_chamberHost{nullptr};
   LineEditNum    *m_chamberPort{nullptr};
-  QString         m_connectedAddress; // address the running app uses (changes apply on restart)
+  QString         m_connectedAddress; // address the running app is connected (or connecting) to
 
   QLabel         *m_opcStatus{nullptr};
   LineEditNum    *m_opcPort{nullptr};

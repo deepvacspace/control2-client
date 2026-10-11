@@ -162,7 +162,7 @@ ComparisonPanel::ComparisonPanel(QWidget *parent) : QWidget{parent} {
   });
 
   auto *tabs = new QTabWidget(page);
-  tabs->setStyleSheet(theme::flatTabStyleSheet());
+  theme::setFlatTabs(tabs);
   tabs->setDocumentMode(true);
   tabs->tabBar()->setExpanding(false);
   m_kpiTable    = makeTable(tabs);

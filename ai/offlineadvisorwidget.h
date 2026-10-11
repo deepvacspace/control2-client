@@ -15,7 +15,6 @@
 
 class QCustomPlot;
 class QProgressBar;
-class QProgressDialog;
 class QPushButton;
 class QTableWidget;
 
@@ -113,10 +112,12 @@ private:
 
   ai::SimParams                m_currentParams;
   QVector<ai::TrajectoryPoint> m_actualTrajectory;
-  QString                      m_runId;
 
   ai::OfflineTuneWorker *m_tuneWorker{nullptr};
-  QProgressDialog       *m_tuneDialog{nullptr};
+  QDialog               *m_tuneDialog{nullptr}; // progress while the digital twin searches
+  QProgressBar          *m_tuneBar{nullptr};
+  QLabel                *m_tuneCount{nullptr};
+  QLabel                *m_tunePercent{nullptr};
   ai::OfflineTuneResult  m_tuneResult;
 };
 } // namespace deepvaccontrol

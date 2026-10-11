@@ -28,7 +28,7 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   mainLay->setContentsMargins(0, 0, 0, 0);
 
   m_tabWidget = new QTabWidget(this);
-  m_tabWidget->setStyleSheet(theme::flatTabStyleSheet());
+  theme::setFlatTabs(m_tabWidget);
   mainLay->addWidget(m_tabWidget);
 
   auto *simulatorWidget = new AiSimulatorWidget(resHolder, this);

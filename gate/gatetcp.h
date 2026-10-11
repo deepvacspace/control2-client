@@ -49,6 +49,9 @@ public:
                    ConnectionDialog *connectionDialog,
                    QObject          *parent = nullptr);
   void connectToServer();
+  // closes the current connection and connects to another chamber (Settings -> TCP)
+  void setServer(QHostAddress const &serverIp4Address, quint16 port);
+  QString serverAddress() const;
 
   void sendTextCmd(QString const &cmd);
   void sendSettingMap(QMap<QString, float> const &map);
@@ -63,6 +66,8 @@ signals:
   void showRedFlag(bool enable);
 
   void disconnected();
+  // setServer(): another chamber, its configuration must be checked again
+  void serverChanged();
 
   // dsiable blinking warning
   void connected();

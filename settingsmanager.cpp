@@ -3,13 +3,47 @@
 #include <QDebug>
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 
 #include "settingstransformer.h"
+#include "stringpathprovider.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
 SettingsManager::SettingsManager(Logger *logger, QString const &filePath, QObject *parent)
     : QObject{parent}, m_logger{logger}, FileHandler{}, m_filePath{filePath} {
+}
+
+bool SettingsManager::loadFrom(QString const &path) {
+  StringPathProvider provider(path, m_logger);
+  return loadFromFile(&provider);
+}
+
+QString SettingsManager::fileProblem(QString const &path) {
+  QFile file(path);
+  if (!file.exists()) {
+    return tr("The file does not exist.");
+  }
+  if (!file.open(QIODevice::ReadOnly)) {
+    return tr("The file cannot be opened (%1).").arg(file.errorString());
+  }
+  QByteArray const data = file.readAll();
+  if (data.trimmed().isEmpty()) {
+    return tr("The file is empty (it was probably cut off while being saved).");
+  }
+  QJsonParseError     error{};
+  QJsonDocument const doc = QJsonDocument::fromJson(data, &error);
+  if (error.error != QJsonParseError::NoError) {
+    QByteArray const before = data.left(error.offset);
+    int const        line   = static_cast<int>(before.count('\n')) + 1;
+    int const        column = static_cast<int>(error.offset - (before.lastIndexOf('\n') + 1)) + 1;
+    return tr("The file is not valid JSON: %1 at line %2, column %3.").arg(error.errorString()).arg(line).arg(column);
+  }
+  if (!doc.isObject() || !doc.object().contains(QStringLiteral("states"))) {
+    return tr("The file has no list of chamber values (\"states\").");
+  }
+  return {};
 }
 
 bool SettingsManager::writeData(QFile &file) {
@@ -87,29 +121,6 @@ void SettingsManager::setStatesSettings(QVariantList const &statesSettings) {
   saveToSettingsFile();
 }
 
-bool SettingsManager::setInsightSyncEnabled(bool enabled) {
-  QVariantMap insightServer = m_settingsMap.value("insight_server").toMap();
-  insightServer["enabled"]  = enabled;
-  m_settingsMap["insight_server"] = insightServer;
-
-  bool const saved = saveToSettingsFile();
-  emit insightSyncEnabledChanged(enabled);
-  return saved;
-}
-
-bool SettingsManager::setInsightServerSettings(bool enabled, QString const &address, quint16 port) {
-  QVariantMap insightServer         = m_settingsMap.value("insight_server").toMap();
-  insightServer["enabled"]          = enabled;
-  insightServer["listen_address"]   = address;
-  insightServer["port"]             = port;
-  m_settingsMap["insight_server"]   = insightServer;
-
-  bool const saved = saveToSettingsFile();
-  // listeners re-read address / port from the settings
-  emit insightSyncEnabledChanged(enabled);
-  return saved;
-}
-
 bool SettingsManager::setOpcSettings(bool enabled, QVariantMap const &opcSettings) {
   QVariantMap appSettings       = m_settingsMap.value("app_settings").toMap();
   appSettings["opc_server"]     = enabled;
@@ -132,6 +143,15 @@ bool SettingsManager::setTcpServer(QString const &address, quint16 port) {
 bool SettingsManager::setSection(QString const &key, QVariantMap const &section) {
   m_settingsMap[key] = section;
   return saveToSettingsFile();
+}
+
+bool SettingsManager::setEntries(QVariantMap const &entries) {
+  for (auto it = entries.cbegin(); it != entries.cend(); ++it) {
+    m_settingsMap[it.key()] = it.value();
+  }
+  bool const saved = saveToSettingsFile();
+  emit appSettingsChanged();
+  return saved;
 }
 
 bool SettingsManager::setChambers(QVariantList const &chambers) {

@@ -60,6 +60,7 @@ private:
   void drawSupply(QPainter &p);
   void drawPlc(QPainter &p);
   void drawLine(QPainter &p, QVector<QPointF> const &points, bool fitted, bool flowing, QColor const &flowColor);
+  void drawPipe(QPainter &p, QPointF const &from, QPointF const &to, bool fitted, bool flowing, QColor const &flowColor);
   void drawValve(QPainter &p, QPointF const &at, QString const &key, QString const &title, QString const &tip, bool tagAbove);
   // anchor: the point of the tag given by align (e.g. AlignRight | AlignVCenter: the middle of its right edge)
   void drawTag(QPainter &p, QPointF const &anchor, Qt::Alignment align, QString const &key, QString const &title);

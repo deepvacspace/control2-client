@@ -24,18 +24,21 @@ public:
   SettingsManager(Logger *logger, QString const &filePath, QObject *parent = nullptr);
   bool                          saveToSettingsFile();   // use FileHandler interface inside
   bool                          loadFromSettingsFile(); // use FileHandler interface inside
+  bool                          loadFrom(QString const &path); // another file (a backup); saving still goes to settings.json
+  // why a settings file cannot be used (missing, empty, invalid JSON at line / column, no value list), empty if it can
+  static QString                fileProblem(QString const &path);
   QVariantMap                   settingsMap() const;
   SystemValueList              &plcSettingsSystemValueList();
   QVariantList                  commitSystemValues(); // returns SystemValues as VariantList
   void                          setPlcSettings(QVariantMap const &plcSettings);
   void                          setStatesSettings(QVariantList const &statesSettings);
-  bool                          setInsightSyncEnabled(bool enabled);
   // Connections tab (app-only settings, not sent to the PLC)
-  bool                          setInsightServerSettings(bool enabled, QString const &address, quint16 port);
   bool                          setOpcSettings(bool enabled, QVariantMap const &opcSettings);
   bool                          setTcpServer(QString const &address, quint16 port);
   bool                          setChambers(QVariantList const &chambers);
   bool                          setSection(QString const &key, QVariantMap const &section); // app-only section
+  // several top-level entries at once (Settings -> Application), one write of the file
+  bool                          setEntries(QVariantMap const &entries);
   QMap<QString, float>          getSettingPairs() const;
   void                          applySettingsFromPairs(QMap<QString, float> const &plcPairs);
   QMap<quint32, QString> const &getAlarmsMap() const;
@@ -49,8 +52,8 @@ signals:
   void settingsPulled();
   // plc_settings (PID table, calibration, general settings) replaced, by the user, the AI or the PLC echo
   void plcSettingsChanged();
-  void insightSyncEnabledChanged(bool enabled);
   void opcSettingsChanged();
+  void appSettingsChanged(); // setEntries()
 
 private:
   // Creates new items or update existing in m_settingValueList from general settings.

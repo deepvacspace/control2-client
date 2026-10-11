@@ -13,6 +13,8 @@ inline QString const           PROGS_DIR{"data/prog/"};
 inline QString const           INTERVALS_DIR{"data/"};
 inline QString const           EXPORT_DIR{"export/"};
 inline QString const           SETTINGS_FILE("settings.json");
+// copy of settings.json kept each time it loads correctly; restored automatically when settings.json cannot be used
+inline QString const           SETTINGS_BACKUP_FILE("settings_backup.json");
 inline QString const           ACTIONS_FILE("data/event/actions.dat");
 inline QString const           ANALYSIS_NOTES_FILE{"data/analysis/notes.json"};
 inline QString const           AI_DIR{"data/ai/"};

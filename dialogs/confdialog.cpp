@@ -7,17 +7,17 @@ ConfDialog::ConfDialog(
   QString const &title, QString const &message, QString const &btn1Name, QString const &btn2Name, QWidget *parent)
     : MessageDialog{title, message, parent} {
   m_closeBtn->setVisible(false);
+  setIconKind(QStringLiteral("question"));
 
-  auto *acceptBtn = new QPushButton(btn1Name);
-  auto *denyBtn   = new QPushButton(btn2Name);
-
-  auto f = acceptBtn->font();
-  for (QPushButton *btn : {acceptBtn, denyBtn}) {
-    btn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
-    f.setPointSize(12 * utils::ssf());
-    btn->setFont(f);
+  // the answer that goes ahead on the right, highlighted
+  auto *acceptBtn = new QPushButton(btn1Name, this);
+  auto *denyBtn   = new QPushButton(btn2Name, this);
+  acceptBtn->setObjectName("primaryButton");
+  for (QPushButton *btn : {denyBtn, acceptBtn}) {
+    btn->setMinimumSize(static_cast<int>(110 * utils::ssf()), static_cast<int>(36 * utils::ssf()));
     m_btnLayout->addWidget(btn);
   }
+  acceptBtn->setDefault(true);
 
   connect(acceptBtn, &QPushButton::clicked, this, [this] {
     accept(); // return 1

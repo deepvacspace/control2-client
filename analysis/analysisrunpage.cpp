@@ -578,7 +578,7 @@ void AnalysisRunPage::buildUi() {
 
 QWidget *AnalysisRunPage::buildNotesPanel() {
   auto *panel = new QTabWidget(this);
-  panel->setStyleSheet(theme::flatTabStyleSheet());
+  theme::setFlatTabs(panel);
   panel->setDocumentMode(true);
   panel->tabBar()->setExpanding(false);
 
@@ -1274,7 +1274,7 @@ int AnalysisRunPage::channelIndex(QString const &name) const {
 
 QWidget *AnalysisRunPage::buildStatisticsPanel() {
   auto *panel = new QTabWidget(this);
-  panel->setStyleSheet(theme::flatTabStyleSheet());
+  theme::setFlatTabs(panel);
   panel->setDocumentMode(true);
   panel->tabBar()->setExpanding(false);
 

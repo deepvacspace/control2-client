@@ -9,7 +9,6 @@
 #include "actionmanager.h"
 #include "alarmdialog.h"
 #include "datamanager.h"
-#include "experimentsyncserver.h"
 #include "gatetcp.h"
 #include "hardwarestatus.h"
 #include "logger.h"
@@ -47,10 +46,16 @@ private:
   void checkConfigIdentical();
   // 0 - ok, -1 - error, -2 - disabled
   void setupOpc();
+  // the chamber reports other values than settings.json: explain, keep it unused, offer the ways out
+  void handleStateMismatch(QStringList const &chamberStates);
+  void adoptChamberStates(QStringList const &chamberStates);
+  void switchBack();
+  // settings.json at start: keep a copy of a good one, or replace an unusable one by a backup
+  void keepSettingsBackup();
+  bool restoreSettings(QString const &backup);
   void stopOpc();
   // re-reads opc settings: stops the server and starts it again if enabled and online
   void restartOpc();
-  void setExperimentSyncEnabled(bool enabled);
   void startOnline();
 
   ResHolder m_resHolder;
@@ -75,7 +80,6 @@ private:
 
   DataManager *m_dataManager;
 
-  ExperimentSyncServer *m_experimentSyncServer;
 
   ActionManager m_actions;
 
@@ -88,6 +92,9 @@ private:
   UsbManager m_usbManager;
 
   QTimer *m_paramsRequestTimer;
+  QString m_settingsNotice;  // settings.json was restored at start: told once the window is up
+  QString m_lastGoodAddress; // last chamber whose value list matched (to go back to)
+  QString m_mismatchAddress; // chamber whose mismatch was explained already (no repeated dialog on reconnects)
   QTimer *m_settingsRequestTimer;
 
   bool m_windowMode;

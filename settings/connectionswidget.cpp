@@ -3,7 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QGridLayout>
-#include <QGroupBox>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
@@ -14,6 +14,7 @@
 
 #include "collabmanager.h"
 #include "constants.h"
+#include "dialogs/confdialog.h"
 #include "dialogs/messagedialog.h"
 #include "lineeditnum.h"
 #include "lineeditscreen.h"
@@ -45,13 +46,29 @@ QPushButton *makeButton(QString const &text, QWidget *parent) {
 
 LineEditNum *makePortEdit(QWidget *parent) {
   auto *edit = new LineEditNum(1, 65535, 0, false, parent);
-  edit->setFixedWidth(110 * utils::ssf());
+  edit->setFont(parent->font()); // the plain field font, not the large keypad digits
+  edit->setFixedSize(110 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
   return edit;
+}
+
+// a card with its title, like the other settings tabs
+QFrame *makeCard(QString const &title, QWidget *parent) {
+  double const ssf{utils::ssf()};
+  auto        *card = new QFrame(parent);
+  card->setObjectName("pageCard");
+  auto *lay = new QVBoxLayout(card);
+  lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
+  lay->setSpacing(8 * ssf);
+  auto *label = new QLabel(title, card);
+  label->setObjectName("cardTitle");
+  lay->addWidget(label);
+  return card;
 }
 
 LineEditScreen *makeTextEdit(QWidget *parent) {
   auto *edit = new LineEditScreen(parent, VirtualKeyboard::EN);
   edit->setMinimumWidth(180 * utils::ssf());
+  edit->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf()); // as tall as the port fields and buttons
   return edit;
 }
 
@@ -59,7 +76,7 @@ QLabel *makeInfoLabel(QWidget *parent) {
   auto *label = new QLabel(parent);
   label->setWordWrap(true);
   label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  label->setStyleSheet("color: #475569;");
+  label->setProperty("muted", true);
   return label;
 }
 
@@ -81,49 +98,65 @@ QString chamberText(QVariantMap const &chamber) {
 }
 } // namespace
 
-ConnectionsWidget::ConnectionsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
-  QVariantMap const tcpServer = m_resHolder->settings->settingsMap()["tcp_server"].toMap();
-  m_connectedAddress = QStringLiteral("%1:%2").arg(tcpServer["server_ip"].toString()).arg(tcpServer["server_port"].toUInt());
+ConnectionsWidget::ConnectionsWidget(ResHolder *resHolder, Page page, QWidget *parent)
+    : QWidget{parent}, m_resHolder{resHolder} {
+  m_connectedAddress = m_resHolder->tcpGate ? m_resHolder->tcpGate->serverAddress() : QString();
 
   auto *content = new QWidget(this);
   auto *columns = new QHBoxLayout(content);
-  columns->setContentsMargins(3, 3, 3, 3);
-  columns->setSpacing(6 * utils::ssf());
+  columns->setContentsMargins(0, 8 * utils::ssf(), 0, 0);
+  columns->setSpacing(12 * utils::ssf());
 
   auto *left  = new QVBoxLayout();
   auto *right = new QVBoxLayout();
-  left->addWidget(buildChamberBox());
-  left->addWidget(buildSharingBox());
+  if (page == Page::TCP) {
+    left->addWidget(buildChamberBox());
+    right->addWidget(buildSharingBox());
+  } else {
+    left->addWidget(buildOpcBox());
+  }
   left->addStretch(1);
-  right->addWidget(buildOpcBox());
   right->addStretch(1);
   columns->addLayout(left, 1);
-  columns->addLayout(right, 1);
+  if (page == Page::TCP) {
+    columns->addLayout(right, 1);
+  }
 
   auto *scroll = new QScrollArea(this);
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setWidget(content);
+  scroll->viewport()->setAutoFillBackground(false);
+  content->setAutoFillBackground(false);
+  scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
   mainLay->addWidget(scroll);
 
-  connect(m_resHolder->status, &StatusManager::appStateChanged, this, [this] {
+  if (page == Page::TCP) {
+    connect(m_resHolder->status, &StatusManager::appStateChanged, this, &ConnectionsWidget::refreshChamberStatus);
+    if (m_resHolder->tcpGate) {
+      // a switch made elsewhere too (the chamber configuration dialog's "Back")
+      connect(m_resHolder->tcpGate, &GateTcp::serverChanged, this, [this] {
+        m_connectedAddress = m_resHolder->tcpGate->serverAddress();
+        refreshChamberList();
+        refreshChamberStatus();
+      });
+    }
+    refreshChamberList();
     refreshChamberStatus();
+  } else {
+    connect(m_resHolder->status, &StatusManager::appStateChanged, this, &ConnectionsWidget::refreshOpcStatus);
+    connect(m_resHolder->status, &StatusManager::opcStateChanged, this, &ConnectionsWidget::refreshOpcStatus);
     refreshOpcStatus();
-  });
-  connect(m_resHolder->status, &StatusManager::opcStateChanged, this, &ConnectionsWidget::refreshOpcStatus);
-
-  refreshChamberList();
-  refreshChamberStatus();
-  refreshOpcStatus();
+  }
 }
 
 // ---------------------------------------------------------------- chamber
 
 QWidget *ConnectionsWidget::buildChamberBox() {
-  auto *box = new QGroupBox(tr("Chamber connection"), this);
-  auto *lay = new QVBoxLayout(box);
+  QFrame *box = makeCard(tr("Chamber connection"), this);
+  auto   *lay = static_cast<QVBoxLayout *>(box->layout());
 
   m_chamberStatus = new QLabel(box);
   m_chamberStatus->setWordWrap(true);
@@ -160,8 +193,9 @@ QWidget *ConnectionsWidget::buildChamberBox() {
   auto *addBtn    = makeButton(tr("Add"), box);
   auto *saveBtn   = makeButton(tr("Save changes"), box);
   auto *deleteBtn = makeButton(tr("Delete"), box);
-  auto *useBtn    = makeButton(tr("Use on next start"), box);
-  useBtn->setToolTip(tr("Connect to the selected chamber the next time the application starts"));
+  auto *useBtn    = makeButton(tr("Connect"), box);
+  useBtn->setObjectName("primaryButton");
+  useBtn->setToolTip(tr("Connect to the selected chamber now; it is also used the next time the application starts"));
   connect(addBtn, &QPushButton::clicked, this, [this] {
     saveChamber(true);
   });
@@ -169,7 +203,7 @@ QWidget *ConnectionsWidget::buildChamberBox() {
     saveChamber(false);
   });
   connect(deleteBtn, &QPushButton::clicked, this, &ConnectionsWidget::deleteChamber);
-  connect(useBtn, &QPushButton::clicked, this, &ConnectionsWidget::useChamber);
+  connect(useBtn, &QPushButton::clicked, this, &ConnectionsWidget::connectChamber);
   for (QPushButton *button : {addBtn, saveBtn, deleteBtn, useBtn}) {
     buttons->addWidget(button);
   }
@@ -201,13 +235,13 @@ void ConnectionsWidget::refreshChamberList() {
     QString const     address{QStringLiteral("%1:%2").arg(chamber["host"].toString()).arg(chamber["port"].toUInt())};
     QString           text = chamberText(chamber);
     if (address == m_connectedAddress) {
-      text += tr("   (this session)");
+      text += tr("   (connected)");
     } else if (address == selected) {
-      text += tr("   (next start)");
+      text += tr("   (used at start)");
     }
     auto *item = new QListWidgetItem(text, m_chamberList);
     item->setData(Qt::UserRole, chamber);
-    if (address == selected) {
+    if (address == m_connectedAddress) {
       QFont font = item->font();
       font.setBold(true);
       item->setFont(font);
@@ -228,6 +262,9 @@ void ConnectionsWidget::refreshChamberStatus() {
     case StatusManager::AppState::CONNECTED:
       color = COLOR_WAIT;
       text  = tr("Connecting to %1…").arg(m_connectedAddress);
+      break;
+    case StatusManager::AppState::OFFLINE:
+      text = tr("Connected to %1 but not used: its configuration differs from this application's").arg(m_connectedAddress);
       break;
     case StatusManager::AppState::DUMMY:
     case StatusManager::AppState::WAIT_IN_DEBUG:
@@ -260,7 +297,7 @@ void ConnectionsWidget::saveChamber(bool asNew) {
       message(tr("Chamber"), tr("Select the chamber to change in the list first."));
       return;
     }
-    // keep "next start" pointing at the edited chamber
+    // keep the chamber used at start pointing at the edited one
     QVariantMap const old       = list[row].toMap();
     QVariantMap const tcpServer = m_resHolder->settings->settingsMap()["tcp_server"].toMap();
     if ((old["host"] == tcpServer["server_ip"]) && (old["port"].toUInt() == tcpServer["server_port"].toUInt())) {
@@ -289,24 +326,42 @@ void ConnectionsWidget::deleteChamber() {
   refreshChamberList();
 }
 
-void ConnectionsWidget::useChamber() {
+void ConnectionsWidget::connectChamber() {
   QListWidgetItem *item = m_chamberList->currentItem();
   if (!item) {
     message(tr("Chamber"), tr("Select a chamber in the list first."));
     return;
   }
   QVariantMap const chamber = item->data(Qt::UserRole).toMap();
-  m_resHolder->settings->setChambers(chambers()); // persist the synthesized default too
-  m_resHolder->settings->setTcpServer(chamber["host"].toString(), static_cast<quint16>(chamber["port"].toUInt()));
-  refreshChamberList();
-
-  QString const address{QStringLiteral("%1:%2").arg(chamber["host"].toString()).arg(chamber["port"].toUInt())};
-  if (address != m_connectedAddress) {
-    message(tr("Chamber"),
-            tr("\"%1\" will be connected the next time the application starts.\n"
-               "Restart the application to switch now.")
-              .arg(chamber["name"].toString()));
+  QString const     host    = chamber["host"].toString();
+  auto const        port    = static_cast<quint16>(chamber["port"].toUInt());
+  QString const     address{QStringLiteral("%1:%2").arg(host).arg(port)};
+  if (address == m_connectedAddress) {
+    message(tr("Chamber"), tr("\"%1\" is the chamber of this session already.").arg(chamber["name"].toString()));
+    return;
   }
+  if (m_resHolder->hard_status && (m_resHolder->hard_status->getHardwareStatus() == HardwareStatus::WORK)) {
+    message(tr("Warning"), tr("The current chamber is running a job. Stop it or wait until it finishes before switching."));
+    return;
+  }
+
+  auto *confirm = new ConfDialog(tr("Connect to \"%1\"?").arg(chamber["name"].toString()),
+                                 tr("The connection to %1 is closed and %2 is connected now. "
+                                    "It is also the chamber used the next time the application starts.")
+                                   .arg(m_connectedAddress, address),
+                                 tr("Connect"), tr("Cancel"), this);
+  connect(confirm, &QDialog::accepted, this, [this, host, port, address] {
+    m_resHolder->settings->setChambers(chambers()); // persist the synthesized default too
+    m_resHolder->settings->setTcpServer(host, port);
+    m_connectedAddress = address;
+    if (m_resHolder->tcpGate) {
+      m_resHolder->tcpGate->setServer(QHostAddress(host), port);
+    }
+    window()->setWindowTitle(QStringLiteral("Deepvac Control (%1)").arg(host));
+    refreshChamberList();
+    refreshChamberStatus();
+  });
+  confirm->open();
 }
 
 // ---------------------------------------------------------------- opc
@@ -314,8 +369,8 @@ void ConnectionsWidget::useChamber() {
 QWidget *ConnectionsWidget::buildOpcBox() {
   QVariantMap const opc = m_resHolder->settings->settingsMap()["opc_settings"].toMap();
 
-  auto *box = new QGroupBox(tr("OPC UA server"), this);
-  auto *lay = new QVBoxLayout(box);
+  QFrame *box = makeCard(tr("OPC UA server"), this);
+  auto   *lay = static_cast<QVBoxLayout *>(box->layout());
 
   m_opcStatus = new QLabel(box);
   m_opcStatus->setWordWrap(true);
@@ -471,8 +526,8 @@ void ConnectionsWidget::refreshOpcStatus() {
 // ---------------------------------------------------------------- local network sharing
 
 QWidget *ConnectionsWidget::buildSharingBox() {
-  auto *box = new QGroupBox(tr("Local network sharing"), this);
-  auto *lay = new QVBoxLayout(box);
+  QFrame *box = makeCard(tr("Local network sharing"), this);
+  auto   *lay = static_cast<QVBoxLayout *>(box->layout());
 
   CollabManager *collab = m_resHolder->collab;
   if (!collab || !collab->available()) {

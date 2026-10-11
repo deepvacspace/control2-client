@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QColor>
+#include <QComboBox>
 #include <QEvent>
 #include <QFrame>
 #include <QLabel>
@@ -156,7 +157,7 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   auto        *mainLay = static_cast<QVBoxLayout *>(card->layout());
 
   // one row per action: icon, title and what it does, button
-  auto addRow = [&](QString const &icon, QString const &title, QString const &text, QPushButton *button) {
+  auto addRow = [&](QString const &icon, QString const &title, QString const &text, QWidget *button) {
     auto *row = new QFrame(card);
     row->setObjectName("outputRow");
     auto *rowLay = new QHBoxLayout(row);
@@ -193,6 +194,20 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   addRow("power", tr("Exit to the operating system"), tr("Closes the application; the chamber keeps running its job."), exitBtn);
   addRow("system", tr("Full screen or window"), tr("Switches the application between full screen and a window."), windowBtn);
   addRow("settings", tr("Appearance"), tr("Light design (default) or dark mode."), themeBtn);
+
+  // interface language (read at start: a change applies on the next start)
+  auto *languageBox = new QComboBox();
+  languageBox->addItem(QStringLiteral("English"), QStringLiteral("en"));
+  languageBox->addItem(QStringLiteral("Русский"), QStringLiteral("ru"));
+  QString const language = resHolder->settings->settingsMap().value("app_settings").toMap().value("language", "en").toString();
+  languageBox->setCurrentIndex(qMax(0, languageBox->findData(language == QLatin1String("en") ? "en" : "ru")));
+  addRow("globe", tr("Language"), tr("Language of the interface. Applies the next time the application starts."), languageBox);
+  connect(languageBox, &QComboBox::currentIndexChanged, this, [this, resHolder, languageBox] {
+    QVariantMap appSettings = resHolder->settings->settingsMap().value("app_settings").toMap();
+    appSettings["language"] = languageBox->currentData().toString();
+    resHolder->settings->setSection("app_settings", appSettings);
+    (new MessageDialog(tr("Language"), tr("The new language is used the next time the application starts."), this))->open();
+  });
   mainLay->addStretch();
 
   connect(exitBtn, &QPushButton::clicked, this, [this, resHolder] {
@@ -238,7 +253,7 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   mainLay->setContentsMargins(0, 0, 0, 0);
 
   m_tabWidget = new QTabWidget(this);
-  m_tabWidget->setStyleSheet(theme::flatTabStyleSheet());
+  theme::setFlatTabs(m_tabWidget);
   mainLay->addWidget(m_tabWidget);
 
   // 0 - список

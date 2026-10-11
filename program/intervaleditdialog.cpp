@@ -82,8 +82,7 @@ void IntervalEditDialog::initGui() {
   // ‹ previous · next ›, add after, close
   auto navButton = [this, ssf](QString const &kind, QString const &tip) {
     auto *button = new QPushButton(this);
-    button->setIcon(theme::menuIcon(kind, theme::colors().text, theme::colors().text, static_cast<int>(16 * ssf)));
-    button->setIconSize(QSize(16 * ssf, 16 * ssf));
+    theme::setThemedIcon(button, kind, static_cast<int>(16 * ssf));
     button->setFixedSize(static_cast<int>(34 * ssf), static_cast<int>(34 * ssf));
     button->setToolTip(tip);
     return button;

@@ -4,7 +4,44 @@
 #include <QDir>
 #include <QFileInfo>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <io.h>
+#include <windows.h>
+#else
+#include <cstdio>
+#include <unistd.h>
+#endif
+
 namespace deepvaccontrol {
+
+namespace {
+// the written bytes reach the disk, not only the system cache
+void syncToDisk(QFile &file) {
+#ifdef Q_OS_WIN
+  FlushFileBuffers(reinterpret_cast<HANDLE>(_get_osfhandle(file.handle())));
+#else
+  ::fsync(file.handle());
+#endif
+}
+
+// atomic replacement of `to` by `from` (same folder)
+bool replaceFile(QString const &from, QString const &to) {
+#ifdef Q_OS_WIN
+  return 0 != MoveFileExW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(from).utf16()),
+                          reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(to).utf16()),
+                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+#else
+  return 0 == std::rename(QFile::encodeName(from).constData(), QFile::encodeName(to).constData());
+#endif
+}
+} // namespace
+
 
 bool FileHandler::saveToFile(PathProvider *pathProvider, QWidget *parent, QString const &filter) {
   QString path{pathProvider->getPath(parent, filter)};
@@ -49,11 +86,6 @@ void FileHandler::loadFromFileAsync(PathProvider *pathProvider, QWidget *parent,
 }
 
 bool FileHandler::saveToFileImpl(QString const &filePath, Logger *logger) {
-  QFile file{filePath};
-  if (!file.exists()) {
-    logger->stream(Logger::Level::INFO) << "File for writing doesn't exist:" << filePath;
-  }
-
   QFileInfo const fileInfo{filePath};
   QDir const      dir{fileInfo.dir()};
   if (!dir.exists()) {
@@ -65,15 +97,27 @@ bool FileHandler::saveToFileImpl(QString const &filePath, Logger *logger) {
     }
   }
 
-  if (!file.open(QIODevice::WriteOnly)) {
-    logger->stream(Logger::Level::WAR) << "Error opening file for writing:" << filePath;
+  // written to a temporary file next to the target and swapped in only when complete: a crash or a power cut
+  // leaves the previous file or the new one, never a half-written one
+  QString const tmpPath{filePath + QStringLiteral(".tmp")};
+  QFile         file{tmpPath};
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    logger->stream(Logger::Level::WAR) << "Error opening file for writing:" << tmpPath;
     return false;
   }
-  if (!writeData(file)) {
+  if (!writeData(file) || !file.flush()) {
     logger->stream(Logger::Level::WAR) << "Error while writing data to file:" << filePath;
+    file.close();
+    QFile::remove(tmpPath);
     return false;
   }
-
+  syncToDisk(file);
+  file.close();
+  if (!replaceFile(tmpPath, filePath)) {
+    logger->stream(Logger::Level::WAR) << "Error while replacing" << filePath << "with the new version";
+    QFile::remove(tmpPath);
+    return false;
+  }
   return true;
 }
 

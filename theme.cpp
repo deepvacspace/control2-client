@@ -1,6 +1,10 @@
 #include "theme.h"
 
+#include <QAbstractButton>
 #include <QApplication>
+#include <QLabel>
+#include <QHash>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
@@ -108,6 +112,8 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 QSplitter::handle { background: %3; }
 QFrame#pageCard { background: %1; border: %4px solid %3; border-radius: %19px; }
 QFrame#cardDivider { background: %3; border: none; }
+QProgressBar#slimProgress { background: %14; border: none; border-radius: %6px; }
+QProgressBar#slimProgress::chunk { background: %8; border-radius: %6px; }
 QLabel#cardTitle { font-weight: bold; }
 QLabel[muted="true"] { color: %16; }
 QPushButton#primaryButton { background: %8; color: white; border: none; font-weight: bold; }
@@ -138,6 +144,9 @@ QTableView#flatTable::item { border: none; border-bottom: %4px solid %3; padding
 QTableView#flatTable::item:selected { background: %24; color: %2; }
 QTableView#flatTable QHeaderView::section { background: transparent; color: %16; border: none;
   border-bottom: %4px solid %3; padding: %15px; }
+QMessageBox { background: %1; }
+QMessageBox QLabel#qt_msgbox_informativelabel { color: %16; }
+QMessageBox QPushButton:default { background: %8; color: white; border: none; font-weight: bold; }
 QPushButton[segment="true"] { background: %14; color: %16; border-radius: 0; }
 QPushButton[segment="true"]:checked { background: %8; color: white; border-color: %8; font-weight: bold; }
 QPushButton[segment="true"]:disabled { color: %10; }
@@ -160,9 +169,44 @@ QLabel#rowTitle { font-weight: bold; }
     .arg(px(4.5))
     .arg(c.active.name(), dark ? QStringLiteral("#c084fc") : QStringLiteral("#7e22ce"),
          QColor(c.accent.red(), c.accent.green(), c.accent.blue(), dark ? 45 : 30).name(QColor::HexArgb));
+
 }
 
+namespace {
+// standard message boxes (QMessageBox::warning() etc.) get the round icon of the app's own message windows
+class MessageBoxStyler : public QObject {
+public:
+  using QObject::QObject;
+  bool eventFilter(QObject *watched, QEvent *event) override {
+    // before QMessageBox::showEvent() fixes the window size
+    if (event->type() == QEvent::Show) {
+      if (auto *box = qobject_cast<QMessageBox *>(watched)) {
+        if (auto *label = box->findChild<QLabel *>(QStringLiteral("qt_msgbox_label"))) {
+          label->setMinimumWidth(px(260));
+        }
+        for (QAbstractButton *button : box->buttons()) {
+          button->setMinimumSize(px(60), px(20));
+        }
+        static QHash<int, QString> const kinds{{QMessageBox::Warning, "warning"},
+                                               {QMessageBox::Critical, "error"},
+                                               {QMessageBox::Question, "question"},
+                                               {QMessageBox::Information, "info"}};
+        if (QString const kind = kinds.value(box->icon()); !kind.isEmpty()) {
+          box->setIconPixmap(dialogIcon(kind, static_cast<int>(34 * utils::ssf())));
+        }
+      }
+    }
+    return false;
+  }
+};
+} // namespace
+
 void apply(bool dark) {
+  static MessageBoxStyler *styler = nullptr;
+  if (!styler) {
+    styler = new MessageBoxStyler(qApp);
+    qApp->installEventFilter(styler);
+  }
   g_dark = dark;
   QApplication::setPalette(palette(dark));
   qApp->setStyleSheet(styleSheet(dark));
@@ -170,6 +214,30 @@ void apply(bool dark) {
     if (auto *plot = qobject_cast<QCustomPlot *>(widget)) {
       stylePlot(plot);
     }
+    if (widget->property("flatTabs").toBool()) {
+      widget->setStyleSheet(flatTabStyleSheet());
+    }
+    if (QString const kind = widget->property("themeIcon").toString(); !kind.isEmpty()) {
+      setThemedIcon(widget, kind, widget->property("themeIconSize").toInt(), widget->property("themeIconRole").toString());
+    }
+  }
+}
+
+void setThemedIcon(QWidget *target, QString const &kind, int size, QString const &role) {
+  if (!target) {
+    return;
+  }
+  Colors const &c     = colors();
+  QColor const  color = (role == QLatin1String("muted")) ? c.muted : ((role == QLatin1String("danger")) ? c.danger : c.text);
+  QIcon const   icon  = menuIcon(kind, color, color, size);
+  target->setProperty("themeIcon", kind);
+  target->setProperty("themeIconSize", size);
+  target->setProperty("themeIconRole", role);
+  if (auto *button = qobject_cast<QAbstractButton *>(target)) {
+    button->setIcon(icon);
+    button->setIconSize(QSize(size, size));
+  } else if (auto *label = qobject_cast<QLabel *>(target)) {
+    label->setPixmap(icon.pixmap(size));
   }
 }
 
@@ -198,6 +266,42 @@ void stylePlot(QCustomPlot *plot) {
     plot->legend->setTextColor(c.text);
   }
   plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+QPixmap dialogIcon(QString const &kind, int size) {
+  Colors const &c     = colors();
+  QColor const  color = (kind == QLatin1String("error"))     ? c.danger
+                        : (kind == QLatin1String("warning")) ? QColor(245, 158, 11)
+                                                             : c.accent;
+  qreal const   dpr   = qApp->devicePixelRatio();
+  QPixmap       pixmap(QSize(size, size) * dpr);
+  pixmap.setDevicePixelRatio(dpr);
+  pixmap.fill(Qt::transparent);
+  QPainter p(&pixmap);
+  p.setRenderHint(QPainter::Antialiasing);
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(color.red(), color.green(), color.blue(), 45));
+  p.drawEllipse(QRectF(0, 0, size, size));
+  p.setBrush(color);
+  double const inner = size * 0.68;
+  p.drawEllipse(QRectF((size - inner) / 2, (size - inner) / 2, inner, inner));
+  QFont font;
+  font.setBold(true);
+  font.setPixelSize(static_cast<int>(size * 0.46));
+  p.setFont(font);
+  p.setPen(Qt::white);
+  QString const glyph = (kind == QLatin1String("question")) ? QStringLiteral("?")
+                        : (kind == QLatin1String("info"))   ? QStringLiteral("i")
+                                                            : QStringLiteral("!");
+  p.drawText(QRectF(0, 0, size, size), Qt::AlignCenter, glyph);
+  return pixmap;
+}
+
+void setFlatTabs(QWidget *tabWidget) {
+  if (tabWidget) {
+    tabWidget->setProperty("flatTabs", true);
+    tabWidget->setStyleSheet(flatTabStyleSheet());
+  }
 }
 
 QString flatTabStyleSheet() {
@@ -339,6 +443,12 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
       path.moveTo(pt(0.38, 0.25)); path.lineTo(pt(0.64, 0.5)); path.lineTo(pt(0.38, 0.75));
     }
     p.drawPath(path);
+  } else if (kind == "globe") {
+    p.drawEllipse(pt(0.5, 0.5), s * 0.36, s * 0.36);
+    p.drawEllipse(pt(0.5, 0.5), s * 0.15, s * 0.36);
+    p.drawLine(pt(0.14, 0.5), pt(0.86, 0.5));
+    p.drawLine(pt(0.22, 0.3), pt(0.78, 0.3));
+    p.drawLine(pt(0.22, 0.7), pt(0.78, 0.7));
   } else if (kind == "calendar") {
     p.drawRoundedRect(QRectF(pt(0.14, 0.2), pt(0.86, 0.86)), s * 0.06, s * 0.06);
     p.drawLine(pt(0.14, 0.4), pt(0.86, 0.4));

@@ -91,8 +91,7 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   theme::Colors const &c = theme::colors();
   auto navButton = [&](QString const &kind, QString const &tip) {
     auto *button = new QPushButton(this);
-    button->setIcon(theme::menuIcon(kind, c.text, c.text, static_cast<int>(14 * ssf)));
-    button->setIconSize(QSize(14 * ssf, 14 * ssf));
+    theme::setThemedIcon(button, kind, static_cast<int>(14 * ssf));
     button->setFixedSize(30 * ssf, 30 * ssf);
     button->setToolTip(tip);
     return button;

@@ -527,6 +527,15 @@ CommonSetWidget::CommonSetWidget(quint32          index,
   QFont setpointFont = setpoint->font();
   setpointFont.setPointSizeF(setpointFont.pointSizeF() * 1.25);
   setpoint->setFont(setpointFont);
+  if (manualModel && manualModel->getSysValue(manualModel->getNames().at(index))->isSciNotation()) {
+    // "7.50E-06" in the large digits does not fit half a card: smaller text, same field height as the temperature
+    int const height = setpoint->sizeHint().height();
+    QFont     sci    = QWidget::font();
+    sci.setBold(true);
+    sci.setPointSizeF(sci.pointSizeF() * 1.3);
+    setpoint->setFont(sci);
+    setpoint->setFixedHeight(height);
+  }
   unitInside(setpoint, unit);
   contentLay->addWidget(setpoint);
 
