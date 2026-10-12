@@ -5,11 +5,7 @@
 
 #include "experimentlibrary.h"
 
-class QLineEdit;
 class QFrame;
-class QPushButton;
-class QTreeWidget;
-class QTreeWidgetItem;
 
 namespace deepvaccontrol {
 
@@ -41,24 +37,15 @@ protected:
   void showEvent(QShowEvent *event) override;
 
 private:
-  void populateTree();
-  void applyFilter();
   // splitRight: in a new pane to the right of the active one
   void openRun(ExperimentRun const &run, bool splitRight = false);
-  void openItem(QTreeWidgetItem *item);
-  void openCustomRange();
-  QDate selectedDay() const;
 
   ResHolder          *m_resHolder;
   ExperimentLibrary  *m_library;
   AnalysisNotesStore *m_notes;
   AnalysisEditorArea *m_editor;
 
-  QFrame      *m_browser{nullptr};
-  QTreeWidget *m_tree{nullptr};
-  QLineEdit   *m_filterEdit{nullptr};
-  QPushButton *m_refreshBtn{nullptr};
-  bool         m_scanned{false};
+  QFrame *m_browser{nullptr};
 };
 
 } // namespace deepvaccontrol

@@ -62,6 +62,8 @@ void MainWindow::initGui() {
   m_dataAnalysisWidget = new DataAnalysisWidget(m_resHolder, this);
   m_aiWidget         = new AiWidget(m_resHolder, this);
   m_aiWidget->setAnalysis(m_dataAnalysisWidget, [this] { selectWidgetWindow(m_stackedWidget->indexOf(m_dataAnalysisWidget)); });
+  // the chart page opens the experiments of the data analysis page and shares its annotations
+  m_graphWidget->setAnalysis(m_dataAnalysisWidget->library(), m_dataAnalysisWidget->notes());
   auto *userWidget   = new UserWidget(m_resHolder->logger, m_resHolder->users, this);
   auto *systemWidget = new SystemWidget(m_resHolder, this);
 
@@ -88,8 +90,19 @@ void MainWindow::initGui() {
     m_stackedWidget->setCurrentIndex(indexSelected);
   });
 
-  // the header carries what the former status bar showed
-  mainLay->addWidget(new HeaderBar(m_resHolder, this));
+  // the header carries what the former status bar showed; the chart page hides it for a bigger chart
+  m_headerBar = new HeaderBar(m_resHolder, this);
+  mainLay->addWidget(m_headerBar);
+  connect(m_stackedWidget, &QStackedWidget::currentChanged, this, [this, previous = m_stackedWidget->currentWidget()](int) mutable {
+    QWidget *current = m_stackedWidget->currentWidget();
+    if ((current == m_graphWidget) && (previous != m_graphWidget)) {
+      m_headerWasCollapsed = m_headerBar->isCollapsed();
+      m_headerBar->setCollapsed(true);
+    } else if ((previous == m_graphWidget) && (current != m_graphWidget)) {
+      m_headerBar->setCollapsed(m_headerWasCollapsed);
+    }
+    previous = current;
+  });
   mainLay->addLayout(pagesLay, 1);
   mainLay->addWidget(m_menu);
 

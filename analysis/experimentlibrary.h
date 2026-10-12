@@ -94,6 +94,8 @@ public:
   void setGapThresholdSec(double sec);
 
   [[nodiscard]] bool                          isScanning() const;
+  // refresh() was called at least once
+  [[nodiscard]] bool                          hasScanned() const;
   [[nodiscard]] double                        gapThresholdSec() const;
   [[nodiscard]] QVector<ExperimentRun> const &runs() const;
   // runs saved in the experiment database (recorded here or received from other computers)
@@ -132,6 +134,7 @@ private:
   double       m_gapThresholdSec{300.0};
 
   bool                         m_scanning{false};
+  bool                         m_scanned{false};
   bool                         m_rescanRequested{false};
   QHash<QString, FileSummary>  m_summaryCache;
   QVector<FileSummary>         m_files;
@@ -145,6 +148,10 @@ private:
 
 inline bool ExperimentLibrary::isScanning() const {
   return m_scanning;
+}
+
+inline bool ExperimentLibrary::hasScanned() const {
+  return m_scanned;
 }
 
 inline double ExperimentLibrary::gapThresholdSec() const {

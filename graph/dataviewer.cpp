@@ -49,6 +49,34 @@ int nearestIndex(QCPGraph const *graph, double key) {
   return best;
 }
 
+// centred moving average ignoring NaN, NaN gaps are kept
+QVector<double> smoothed(QVector<double> const &y, int samples) {
+  int const window{(samples % 2 == 0) ? samples + 1 : samples};
+  if ((window <= 1) || (y.size() < window)) {
+    return y;
+  }
+  qsizetype const n{y.size()};
+  QVector<double> sums(n + 1, 0.0);
+  QVector<int>    counts(n + 1, 0);
+  for (qsizetype i{0}; i < n; ++i) {
+    bool const valid{!std::isnan(y[i])};
+    sums[i + 1]   = sums[i] + (valid ? y[i] : 0.0);
+    counts[i + 1] = counts[i] + (valid ? 1 : 0);
+  }
+  int const       half{window / 2};
+  QVector<double> result(n);
+  for (qsizetype i{0}; i < n; ++i) {
+    if (std::isnan(y[i])) {
+      result[i] = qQNaN();
+      continue;
+    }
+    qsizetype const lo{std::max<qsizetype>(0, i - half)};
+    qsizetype const hi{std::min<qsizetype>(n - 1, i + half)};
+    result[i] = (sums[hi + 1] - sums[lo]) / (counts[hi + 1] - counts[lo]);
+  }
+  return result;
+}
+
 QString formatValue(double value) {
   double const absValue{std::fabs(value)};
   if ((absValue != 0.0) && ((absValue < 1e-2) || (absValue >= 1e6))) {
@@ -90,10 +118,19 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   connect(m_plot, &QCustomPlot::mouseMove, this, &DataViewer::mouseEventHeadler);
   connect(m_plot, &QCustomPlot::mouseWheel, this, &DataViewer::wheelEventHandler);
   connect(m_plot->selectionRect(), &QCPSelectionRect::accepted, this, [this](QRect const &rect, QMouseEvent *event) {
-    // update internal variable
     (void)event;
+    if (m_plot->selectionRectMode() == QCP::srmCustom) { // annotate: a time range
+      double const x0{m_plot->xAxis->pixelToCoord(rect.left())};
+      double const x1{m_plot->xAxis->pixelToCoord(rect.right())};
+      if (std::fabs(x1 - x0) > 0.0) {
+        emit annotationDrawn(std::min(x0, x1), std::max(x0, x1));
+      }
+      return;
+    }
+    // rectangle zoom: update internal variable
     m_currentView = mouseToCoord(rect);
   });
+  m_plot->addLayer("regions", m_plot->layer("main"), QCustomPlot::limBelow);
 
   // legend position: a box over the top left of the chart, small labels
   m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft | Qt::AlignTop);
@@ -247,6 +284,7 @@ void DataViewer::setStyles(QVariantList const &stateListVariant) {
   }
   m_stateListVariant = stateListVariant;
   applyStyles();
+  rebuildDecorations(); // bands and overlays follow the visible channels
 }
 
 void DataViewer::setStyle(int index, QVariantMap stateMapVariant) {
@@ -255,6 +293,7 @@ void DataViewer::setStyle(int index, QVariantMap stateMapVariant) {
     m_legendController.compactLayout(3);
   }
   applyStyle(index, stateMapVariant, false); // this replot graphs and legend
+  rebuildDecorations();
 }
 
 void DataViewer::updateTextItem(QString const &text) {
@@ -348,6 +387,47 @@ void DataViewer::setCompactLegend(bool compact) {
   m_plot->replot();
 }
 
+void DataViewer::setRegions(QVector<Region> const &regions) {
+  for (QCPAbstractItem *item : std::as_const(m_regionItems)) {
+    m_plot->removeItem(item);
+  }
+  m_regionItems.clear();
+  for (Region const &region : regions) {
+    auto *rect = new QCPItemRect(m_plot);
+    rect->setLayer("regions");
+    rect->setSelectable(false);
+    for (auto *position : {rect->topLeft, rect->bottomRight}) {
+      position->setTypeY(QCPItemPosition::ptAxisRectRatio);
+    }
+    rect->topLeft->setCoords(region.x0, 0);
+    rect->bottomRight->setCoords(region.x1, 1);
+    QColor fill = region.color;
+    fill.setAlpha(40);
+    rect->setPen(QPen(region.color, 1, Qt::DashLine));
+    rect->setBrush(fill);
+    m_regionItems.push_back(rect);
+
+    if (!region.label.isEmpty()) {
+      auto *text = new QCPItemText(m_plot);
+      text->setLayer("regions");
+      text->setSelectable(false);
+      text->position->setTypeY(QCPItemPosition::ptAxisRectRatio);
+      text->position->setCoords(region.x0, 0.01);
+      text->setPositionAlignment(Qt::AlignLeft | Qt::AlignTop);
+      text->setPadding(QMargins(4, 2, 4, 2));
+      text->setText(region.label);
+      text->setColor(region.color.darker(130));
+      m_regionItems.push_back(text);
+    }
+  }
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setAnnotateMode(bool enabled) {
+  m_annotateMode = enabled;
+  m_plot->setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
 void DataViewer::setLabelsVisible(bool visible) {
   m_labelsVisible = visible;
   m_legendController.setVisible(visible || m_compactLegend);
@@ -363,6 +443,7 @@ void DataViewer::setValuesVisible(bool visible) {
 void DataViewer::updateValueCursor(QPointF const &pos) {
   if (!m_data || (0 == m_plot->graphCount()) || !m_plot->axisRect()->rect().contains(pos.toPoint())) {
     hideValueCursor();
+    emit valueCursorHidden();
     return;
   }
 
@@ -391,24 +472,53 @@ void DataViewer::updateValueCursor(QPointF const &pos) {
   }
   if (bestGraph < 0) {
     hideValueCursor();
+    emit valueCursorHidden();
     return;
   }
 
-  QCPGraph     *graph = m_plot->graph(bestGraph);
-  auto const    point = graph->data()->constBegin() + bestIndex;
-  QColor const  color = graph->pen().color();
-  QString const label = (bestGraph < m_stateListVariant.size()) ? m_stateListVariant[bestGraph].toMap()["label"].toString() : QString{};
-  QString const value = m_logAxisDataIndexes.contains(bestGraph) ? utils::formatScientific(point->value, 2) : formatValue(point->value);
-  QString const time  = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(point->key))).toString("hh:mm:ss");
-
   // crosshair at the mouse, as in the data analysis charts
-  double const y{m_plot->yAxis->pixelToCoord(pos.y())};
+  showCursor(x, m_plot->yAxis->pixelToCoord(pos.y()), bestGraph, bestIndex);
+  emit valueCursorMoved(x, bestGraph);
+}
+
+void DataViewer::showSyncCursor(double x, int graphIndex) {
+  if (!m_data || (0 == m_plot->graphCount())) {
+    return;
+  }
+  // the same line's sample close to that time, if it has one
+  QCPGraph *graph = ((graphIndex >= 0) && (graphIndex < m_plot->graphCount())) ? m_plot->graph(graphIndex) : nullptr;
+  int const index{(graph && graph->visible()) ? nearestIndex(graph, x) : -1};
+  bool const atPoint{(index >= 0)
+                     && (std::fabs((graph->data()->constBegin() + index)->key - x) <= m_plot->xAxis->range().size() * 0.04)};
+  if (!atPoint) {
+    showCursor(x, qQNaN(), -1, -1);
+    return;
+  }
+  auto const   point = graph->data()->constBegin() + index;
+  double const y{m_plot->yAxis->pixelToCoord(graph->valueAxis()->coordToPixel(point->value))};
+  showCursor(x, y, graphIndex, index);
+}
+
+void DataViewer::showCursor(double x, double y, int graphIndex, int index) {
   m_cursor->point1->setCoords(x, 0);
   m_cursor->point2->setCoords(x, 1);
   m_cursor->setVisible(true);
   m_cursorH->point1->setCoords(0, y);
   m_cursorH->point2->setCoords(1, y);
-  m_cursorH->setVisible(true);
+  m_cursorH->setVisible(!std::isnan(y));
+  if (index < 0) {
+    m_tracer->setVisible(false);
+    m_valueText->setVisible(false);
+    m_plot->layer("cursor")->replot();
+    return;
+  }
+
+  QCPGraph     *graph = m_plot->graph(graphIndex);
+  auto const    point = graph->data()->constBegin() + index;
+  QColor const  color = graph->pen().color();
+  QString const label = (graphIndex < m_stateListVariant.size()) ? m_stateListVariant[graphIndex].toMap()["label"].toString() : QString{};
+  QString const value = m_logAxisDataIndexes.contains(graphIndex) ? utils::formatScientific(point->value, 2) : formatValue(point->value);
+  QString const time  = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(point->key))).toString("hh:mm:ss");
 
   m_tracer->setGraph(graph);
   m_tracer->setGraphKey(point->key);
@@ -449,6 +559,7 @@ void DataViewer::hideValueCursor() {
 bool DataViewer::eventFilter(QObject *watched, QEvent *event) {
   if ((watched == m_plot) && (event->type() == QEvent::Leave)) {
     hideValueCursor();
+    emit valueCursorHidden();
   }
   return QWidget::eventFilter(watched, event);
 }
@@ -512,12 +623,181 @@ void DataViewer::updateData() {
     return;
   }
 
+  QVector<QVector<double>> const states = m_data->getStates();
   for (int i{0U}; i < graphCount; ++i) {
-    m_plot->graph(i)->setData(times, m_data->getStates()[i], /*alreadySorted*/ true);
+    m_plot->graph(i)->setData(times, (m_smoothing > 1) ? smoothed(states[i], m_smoothing) : states[i], /*alreadySorted*/ true);
   }
 
   updateRange();
+  rebuildDecorations();
   m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setBands(QVector<Band> const &bands) {
+  m_bands = bands;
+  rebuildDecorations();
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setSmoothingWindow(int samples) {
+  samples = std::max(1, samples);
+  if (samples == m_smoothing) {
+    return;
+  }
+  m_smoothing = samples;
+  if (m_data) {
+    updateData();
+  }
+}
+
+void DataViewer::setOverlays(bool min, bool max, bool avg) {
+  m_overlayMin = min;
+  m_overlayMax = max;
+  m_overlayAvg = avg;
+  rebuildDecorations();
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setTimeRange(double from, double to) {
+  if (to <= from) {
+    return;
+  }
+  setControlMode(ControlMode::ZOOM);
+  m_plot->xAxis->setRange(from, to);
+  // values fitted to the visible time range
+  for (QCPAxis *axis : {m_plot->yAxis, m_plot->yAxis2}) {
+    QCPRange range;
+    bool     haveRange{false};
+    for (int i{0}; i < m_plot->graphCount(); ++i) {
+      QCPGraph *graph = m_plot->graph(i);
+      if ((graph->valueAxis() != axis) || !graph->visible()) {
+        continue;
+      }
+      bool           found{false};
+      QCPRange const graphRange = graph->getValueRange(found, axis == m_plot->yAxis2 ? QCP::sdPositive : QCP::sdBoth, QCPRange(from, to));
+      if (found) {
+        range     = haveRange ? QCPRange(std::min(range.lower, graphRange.lower), std::max(range.upper, graphRange.upper)) : graphRange;
+        haveRange = true;
+      }
+    }
+    if (haveRange) {
+      if (axis == m_plot->yAxis2) {
+        axis->setRange(range.lower / 1.5, range.upper * 1.5);
+      } else {
+        double const pad{range.size() > 0 ? range.size() * 0.05 : 1.0};
+        axis->setRange(range.lower - pad, range.upper + pad);
+      }
+    }
+  }
+  m_currentView = getRange();
+  m_plot->replot();
+}
+
+void DataViewer::rebuildDecorations() {
+  for (QCPAbstractItem *item : std::as_const(m_decorationItems)) {
+    m_plot->removeItem(item);
+  }
+  m_decorationItems.clear();
+  auto shown = [this](int channel) {
+    return (channel >= 0) && (channel < m_plot->graphCount()) && m_plot->graph(channel)->visible();
+  };
+  auto addLine = [this](QCPAxis *axis, double value, QPen const &pen) {
+    auto *line = new QCPItemStraightLine(m_plot);
+    line->setLayer("regions");
+    line->setSelectable(false);
+    line->point1->setAxes(m_plot->xAxis, axis);
+    line->point2->setAxes(m_plot->xAxis, axis);
+    line->point1->setTypeX(QCPItemPosition::ptAxisRectRatio);
+    line->point2->setTypeX(QCPItemPosition::ptAxisRectRatio);
+    line->point1->setCoords(0, value);
+    line->point2->setCoords(1, value);
+    line->setPen(pen);
+    m_decorationItems.push_back(line);
+  };
+  auto addText = [this](QCPAxis *axis, double x, double value, Qt::Alignment align, QString const &text, QColor const &color) {
+    auto *item = new QCPItemText(m_plot);
+    item->setLayer("regions");
+    item->setSelectable(false);
+    item->position->setAxes(m_plot->xAxis, axis);
+    item->position->setTypeX(QCPItemPosition::ptAxisRectRatio);
+    item->position->setCoords(x, value);
+    item->setPositionAlignment(align);
+    item->setText(text);
+    item->setColor(color);
+    m_decorationItems.push_back(item);
+  };
+
+  // variable rules of the visible channels
+  for (Band const &band : std::as_const(m_bands)) {
+    if (!shown(band.channel)) {
+      continue;
+    }
+    QCPAxis   *axis = m_plot->graph(band.channel)->valueAxis();
+    bool const haveLo{!std::isnan(band.lo)};
+    bool const haveHi{!std::isnan(band.hi)};
+    if (haveLo && haveHi) {
+      auto *rect = new QCPItemRect(m_plot);
+      rect->setLayer("regions");
+      rect->setSelectable(false);
+      for (auto *position : {rect->topLeft, rect->bottomRight}) {
+        position->setAxes(m_plot->xAxis, axis);
+        position->setTypeX(QCPItemPosition::ptAxisRectRatio);
+      }
+      rect->topLeft->setCoords(0, std::max(band.lo, band.hi));
+      rect->bottomRight->setCoords(1, std::min(band.lo, band.hi));
+      QColor fill = band.color;
+      fill.setAlpha(45);
+      rect->setPen(QPen(band.color, 1, Qt::DashLine));
+      rect->setBrush(fill);
+      m_decorationItems.push_back(rect);
+    } else {
+      for (double const value : {band.lo, band.hi}) {
+        if (!std::isnan(value)) {
+          addLine(axis, value, QPen(band.color, 1.2, Qt::DashLine));
+        }
+      }
+    }
+    if (!band.label.isEmpty()) {
+      addText(axis, 0.005, haveHi ? band.hi : band.lo, Qt::AlignLeft | Qt::AlignBottom, band.label, band.color.darker(120));
+    }
+  }
+
+  // min / max / average of the visible channels on the main value axis
+  if (m_overlayMin || m_overlayMax || m_overlayAvg) {
+    double minValue{std::numeric_limits<double>::max()};
+    double maxValue{std::numeric_limits<double>::lowest()};
+    double sum{0.0};
+    qint64 count{0};
+    for (int i{0}; i < m_plot->graphCount(); ++i) {
+      QCPGraph *graph = m_plot->graph(i);
+      if (!graph->visible() || (graph->valueAxis() != m_plot->yAxis)) {
+        continue;
+      }
+      for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
+        if (!std::isnan(it->value)) {
+          minValue = std::min(minValue, it->value);
+          maxValue = std::max(maxValue, it->value);
+          sum += it->value;
+          ++count;
+        }
+      }
+    }
+    if (count > 0) {
+      auto overlay = [&](double value, QString const &name, QColor const &color) {
+        addLine(m_plot->yAxis, value, QPen(color, 1.2, Qt::DashLine));
+        addText(m_plot->yAxis, 0.995, value, Qt::AlignRight | Qt::AlignBottom, QStringLiteral("%1 %2").arg(name, formatValue(value)), color);
+      };
+      if (m_overlayMin) {
+        overlay(minValue, tr("Min"), QColor("#0d9488"));
+      }
+      if (m_overlayMax) {
+        overlay(maxValue, tr("Max"), QColor("#dc2626"));
+      }
+      if (m_overlayAvg) {
+        overlay(sum / static_cast<double>(count), tr("Avg"), QColor("#ca8a04"));
+      }
+    }
+  }
 }
 
 void DataViewer::updateRange() {
@@ -574,10 +854,11 @@ void DataViewer::mouseEventHeadler(QMouseEvent *event) {
 
     m_pointPress = event->pos();
 
-    // right button: rectangle zoom, left button: drag
+    // right button: rectangle zoom, left button: drag (or a time range to annotate)
     bool const rectZoom{event->button() == Qt::RightButton};
-    m_plot->setSelectionRectMode(rectZoom ? QCP::srmZoom : QCP::srmNone);
-    m_plot->setInteraction(QCP::iRangeDrag, !rectZoom);
+    bool const annotate{m_annotateMode && (event->button() == Qt::LeftButton)};
+    m_plot->setSelectionRectMode(rectZoom ? QCP::srmZoom : (annotate ? QCP::srmCustom : QCP::srmNone));
+    m_plot->setInteraction(QCP::iRangeDrag, !rectZoom && !annotate);
   }
 
   if ((event->type() == QEvent::MouseMove) && m_valuesVisible) {

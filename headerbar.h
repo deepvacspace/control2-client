@@ -19,6 +19,10 @@ class HeaderBar : public QWidget {
 public:
   explicit HeaderBar(ResHolder *resHolder, QWidget *parent = nullptr);
 
+  // hides the bar's contents, leaving a thin strip with the toggle to bring them back
+  void               setCollapsed(bool collapsed);
+  [[nodiscard]] bool isCollapsed() const;
+
 protected:
   void paintEvent(QPaintEvent *event) override;
   void changeEvent(QEvent *event) override;
@@ -29,8 +33,6 @@ private:
   void updateValues();
   void updateBadges();
   void restyle();
-  // hides the bar's contents, leaving a thin strip with the toggle to bring them back
-  void setCollapsed(bool collapsed);
   void placeToggle();
 
   ResHolder *m_resHolder;
@@ -49,6 +51,10 @@ private:
   int        m_opcState{-2};
   bool       m_usbPresent{false};
 };
+
+inline bool HeaderBar::isCollapsed() const {
+  return m_collapsed;
+}
 
 } // namespace deepvaccontrol
 

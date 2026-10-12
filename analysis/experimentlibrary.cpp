@@ -103,6 +103,7 @@ ExperimentLibrary::~ExperimentLibrary() {
 }
 
 void ExperimentLibrary::refresh() {
+  m_scanned = true;
   if (m_scanning) {
     m_rescanRequested = true;
     return;

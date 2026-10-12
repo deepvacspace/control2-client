@@ -8,6 +8,7 @@
 #include "flasher.h"
 #include "graphwidget.h"
 #include "head.h"
+#include "headerbar.h"
 #include "manual.h"
 #include "menu.h"
 #include "programwidget.h"
@@ -41,6 +42,8 @@ private:
   GraphWidget        *m_graphWidget;
   DataAnalysisWidget *m_dataAnalysisWidget;
   AiWidget       *m_aiWidget;
+  HeaderBar      *m_headerBar{nullptr};
+  bool            m_headerWasCollapsed{false}; // before the chart page hid it
   Flasher        *m_flasher;
   bool            m_windowMode;
 

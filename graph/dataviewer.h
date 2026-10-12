@@ -27,6 +27,23 @@ public:
     ZOOM
   };
 
+  // labelled time range drawn over the chart (annotations)
+  struct Region {
+    double  x0{0.0}; // epoch s
+    double  x1{0.0};
+    QString label;
+    QColor  color;
+  };
+
+  // acceptable range of a channel (variable rule): a band, or a single limit when lo or hi is NaN
+  struct Band {
+    double  lo{qQNaN()};
+    double  hi{qQNaN()};
+    QString label;
+    QColor  color;
+    int     channel{-1}; // index of the state (graph)
+  };
+
 public:
   explicit DataViewer(Logger *logger, bool addSecondLogAxis = false, QWidget *parent = nullptr);
   ~DataViewer() = default;
@@ -52,8 +69,24 @@ public:
   // a label with the value of the line under the mouse, a circle on its point and a time line
   void setValuesVisible(bool visible);
   bool valuesVisible() const;
+  // the value label of another chart mirrored here: crosshair at time x, label and circle on the line `graph`
+  void showSyncCursor(double x, int graph);
+  void hideValueCursor();
 
   void moveView(double addX, double addY);
+
+  void setRegions(QVector<Region> const &regions);
+  // shown for the visible channels
+  void setBands(QVector<Band> const &bands);
+  // centred moving average over `samples` samples (1: raw data)
+  void setSmoothingWindow(int samples);
+  int  smoothingWindow() const;
+  // dashed lines at the min / max / average of the visible channels on the main value axis
+  void setOverlays(bool min, bool max, bool avg);
+  // shows [from, to] (epoch s) with the value axes fitted to it
+  void setTimeRange(double from, double to);
+  // left-drag marks a time range (annotationDrawn) instead of moving the view
+  void setAnnotateMode(bool enabled);
 
   // legend as one row under the plot with the channel names only, always shown
   void setCompactLegend(bool compact);
@@ -61,6 +94,10 @@ public:
 
 signals:
   void controlModeChanged(ControlMode);
+  void annotationDrawn(double x0, double x1); // epoch s
+  // the value label follows the mouse (time x, epoch s, on the line `graph`) / was hidden
+  void valueCursorMoved(double x, int graph);
+  void valueCursorHidden();
 
 protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
@@ -71,7 +108,8 @@ private:
   void updateData();
   void updateRange();
   void updateValueCursor(QPointF const &pos);
-  void hideValueCursor();
+  // crosshair at (x, y) of the time / value axes; label and circle at sample `index` of `graph` (-1: none)
+  void showCursor(double x, double y, int graph, int index);
   void initGraphs(uint16_t graphCount);
   void mouseEventHeadler(QMouseEvent *event);
   void wheelEventHandler(QWheelEvent *event);
@@ -105,6 +143,18 @@ private:
   QCPItemTracer       *m_tracer{nullptr}; // circle on the point the value label refers to
   QCPItemText         *m_valueText{nullptr};
 
+  QVector<QCPAbstractItem *> m_regionItems;
+  bool                       m_annotateMode{false};
+
+  // variable rule bands and min / max / average lines, rebuilt when the data or the styles change
+  void                       rebuildDecorations();
+  QVector<QCPAbstractItem *> m_decorationItems;
+  QVector<Band>              m_bands;
+  int                        m_smoothing{1};
+  bool                       m_overlayMin{false};
+  bool                       m_overlayMax{false};
+  bool                       m_overlayAvg{false};
+
   QCPItemText *m_textItem;
 
   QRectF      m_currentView;
@@ -131,6 +181,10 @@ inline QCustomPlot *DataViewer::getPlot() {
 
 inline bool DataViewer::labelsVisible() const {
   return m_labelsVisible;
+}
+
+inline int DataViewer::smoothingWindow() const {
+  return m_smoothing;
 }
 
 inline bool DataViewer::valuesVisible() const {

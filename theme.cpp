@@ -454,6 +454,17 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
     p.drawLine(pt(0.14, 0.4), pt(0.86, 0.4));
     p.drawLine(pt(0.34, 0.1), pt(0.34, 0.28));
     p.drawLine(pt(0.66, 0.1), pt(0.66, 0.28));
+  } else if (kind == "folder") { // experiments list
+    QPainterPath path;
+    path.moveTo(pt(0.12, 0.8));
+    path.lineTo(pt(0.12, 0.22));
+    path.lineTo(pt(0.4, 0.22));
+    path.lineTo(pt(0.48, 0.32));
+    path.lineTo(pt(0.88, 0.32));
+    path.lineTo(pt(0.88, 0.8));
+    path.closeSubpath();
+    p.drawPath(path);
+    p.drawLine(pt(0.12, 0.44), pt(0.88, 0.44));
   } else if (kind == "edit") { // pencil
     QPainterPath path;
     path.moveTo(pt(0.2, 0.8));

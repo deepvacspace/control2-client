@@ -42,6 +42,7 @@
 #include <cmath>
 
 #include "analysisnotesstore.h"
+#include "annotationdialog.h"
 #include "comparisonpanel.h"
 #include "experimentinput.h"
 #include "experimentreport.h"
@@ -64,18 +65,6 @@
 namespace deepvaccontrol {
 
 namespace {
-struct NamedColor {
-  char const *name;
-  char const *color;
-};
-
-NamedColor const NOTE_COLORS[]{{QT_TRANSLATE_NOOP("AnalysisRunPage", "Green"), "#16a34a"},
-                               {QT_TRANSLATE_NOOP("AnalysisRunPage", "Amber"), "#d97706"},
-                               {QT_TRANSLATE_NOOP("AnalysisRunPage", "Red"), "#dc2626"},
-                               {QT_TRANSLATE_NOOP("AnalysisRunPage", "Blue"), "#2563eb"},
-                               {QT_TRANSLATE_NOOP("AnalysisRunPage", "Purple"), "#9333ea"},
-                               {QT_TRANSLATE_NOOP("AnalysisRunPage", "Teal"), "#0d9488"}};
-
 QVector<QColor> const COMPARE_COLORS{QColor("#2563eb"),
                                      QColor("#dc2626"),
                                      QColor("#16a34a"),
@@ -167,14 +156,7 @@ QPushButton *makeButton(QString const &text, QWidget *parent) {
 }
 
 QComboBox *makeColorCombo(QWidget *parent) {
-  auto *combo = new QComboBox(parent);
-  for (auto const &option : NOTE_COLORS) {
-    QPixmap swatch(14, 14);
-    swatch.fill(QColor(option.color));
-    combo->addItem(QIcon(swatch), QCoreApplication::translate("AnalysisRunPage", option.name), QString(option.color));
-  }
-  combo->setMinimumHeight(buttonHeight());
-  return combo;
+  return annotationdialog::makeColorCombo(parent, buttonHeight());
 }
 
 bool parseNumber(QString text, double &value) {
@@ -2083,36 +2065,10 @@ void AnalysisRunPage::setCompareRun(ExperimentRun const &run, bool compared) {
 }
 
 void AnalysisRunPage::onAnnotationDrawn(double x0, double x1) {
-  QDialog dialog(this);
-  dialog.setWindowTitle(tr("Add annotation"));
-  auto *lay  = new QVBoxLayout(&dialog);
-  auto *info = new QLabel(QStringLiteral("%1 – %2").arg(ExperimentLibrary::formatDuration(x0), ExperimentLibrary::formatDuration(x1)),
-                          &dialog);
-  auto *form       = new QHBoxLayout();
-  auto *labelEdit  = new QLineEdit(&dialog);
-  labelEdit->setPlaceholderText(tr("e.g. Steady state"));
-  labelEdit->setMinimumHeight(buttonHeight());
-  auto *colorCombo = makeColorCombo(&dialog);
-  form->addWidget(new QLabel(tr("Label:"), &dialog));
-  form->addWidget(labelEdit, 1);
-  form->addWidget(colorCombo);
-
-  auto *buttons   = new QHBoxLayout();
-  auto *cancelBtn = makeButton(tr("Cancel"), &dialog);
-  auto *addBtn    = makeButton(tr("Add"), &dialog);
-  addBtn->setDefault(true);
-  buttons->addWidget(cancelBtn);
-  buttons->addStretch();
-  buttons->addWidget(addBtn);
-  connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
-  connect(addBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
-
-  lay->addWidget(info);
-  lay->addLayout(form);
-  lay->addLayout(buttons);
-  dialog.resize(420 * utils::ssf(), dialog.sizeHint().height());
-
-  if (dialog.exec() != QDialog::Accepted) {
+  QString label;
+  QColor  color;
+  if (!annotationdialog::ask(this, QStringLiteral("%1 – %2").arg(ExperimentLibrary::formatDuration(x0), ExperimentLibrary::formatDuration(x1)),
+                             label, color)) {
     return;
   }
 
@@ -2121,11 +2077,11 @@ void AnalysisRunPage::onAnnotationDrawn(double x0, double x1) {
   annotation.runStart = m_run.start;
   annotation.start    = m_run.start + x0;
   annotation.end   = m_run.start + x1;
-  annotation.label = labelEdit->text().trimmed();
+  annotation.label = label;
   if (annotation.label.isEmpty()) {
     annotation.label = tr("t = %1 – %2").arg(ExperimentLibrary::formatDuration(x0), ExperimentLibrary::formatDuration(x1));
   }
-  annotation.color = QColor(colorCombo->currentData().toString());
+  annotation.color = color;
   annotation.user  = m_resHolder->users->getCurrentUserName();
   m_notes->addAnnotation(annotation);
   m_annotateBtn->setChecked(false);
