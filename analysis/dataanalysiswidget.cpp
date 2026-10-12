@@ -11,6 +11,7 @@
 #include <QPainter>
 #include <functional>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QSplitter>
 #include <QTreeWidget>
@@ -167,6 +168,24 @@ DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
   m_tree->setStyleSheet(QStringLiteral("QTreeWidget { background: transparent; border: none; }"));
   // touch friendly: one tap opens an experiment or expands / collapses a day
   connect(m_tree, &QTreeWidget::itemClicked, this, &DataAnalysisWidget::openItem);
+  m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(m_tree, &QWidget::customContextMenuRequested, this, [this](QPoint const &pos) {
+    QTreeWidgetItem *item = m_tree->itemAt(pos);
+    QString const    key  = item ? item->data(0, RUN_KEY_ROLE).toString() : QString{};
+    auto const       run  = key.isEmpty() ? std::nullopt : m_library->findRun(key);
+    if (!run) {
+      return;
+    }
+    ExperimentRun const experiment = *run;
+    QMenu               menu(this);
+    menu.addAction(tr("Open"), this, [this, experiment] {
+      openRun(experiment);
+    });
+    menu.addAction(tr("Split right"), this, [this, experiment] {
+      openRun(experiment, true);
+    });
+    menu.exec(m_tree->viewport()->mapToGlobal(pos));
+  });
 
   m_refreshBtn       = makeButton(tr("Refresh"), m_browser);
   auto *openRangeBtn = makeButton(tr("Range…"), m_browser);
@@ -452,11 +471,11 @@ void DataAnalysisWidget::applyFilter() {
   }
 }
 
-void DataAnalysisWidget::openRun(ExperimentRun const &run) {
-  if (m_editor->focusPage(run.key)) {
+void DataAnalysisWidget::openRun(ExperimentRun const &run, bool splitRight) {
+  if (splitRight ? m_editor->splitPageRight(run.key) : m_editor->focusPage(run.key)) {
     return;
   }
-  m_editor->addPage(new AnalysisRunPage(m_resHolder, m_library, m_notes, run));
+  m_editor->addPage(new AnalysisRunPage(m_resHolder, m_library, m_notes, run), splitRight);
 }
 
 void DataAnalysisWidget::openItem(QTreeWidgetItem *item) {

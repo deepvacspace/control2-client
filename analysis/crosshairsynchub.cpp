@@ -30,12 +30,12 @@ void CrosshairSyncHub::setEnabled(bool enabled) {
   emit enabledChanged(m_enabled);
 }
 
-void CrosshairSyncHub::broadcast(AnalysisChart *source, double x, double y) {
+void CrosshairSyncHub::broadcast(AnalysisChart *source, double x, double y, QString const &series) {
   if (!m_enabled) {
     return;
   }
-  forEachOther(source, [x, y](AnalysisChart *chart) {
-    chart->showSyncCrosshair(x, y);
+  forEachOther(source, [x, y, &series](AnalysisChart *chart) {
+    chart->showSyncCrosshair(x, y, series);
   });
 }
 

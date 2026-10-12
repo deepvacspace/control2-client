@@ -16,8 +16,6 @@ namespace {
 QString const CROSSHAIR_LAYER{"crosshair"};
 QString const BANDS_LAYER{"bands"};
 
-constexpr int MAX_SYNC_LABEL_SERIES{8};
-
 QString formatValue(double value) {
   if (std::isnan(value)) {
     return QStringLiteral("—");
@@ -138,6 +136,15 @@ AnalysisChart::AnalysisChart(QWidget *parent) : QWidget{parent}, m_plot{new QCus
   m_hoverText->setBrush(QBrush(QColor(255, 255, 255, 235)));
   m_hoverText->setTextAlignment(Qt::AlignLeft);
   m_hoverText->setClipToAxisRect(false);
+
+  // circle on the sample the label refers to
+  m_hoverDot = new QCPItemTracer(m_plot);
+  m_hoverDot->setLayer(CROSSHAIR_LAYER);
+  m_hoverDot->setSelectable(false);
+  m_hoverDot->setVisible(false);
+  m_hoverDot->setInterpolating(false);
+  m_hoverDot->setStyle(QCPItemTracer::tsCircle);
+  m_hoverDot->setSize(9 * utils::ssf());
 
   connect(m_plot->xAxis, qOverload<QCPRange const &>(&QCPAxis::rangeChanged), this, [this](QCPRange const &range) {
     emit viewRangeChanged(range.lower, range.upper);
@@ -313,9 +320,9 @@ QPair<double, double> AnalysisChart::viewXRange() const {
   return {m_plot->xAxis->range().lower, m_plot->xAxis->range().upper};
 }
 
-bool AnalysisChart::exportPng(QString const &path) {
+bool AnalysisChart::exportImage(QString const &path, char const *format) {
   hideHover();
-  return m_plot->savePng(path, 1600, 900, 1.0);
+  return m_plot->saveRastered(path, 1600, 900, 1.0, format, 95);
 }
 
 QImage AnalysisChart::renderImage(int width, int height) {
@@ -339,6 +346,8 @@ void AnalysisChart::rebuild() {
     return;
   }
   m_graphsDirty = false;
+  m_hoverDot->setGraph(nullptr); // its graph is deleted
+  m_hoverDot->setVisible(false);
   m_plot->clearGraphs();
 
   bool        anyLog{false};
@@ -366,6 +375,7 @@ void AnalysisChart::rebuild() {
 
     QPen pen(series.color);
     pen.setWidthF(series.width * utils::ssf());
+    pen.setStyle(series.penStyle);
     graph->setPen(pen);
     if (Mode::SCATTER == m_mode) {
       graph->setLineStyle(QCPGraph::lsNone);
@@ -714,15 +724,9 @@ void AnalysisChart::onMouseMove(QMouseEvent *event) {
   }
 
   if (bestGraph) {
-    auto const point = bestGraph->data()->constBegin() + bestIndex;
-    m_hoverText->position->setType(QCPItemPosition::ptPlotCoords);
-    m_hoverText->position->setAxes(m_plot->xAxis, bestGraph->valueAxis());
-    m_hoverText->position->setCoords(point->key, point->value);
-    m_hoverText->setText(
-      QStringLiteral("%1\n%2\n%3").arg(bestGraph->name(), timeText(point->key), formatValue(point->value)));
-    m_hoverText->setColor(bestGraph->pen().color().darker(120));
-    m_hoverText->setPen(QPen(bestGraph->pen().color()));
+    showPointHover(bestGraph, bestIndex);
   } else {
+    m_hoverDot->setVisible(false);
     // event marker close to the cursor
     ChartEvent const *nearEvent{nullptr};
     for (ChartEvent const &markerEvent : std::as_const(m_events)) {
@@ -738,58 +742,69 @@ void AnalysisChart::onMouseMove(QMouseEvent *event) {
       m_hoverText->setText(QStringLiteral("%1\n%2").arg(nearEvent->text, timeText(nearEvent->x)));
       m_hoverText->setColor(nearEvent->color.darker(120));
       m_hoverText->setPen(QPen(nearEvent->color));
+      placeHoverText();
     }
     m_hoverText->setVisible(nullptr != nearEvent);
-  }
-
-  if (bestGraph || m_hoverText->visible()) {
-    QPointF const anchor = m_hoverText->position->pixelPosition();
-    QRect const   area   = m_plot->axisRect()->rect();
-    Qt::Alignment align  = (anchor.x() > area.center().x()) ? Qt::AlignRight : Qt::AlignLeft;
-    align |= (anchor.y() < area.top() + area.height() * 0.3) ? Qt::AlignTop : Qt::AlignBottom;
-    m_hoverText->setPositionAlignment(align);
-    m_hoverText->setVisible(true);
   }
 
   replotCrosshair();
 
   if (m_syncHub) {
-    m_syncHub->broadcast(this, x, y);
+    m_syncHub->broadcast(this, x, y, bestGraph ? bestGraph->name() : QString{});
   }
 }
 
-void AnalysisChart::showSyncCrosshair(double x, double y) {
+void AnalysisChart::showPointHover(QCPGraph *graph, int index) {
+  auto const   point = graph->data()->constBegin() + index;
+  QColor const color = graph->pen().color();
+  m_hoverText->position->setType(QCPItemPosition::ptPlotCoords);
+  m_hoverText->position->setAxes(m_plot->xAxis, graph->valueAxis());
+  m_hoverText->position->setCoords(point->key, point->value);
+  m_hoverText->setText(QStringLiteral("%1\n%2\n%3").arg(graph->name(), timeText(point->key), formatValue(point->value)));
+  m_hoverText->setColor(color.darker(120));
+  m_hoverText->setPen(QPen(color));
+  placeHoverText();
+  m_hoverText->setVisible(true);
+
+  m_hoverDot->setGraph(graph);
+  m_hoverDot->setGraphKey(point->key);
+  m_hoverDot->setPen(QPen(color, 2 * utils::ssf()));
+  m_hoverDot->setBrush(QBrush(theme::colors().panel));
+  m_hoverDot->setVisible(true);
+}
+
+void AnalysisChart::placeHoverText() {
+  // next to its anchor, towards the middle of the plot
+  QPointF const anchor = m_hoverText->position->pixelPosition();
+  QRect const   area   = m_plot->axisRect()->rect();
+  Qt::Alignment align  = (anchor.x() > area.center().x()) ? Qt::AlignRight : Qt::AlignLeft;
+  align |= (anchor.y() < area.top() + area.height() * 0.3) ? Qt::AlignTop : Qt::AlignBottom;
+  m_hoverText->setPositionAlignment(align);
+}
+
+void AnalysisChart::showSyncCrosshair(double x, double y, QString const &series) {
   if (m_series.isEmpty()) {
     return;
   }
   setCrosshair(x, y, true);
 
-  // values of every series at the synced time
-  QCPRange const view = m_plot->xAxis->range();
-  double const   tolerance{view.size() * 0.04};
-  QStringList    lines{timeText(x)};
-  for (int i{0}; (i < m_plot->graphCount()) && (lines.size() <= MAX_SYNC_LABEL_SERIES); ++i) {
-    QCPGraph *graph = m_plot->graph(i);
-    int const index = nearestIndex(graph, x);
-    if (index < 0) {
-      continue;
-    }
-    auto const point = graph->data()->constBegin() + index;
-    if (std::fabs(point->key - x) <= tolerance) {
-      lines.push_back(QStringLiteral("%1: %2").arg(graph->name(), formatValue(point->value)));
+  // the same label as in the source chart: the hovered line's sample at the synced time
+  QCPGraph *graph{nullptr};
+  for (int i{0}; (i < m_plot->graphCount()) && !series.isEmpty(); ++i) {
+    if (m_plot->graph(i)->name() == series) {
+      graph = m_plot->graph(i);
+      break;
     }
   }
-
-  m_hoverText->position->setAxes(m_plot->xAxis, m_plot->yAxis);
-  m_hoverText->position->setTypeX(QCPItemPosition::ptPlotCoords);
-  m_hoverText->position->setTypeY(QCPItemPosition::ptAxisRectRatio);
-  m_hoverText->position->setCoords(x, 0.02);
-  bool const rightHalf{x > view.center()};
-  m_hoverText->setPositionAlignment((rightHalf ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignTop);
-  m_hoverText->setText(lines.join('\n'));
-  m_hoverText->setColor(QColor("#1f2937"));
-  m_hoverText->setPen(QPen(QColor("#64748b")));
-  m_hoverText->setVisible(lines.size() > 1);
+  int const  index{graph ? nearestIndex(graph, x) : -1};
+  bool const atPoint{(index >= 0)
+                     && (std::fabs((graph->data()->constBegin() + index)->key - x) <= m_plot->xAxis->range().size() * 0.04)};
+  if (atPoint) {
+    showPointHover(graph, index);
+  } else {
+    m_hoverText->setVisible(false);
+    m_hoverDot->setVisible(false);
+  }
   replotCrosshair();
 }
 
@@ -807,12 +822,13 @@ void AnalysisChart::setCrosshair(double x, double y, bool visible) {
 }
 
 void AnalysisChart::hideHover() {
-  if (!m_crossV->visible() && !m_hoverText->visible()) {
+  if (!m_crossV->visible() && !m_hoverText->visible() && !m_hoverDot->visible()) {
     return;
   }
   m_crossV->setVisible(false);
   m_crossH->setVisible(false);
   m_hoverText->setVisible(false);
+  m_hoverDot->setVisible(false);
   replotCrosshair();
 }
 

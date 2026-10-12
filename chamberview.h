@@ -63,7 +63,9 @@ private:
   void drawPipe(QPainter &p, QPointF const &from, QPointF const &to, bool fitted, bool flowing, QColor const &flowColor);
   void drawValve(QPainter &p, QPointF const &at, QString const &key, QString const &title, QString const &tip, bool tagAbove);
   // anchor: the point of the tag given by align (e.g. AlignRight | AlignVCenter: the middle of its right edge)
-  void drawTag(QPainter &p, QPointF const &anchor, Qt::Alignment align, QString const &key, QString const &title);
+  // backdrop: on a panel-coloured card (over the drawing of the chamber)
+  void drawTag(QPainter &p, QPointF const &anchor, Qt::Alignment align, QString const &key, QString const &title,
+               bool backdrop = false);
   void drawSnowflake(QPainter &p, QPointF const &center, double radius, QColor const &color);
   void addTip(QRectF const &rect, QString const &text);
 

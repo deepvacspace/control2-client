@@ -3,18 +3,66 @@
 #include "theme.h"
 
 #include <QHBoxLayout>
+#include <cmath>
 
 #include "utils.h"
 namespace deepvaccontrol {
 
 static QString const textLayerName{"text_layer"};
 
+namespace {
+// index of the valid sample closest to key, or -1
+int nearestIndex(QCPGraph const *graph, double key) {
+  auto const data = graph->data();
+  if (data->isEmpty()) {
+    return -1;
+  }
+  auto const begin = data->constBegin();
+  auto const end   = data->constEnd();
+  auto const it    = data->findBegin(key, false); // first sample with key >= key
+
+  int    best{-1};
+  double bestDist{std::numeric_limits<double>::max()};
+  auto   consider = [&](QCPGraphDataContainer::const_iterator probe) {
+    double const dist{std::fabs(probe->key - key)};
+    if (dist < bestDist) {
+      bestDist = dist;
+      best     = static_cast<int>(probe - begin);
+    }
+  };
+  // closest valid sample on each side, skipping short NaN gaps
+  auto probe = it;
+  for (int n{0}; (n < 4) && (probe != begin); ++n) {
+    --probe;
+    if (!std::isnan(probe->value)) {
+      consider(probe);
+      break;
+    }
+  }
+  probe = it;
+  for (int n{0}; (n < 4) && (probe != end); ++n, ++probe) {
+    if (!std::isnan(probe->value)) {
+      consider(probe);
+      break;
+    }
+  }
+  return best;
+}
+
+QString formatValue(double value) {
+  double const absValue{std::fabs(value)};
+  if ((absValue != 0.0) && ((absValue < 1e-2) || (absValue >= 1e6))) {
+    return QString::number(value, 'e', 2);
+  }
+  return QString::number(value, 'f', absValue >= 100 ? 1 : 3);
+}
+} // namespace
+
 DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     : QWidget(parent)
     , m_logger{logger}
     , m_plot(new QCustomPlot())
     , m_legendController(m_plot)
-    , m_cursorMode{CursorMode::NONE}
     , m_useLogAxis{addSecondLogAxis} {
   m_plot->setAutoAddPlottableToLegend(false);
   auto mainLay = new QHBoxLayout(this);
@@ -47,23 +95,54 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     m_currentView = mouseToCoord(rect);
   });
 
-  // legend position: a box over the top left of the chart
+  // legend position: a box over the top left of the chart, small labels
   m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft | Qt::AlignTop);
   m_plot->legend->setBorderPen(QPen(theme::colors().border));
-  m_plot->setMouseTracking(true); // the value cursor follows the mouse without a button pressed
+  {
+    QFont font = m_plot->legend->font();
+    font.setPointSizeF(font.pointSizeF() * 0.8);
+    m_plot->legend->setFont(font);
+  }
+  m_plot->setMouseTracking(true); // the value label follows the mouse without a button pressed
+  m_plot->installEventFilter(this);
 
-  m_plot->addLayer("cursor", m_plot->layer("legend"), QCustomPlot::limBelow);
+  // value label: over the legend box
+  m_plot->addLayer("cursor", m_plot->layer("legend"), QCustomPlot::limAbove);
   m_plot->layer("cursor")->setMode(QCPLayer::lmBuffered);
-
-  m_tracer = new QCPItemTracer(m_plot);
-  m_tracer->setLayer("cursor");
-  m_tracer->setStyle(QCPItemTracer::tsNone);
 
   m_cursor = new QCPItemStraightLine(m_plot);
   m_cursor->setLayer("cursor");
   m_cursor->setAntialiased(false);
-
+  m_cursor->setSelectable(false);
+  m_cursor->point1->setTypeY(QCPItemPosition::ptAxisRectRatio);
+  m_cursor->point2->setTypeY(QCPItemPosition::ptAxisRectRatio);
   m_cursor->setPen(QPen(theme::colors().muted, 1, Qt::DashLine));
+  m_cursor->setVisible(false);
+
+  m_cursorH = new QCPItemStraightLine(m_plot);
+  m_cursorH->setLayer("cursor");
+  m_cursorH->setAntialiased(false);
+  m_cursorH->setSelectable(false);
+  m_cursorH->point1->setTypeX(QCPItemPosition::ptAxisRectRatio);
+  m_cursorH->point2->setTypeX(QCPItemPosition::ptAxisRectRatio);
+  m_cursorH->setPen(QPen(theme::colors().muted, 1, Qt::DashLine));
+  m_cursorH->setVisible(false);
+
+  m_tracer = new QCPItemTracer(m_plot);
+  m_tracer->setLayer("cursor");
+  m_tracer->setSelectable(false);
+  m_tracer->setInterpolating(false);
+  m_tracer->setStyle(QCPItemTracer::tsCircle);
+  m_tracer->setSize(9 * utils::ssf());
+  m_tracer->setVisible(false);
+
+  m_valueText = new QCPItemText(m_plot);
+  m_valueText->setLayer("cursor");
+  m_valueText->setSelectable(false);
+  m_valueText->setPadding(QMargins(6, 4, 6, 4));
+  m_valueText->setTextAlignment(Qt::AlignLeft);
+  m_valueText->setClipToAxisRect(false);
+  m_valueText->setVisible(false);
 
   m_plot->addLayer(textLayerName, m_plot->layer("legend"), QCustomPlot::limBelow);
   m_plot->layer(textLayerName)->setMode(QCPLayer::lmBuffered);
@@ -83,8 +162,8 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     m_textItem->setFont(font);
   }
   updateTextItem(QString{});
-
-  connect(this, &DataViewer::cursorPositionChanged, this, &DataViewer::updateLegend);
+  m_legendController.setValueVisible(false); // values are shown in the label at the mouse
+  setLabelsVisible(false);
 
   m_renderTimer.setTimerType(Qt::CoarseTimer);
   connect(&m_renderTimer, &QTimer::timeout, this, &DataViewer::onRenderTick);
@@ -190,7 +269,6 @@ void DataViewer::setView(QRectF const &view) {
 }
 
 void DataViewer::switchControlMode() {
-  // setCursorMode(CursorMode::NONE);
   switch (m_controlMode) {
     case DataViewer::ControlMode::ZOOM:
       setControlMode(DataViewer::ControlMode::LEAD_X);
@@ -206,23 +284,6 @@ void DataViewer::switchControlMode() {
   }
   updateRange();
   m_plot->replot();
-}
-
-void DataViewer::switchCursor() {
-  switch (m_cursorMode) {
-    case DataViewer::CursorMode::NONE:
-      setCursorMode(DataViewer::CursorMode::LEGEND_ONLY);
-      break;
-    case DataViewer::CursorMode::LEGEND_ONLY:
-      setCursorMode(DataViewer::CursorMode::LEGEND_CURSOR);
-      break;
-    case DataViewer::CursorMode::LEGEND_CURSOR:
-      setCursorMode(DataViewer::CursorMode::NONE);
-      break;
-    default:
-      break;
-  }
-  updateLegend();
 }
 
 void DataViewer::moveView(double addX, double addY) {
@@ -283,32 +344,113 @@ void DataViewer::setCompactLegend(bool compact) {
   if (compact) {
     m_legendController.compactLayout(3);
   }
-  setCursorMode(m_cursorMode);
+  setLabelsVisible(m_labelsVisible);
   m_plot->replot();
 }
 
-void DataViewer::setCursorMode(CursorMode mode) {
-  m_cursorMode = mode;
-  bool const cursorVis{CursorMode::LEGEND_CURSOR == m_cursorMode};
-  bool const legendVis{CursorMode::NONE != m_cursorMode};
+void DataViewer::setLabelsVisible(bool visible) {
+  m_labelsVisible = visible;
+  m_legendController.setVisible(visible || m_compactLegend);
+}
 
-  if (cursorVis) {
-    m_tracer->setGraph(m_plot->graph(0));
-    if (CursorMode::LEGEND_CURSOR == m_cursorMode) {
-      setControlMode(ControlMode::ZOOM);
-    }
-    m_plot->setSelectionRectMode(QCP::srmNone);
+void DataViewer::setValuesVisible(bool visible) {
+  m_valuesVisible = visible;
+  if (!visible) {
+    hideValueCursor();
+  }
+}
 
-    m_cursor->point1->setParentAnchorX(m_tracer->anchor("position"));
-    m_cursor->point2->setParentAnchorX(m_tracer->anchor("position"));
+void DataViewer::updateValueCursor(QPointF const &pos) {
+  if (!m_data || (0 == m_plot->graphCount()) || !m_plot->axisRect()->rect().contains(pos.toPoint())) {
+    hideValueCursor();
+    return;
   }
 
-  m_plot->layer("cursor")->setVisible(cursorVis);
-  m_legendController.setVisible(legendVis || m_compactLegend);
-  m_legendController.setValueVisible(cursorVis && !m_compactLegend);
+  // the visible line closest to the mouse at the time pointed at
+  double const x{m_plot->xAxis->pixelToCoord(pos.x())};
+  double       bestDist{std::numeric_limits<double>::max()};
+  int          bestGraph{-1};
+  int          bestIndex{-1};
+  for (int i{0}; i < m_plot->graphCount(); ++i) {
+    QCPGraph *graph = m_plot->graph(i);
+    if (!graph->visible()) {
+      continue;
+    }
+    int const index{nearestIndex(graph, x)};
+    if (index < 0) {
+      continue;
+    }
+    auto const    point = graph->data()->constBegin() + index;
+    QPointF const pixel = graph->coordsToPixels(point->key, point->value);
+    double const  dist{std::hypot(pixel.x() - pos.x(), pixel.y() - pos.y())};
+    if (dist < bestDist) {
+      bestDist  = dist;
+      bestGraph = i;
+      bestIndex = index;
+    }
+  }
+  if (bestGraph < 0) {
+    hideValueCursor();
+    return;
+  }
+
+  QCPGraph     *graph = m_plot->graph(bestGraph);
+  auto const    point = graph->data()->constBegin() + bestIndex;
+  QColor const  color = graph->pen().color();
+  QString const label = (bestGraph < m_stateListVariant.size()) ? m_stateListVariant[bestGraph].toMap()["label"].toString() : QString{};
+  QString const value = m_logAxisDataIndexes.contains(bestGraph) ? utils::formatScientific(point->value, 2) : formatValue(point->value);
+  QString const time  = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(point->key))).toString("hh:mm:ss");
+
+  // crosshair at the mouse, as in the data analysis charts
+  double const y{m_plot->yAxis->pixelToCoord(pos.y())};
+  m_cursor->point1->setCoords(x, 0);
+  m_cursor->point2->setCoords(x, 1);
+  m_cursor->setVisible(true);
+  m_cursorH->point1->setCoords(0, y);
+  m_cursorH->point2->setCoords(1, y);
+  m_cursorH->setVisible(true);
+
+  m_tracer->setGraph(graph);
+  m_tracer->setGraphKey(point->key);
+  m_tracer->setPen(QPen(color, 2 * utils::ssf()));
+  m_tracer->setBrush(QBrush(theme::colors().panel));
+  m_tracer->setVisible(true);
+
+  theme::Colors const &c = theme::colors();
+  m_valueText->position->setType(QCPItemPosition::ptPlotCoords);
+  m_valueText->position->setAxes(m_plot->xAxis, graph->valueAxis());
+  m_valueText->position->setCoords(point->key, point->value);
+  m_valueText->setText(QStringLiteral("%1\n%2\n%3").arg(label, time, value));
+  m_valueText->setColor(color.darker(120));
+  m_valueText->setPen(QPen(color));
+  m_valueText->setBrush(QBrush(QColor(c.panel.red(), c.panel.green(), c.panel.blue(), 235)));
+  // next to the point, towards the middle of the plot
+  QPointF const anchor = m_valueText->position->pixelPosition();
+  QRect const   area   = m_plot->axisRect()->rect();
+  Qt::Alignment align  = (anchor.x() > area.center().x()) ? Qt::AlignRight : Qt::AlignLeft;
+  align |= (anchor.y() < area.top() + area.height() * 0.3) ? Qt::AlignTop : Qt::AlignBottom;
+  m_valueText->setPositionAlignment(align);
+  m_valueText->setVisible(true);
 
   m_plot->layer("cursor")->replot();
-  m_plot->layer("legend")->replot();
+}
+
+void DataViewer::hideValueCursor() {
+  if (!m_cursor->visible() && !m_tracer->visible() && !m_valueText->visible()) {
+    return;
+  }
+  m_cursor->setVisible(false);
+  m_cursorH->setVisible(false);
+  m_tracer->setVisible(false);
+  m_valueText->setVisible(false);
+  m_plot->layer("cursor")->replot();
+}
+
+bool DataViewer::eventFilter(QObject *watched, QEvent *event) {
+  if ((watched == m_plot) && (event->type() == QEvent::Leave)) {
+    hideValueCursor();
+  }
+  return QWidget::eventFilter(watched, event);
 }
 
 void DataViewer::applyStyles() {
@@ -411,21 +553,9 @@ void DataViewer::updateRange() {
   // }
 }
 
-void DataViewer::updateLegend() {
-  if ((CursorMode::NONE == m_cursorMode) || (0 == m_plot->graphCount())) {
-    return;
-  }
-
-  double const    time{m_tracer->position->key()};
-  QDateTime const timeStamp{QDateTime::fromSecsSinceEpoch(time)};
-  QVector<double> data = m_data->getValueAtTime(time);
-
-  m_legendController.setValues(timeStamp, data);
-
-  m_plot->layer("legend")->replot();
-}
-
 void DataViewer::initGraphs(uint16_t graphCount) {
+  m_tracer->setGraph(nullptr); // its graph is deleted
+  hideValueCursor();
   m_plot->clearGraphs();
 
   for (int i{0U}; i < graphCount; ++i) {
@@ -438,45 +568,20 @@ void DataViewer::initGraphs(uint16_t graphCount) {
 }
 
 void DataViewer::mouseEventHeadler(QMouseEvent *event) {
-  bool const isCtrlPressed  = event->modifiers().testFlag(Qt::ControlModifier);
-  bool const isMousePressed = event->type() == QEvent::MouseButtonPress;
-  bool const isMouseMove    = event->type() == QEvent::MouseMove;
-  if (isMousePressed) {
+  if (event->type() == QEvent::MouseButtonPress) {
     m_controlModeOnPress = m_controlMode;
     setControlMode(ControlMode::ZOOM);
 
     m_pointPress = event->pos();
 
-    if (CursorMode::LEGEND_CURSOR != m_cursorMode) {
-      if (isCtrlPressed) {
-        m_plot->setSelectionRectMode(QCP::srmZoom);
-        m_plot->setInteraction(QCP::iRangeDrag, false);
-      } else {
-        m_plot->setSelectionRectMode(QCP::srmNone);
-        m_plot->setInteraction(QCP::iRangeDrag, true);
-      }
-    }
+    // right button: rectangle zoom, left button: drag
+    bool const rectZoom{event->button() == Qt::RightButton};
+    m_plot->setSelectionRectMode(rectZoom ? QCP::srmZoom : QCP::srmNone);
+    m_plot->setInteraction(QCP::iRangeDrag, !rectZoom);
   }
 
-  if (isMouseMove && (CursorMode::LEGEND_CURSOR == m_cursorMode)) {
-    if ((!m_cursor) || (!m_tracer)) {
-      return;
-    }
-
-    auto const mouseCord = event->pos();
-    auto const xCord     = m_plot->xAxis->pixelToCoord(mouseCord.x());
-
-    m_tracer->setGraphKey(xCord);
-    m_tracer->updatePosition();
-
-    double const tracerKey{m_tracer->position->key()};
-    if (tracerKey == m_lastTracerKey) {
-      return;
-    }
-    m_lastTracerKey = tracerKey;
-
-    m_plot->layer("cursor")->replot();
-    emit cursorPositionChanged(tracerKey);
+  if ((event->type() == QEvent::MouseMove) && m_valuesVisible) {
+    updateValueCursor(event->position());
   }
 }
 

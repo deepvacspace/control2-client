@@ -2,7 +2,6 @@
 
 #include <QFrame>
 #include <QGridLayout>
-#include <QMenu>
 #include <QThread>
 #include <cmath>
 
@@ -14,11 +13,16 @@
 #include "utils.h"
 
 namespace deepvaccontrol {
+namespace {
+// "2026-09-24 09:55": the day button text of a single experiment
+QString startText(double epochSec) {
+  return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epochSec)).toString("yyyy-MM-dd HH:mm");
+}
+} // namespace
+
 GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_styleEditor{nullptr} {
-  auto *mainLay    = new QGridLayout(this);
-  auto *yAxisTools = new QVBoxLayout();
-  auto *xAxisTools = new QHBoxLayout();
+  auto *mainLay = new QGridLayout(this);
 
   // check if 'pres' param in settings has notation parameter
   bool                  addLogAxis{false};
@@ -76,7 +80,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     return button;
   };
 
-  // value axis (left) and time axis (below) controls
+  // value axis and time axis controls
   auto *zoomYBtn = iconButton("plus", tr("Zoom in (values)"));
   auto *outYBtn  = iconButton("minus", tr("Zoom out (values)"));
   auto *incYBtn  = iconButton("up", tr("Move up"));
@@ -89,79 +93,58 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   fitBtn->setMinimumWidth(52 * ssf);
   fitBtn->setToolTip(tr("Show the whole day and follow new values"));
 
-  // top bar: export, channels, view mode | read-out, day
+  // export, channels | labels, tooltip, day
   m_exportToBtn = textButton(tr("Export"));
   m_exportToBtn->setMinimumWidth(70 * ssf);
   m_styleBtn = textButton(tr("Channels ▾"));
   m_styleBtn->setMinimumWidth(90 * ssf);
   m_styleBtn->setToolTip(tr("Visible channels, colours and line styles"));
-  m_modeSelectBtn = textButton(QString());
-  m_modeSelectBtn->setMinimumWidth(120 * ssf);
-  auto *modeMenu = new QMenu(m_modeSelectBtn);
-  modeMenu->addAction(tr("Fit whole day"), this, [this] { m_dataViewer->setControlMode(DataViewer::ControlMode::LEAD_FULL); });
-  modeMenu->addAction(tr("Follow latest"), this, [this] { m_dataViewer->setControlMode(DataViewer::ControlMode::LEAD_X); });
-  modeMenu->addAction(tr("Free zoom"), this, [this] { m_dataViewer->setControlMode(DataViewer::ControlMode::ZOOM); });
-  m_modeSelectBtn->setMenu(modeMenu);
-  m_modeSelectBtn->setToolTip(tr("How the view follows the data"));
 
   m_labelsBtn = textButton(tr("Labels"));
   m_labelsBtn->setCheckable(true);
   m_labelsBtn->setChecked(true);
   m_labelsBtn->setMinimumWidth(80 * ssf);
   m_labelsBtn->setToolTip(tr("Show or hide the box with the line labels and colours"));
-  m_valuesBtn = textButton(tr("Values"));
+  m_valuesBtn = textButton(tr("Tooltip"));
   m_valuesBtn->setCheckable(true);
   m_valuesBtn->setMinimumWidth(80 * ssf);
-  m_valuesBtn->setToolTip(tr("Also show the values and a line where the mouse points in the chart"));
+  m_valuesBtn->setToolTip(tr("Show the value of the line where the mouse points in the chart"));
   auto *calendarBtn = textButton(QString());
   m_dayBtn          = calendarBtn;
   theme::setThemedIcon(calendarBtn, "calendar", static_cast<int>(13 * ssf));
   calendarBtn->setMinimumWidth(110 * ssf);
   calendarBtn->setToolTip(tr("Open a saved experiment, or go back to the live data of today"));
 
-  auto *topBar = new QHBoxLayout();
-  topBar->setSpacing(8 * ssf);
-  topBar->addWidget(m_exportToBtn);
-  topBar->addWidget(m_styleBtn);
-  topBar->addWidget(m_modeSelectBtn);
-  topBar->addStretch();
-  topBar->addWidget(m_labelsBtn);
-  topBar->addWidget(m_valuesBtn);
-  topBar->addWidget(calendarBtn);
-  cardLay->addLayout(topBar, 0, 0, 1, 2);
-
+  // value axis controls left of the chart; the other controls in one row below it
+  auto *yAxisTools = new QVBoxLayout();
+  yAxisTools->setSpacing(8 * ssf);
   for (QPushButton *button : {zoomYBtn, outYBtn, incYBtn, decYBtn}) {
     yAxisTools->addWidget(button);
   }
   yAxisTools->addStretch();
-  yAxisTools->setSpacing(8 * ssf);
-  cardLay->addLayout(yAxisTools, 1, 0);
+  cardLay->addLayout(yAxisTools, 0, 0);
+
   m_dataViewer->setParent(card);
-  cardLay->addWidget(m_dataViewer, 1, 1);
-  for (QPushButton *button : {zoomXBtn, outXBtn, decXBtn, incXBtn}) {
-    xAxisTools->addWidget(button);
-  }
-  xAxisTools->addWidget(fitBtn);
-  xAxisTools->addStretch();
-  xAxisTools->setSpacing(8 * ssf);
-  cardLay->addLayout(xAxisTools, 2, 1);
-  cardLay->setColumnStretch(1, 1);
-  cardLay->setRowStretch(1, 1);
   m_dataViewer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  cardLay->addWidget(m_dataViewer, 0, 1);
+  cardLay->setRowStretch(0, 1);
+  cardLay->setColumnStretch(1, 1);
+
+  auto *toolBar = new QHBoxLayout();
+  toolBar->setSpacing(8 * ssf);
+  for (QPushButton *button : {zoomXBtn, outXBtn, decXBtn, incXBtn}) {
+    toolBar->addWidget(button);
+  }
+  toolBar->addWidget(fitBtn);
+  toolBar->addStretch();
+  for (QPushButton *button : {m_exportToBtn, m_styleBtn, m_labelsBtn, m_valuesBtn, calendarBtn}) {
+    toolBar->addWidget(button);
+  }
+  cardLay->addLayout(toolBar, 1, 1);
 
   connect(fitBtn, &QPushButton::clicked, this, [this] { m_dataViewer->setControlMode(DataViewer::ControlMode::LEAD_FULL); });
-  connect(m_labelsBtn, &QPushButton::toggled, this, [this](bool on) {
-    if (!on) {
-      m_valuesBtn->setChecked(false); // values are shown in the labels box
-    }
-    updateLegendMode();
-  });
-  connect(m_valuesBtn, &QPushButton::toggled, this, [this](bool on) {
-    if (on) {
-      m_labelsBtn->setChecked(true);
-    }
-    updateLegendMode();
-  });
+  connect(m_labelsBtn, &QPushButton::toggled, this, &GraphWidget::updateLegendMode);
+  connect(m_valuesBtn, &QPushButton::toggled, this, &GraphWidget::updateLegendMode);
 
   connect(zoomXBtn, &QPushButton::clicked, this, [this] {
     m_dataViewer->zoomView(0.8, 1);
@@ -196,8 +179,6 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
 
   connect(m_exportToBtn, &QPushButton::clicked, this, &GraphWidget::exportData);
 
-  connect(m_dataViewer, &DataViewer::controlModeChanged, this, &GraphWidget::updateModeSelectButton);
-
   connect(calendarBtn, &QPushButton::clicked, this, &GraphWidget::openCalendar);
 
   connect(m_resHolder->dataManager, &DataManager::intervalToAddRecreated, this, [this](double key) {
@@ -218,23 +199,9 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   connect(m_resHolder->users, &AccessManager::userSelected, this, &GraphWidget::handleAccessChange);
 }
 
-void GraphWidget::updateModeSelectButton(DataViewer::ControlMode mode) {
-  switch (mode) {
-    case DataViewer::ControlMode::LEAD_FULL:
-      m_modeSelectBtn->setText(tr("Fit whole day"));
-      break;
-    case DataViewer::ControlMode::LEAD_X:
-      m_modeSelectBtn->setText(tr("Follow latest"));
-      break;
-    case DataViewer::ControlMode::ZOOM:
-      m_modeSelectBtn->setText(tr("Free zoom"));
-      break;
-  }
-}
-
 void GraphWidget::updateDayButton() {
   if (!m_experimentName.isEmpty()) {
-    m_dayBtn->setText(m_dayBtn->fontMetrics().elidedText(m_experimentName, Qt::ElideRight, static_cast<int>(260 * utils::ssf())));
+    m_dayBtn->setText(m_experimentLabel);
     m_dayBtn->setToolTip(tr("%1\nOpen another experiment, or go back to the live data of today").arg(m_experimentName));
     return;
   }
@@ -249,9 +216,8 @@ void GraphWidget::updateDayButton() {
 }
 
 void GraphWidget::updateLegendMode() {
-  m_dataViewer->setCursorMode(m_valuesBtn->isChecked()   ? DataViewer::CursorMode::LEGEND_CURSOR
-                              : m_labelsBtn->isChecked() ? DataViewer::CursorMode::LEGEND_ONLY
-                                                         : DataViewer::CursorMode::NONE);
+  m_dataViewer->setLabelsVisible(m_labelsBtn->isChecked());
+  m_dataViewer->setValuesVisible(m_valuesBtn->isChecked());
 }
 
 void GraphWidget::openCalendar() {
@@ -267,6 +233,7 @@ void GraphWidget::openCalendar() {
 
 void GraphWidget::showLive() {
   m_experimentName.clear();
+  m_experimentLabel.clear();
   double const todayKey = utils::calculateKey(QDateTime::currentSecsSinceEpoch());
   if (m_resHolder->dataManager->prepareIntervalToDisplay(todayKey)) {
     m_dataViewer->setData(m_resHolder->dataManager->getIntervalToDisplay());
@@ -284,6 +251,7 @@ void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> con
     QVector<double>          times;
     QVector<QVector<double>> states;
     int                      loaded{0};
+    double                   firstStart{qQNaN()}; // epoch s of the first experiment read
   };
   auto     merged  = std::make_shared<Merged>();
   QThread *thread  = QThread::create([experiments, names, merged] {
@@ -298,6 +266,9 @@ void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> con
         for (auto &state : merged->states) {
           state.push_back(qQNaN());
         }
+      }
+      if (0 == merged->loaded) {
+        merged->firstStart = experiment.start;
       }
       merged->times += samples.times;
       for (int i{0}; i < names.size(); ++i) {
@@ -320,6 +291,8 @@ void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> con
     holder->setSeries(merged->times, merged->states);
     m_experimentName = (merged->loaded == 1) ? tr("%1 · 1 experiment").arg(day.toString("yyyy-MM-dd"))
                                              : tr("%1 · %2 experiments").arg(day.toString("yyyy-MM-dd")).arg(merged->loaded);
+    // one experiment: its date and time; several: the day and how many
+    m_experimentLabel = (merged->loaded == 1) ? startText(merged->firstStart) : m_experimentName;
     m_dataViewer->setData(holder);
     m_dataViewer->updateTextItem(m_experimentName);
     updateDayButton();
@@ -354,7 +327,8 @@ void GraphWidget::showExperiment(storage::ExperimentSpan const &experiment) {
     auto holder = std::make_shared<DataHolder>(static_cast<quint16>(names.size()), m_resHolder->logger,
                                                utils::calculateKey(experiment.start));
     holder->setSeries(samples->times, states);
-    m_experimentName = experiment.name;
+    m_experimentName  = experiment.name;
+    m_experimentLabel = startText(experiment.start);
     m_dataViewer->setData(holder);
     m_dataViewer->updateTextItem(experiment.name);
     updateDayButton();
@@ -414,7 +388,7 @@ void GraphWidget::exportData() {
 
       // set same style as current m_dataViewer
       exportViewer->setStyles(statesVariantList);
-      exportViewer->setCursorMode(m_dataViewer->getCursorMode());
+      exportViewer->setLabelsVisible(m_dataViewer->labelsVisible());
       if (0 == selectedRangeType) {
         exportViewer->setView(viewableRange);
       }

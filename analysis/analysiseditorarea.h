@@ -15,7 +15,7 @@ class CrosshairSyncHub;
 
 /**
  * @brief Tabbed area for opened experiments. Tabs can be split into several panes
- * (side by side or stacked) to look at experiments at the same time.
+ * side by side to look at experiments at the same time.
  */
 class AnalysisEditorArea : public QWidget {
   Q_OBJECT
@@ -24,16 +24,15 @@ public:
 
   bool                            focusPage(QString const &key);
   [[nodiscard]] AnalysisRunPage  *page(QString const &key) const;
-  void                            addPage(AnalysisRunPage *page);
+  // splitRight: in a new pane to the right of the active one (when that one is not empty)
+  void                            addPage(AnalysisRunPage *page, bool splitRight = false);
+  // moves an opened experiment into a new pane to the right; false when it is not opened
+  bool                            splitPageRight(QString const &key);
   [[nodiscard]] int               pageCount() const;
   [[nodiscard]] CrosshairSyncHub *syncHub() const;
 
-protected:
-  bool eventFilter(QObject *watched, QEvent *event) override;
-
 private:
   QTabWidget *makeGroup();
-  void        placeMenuButton(QTabWidget *group);
   void        insertGroupNextTo(QTabWidget *existing, QTabWidget *group, Qt::Orientation orientation);
   void        showTabMenu(QTabWidget *group, int index, QPoint const &globalPos);
   void        splitPage(QTabWidget *source, int index, Qt::Orientation orientation);

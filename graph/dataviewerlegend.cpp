@@ -160,6 +160,7 @@ void DataViewerLegend::setStyles(QVariantList const &stateListVariant) {
       QString const     stateLabel{stateMap["label"].toString()};
 
       auto *legendElement = new CustomLegendItem(m_legend, stateLabel, QPen{});
+      legendElement->setValueVisible(m_valueVisible);
 
       m_legend->addItem(legendElement);
       m_legendElements.push_back(legendElement);

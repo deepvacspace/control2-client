@@ -459,6 +459,9 @@ QVector<ChannelInfo> ExperimentLibrary::channels(ExperimentData const &data) con
       info.name             = map["name"].toString();
       info.label            = map["label"].toString();
       info.color            = QColor(map["color"].toString());
+      if (int const pen{map["pen"].toInt()}; (pen >= Qt::SolidLine) && (pen < Qt::CustomDashLine)) {
+        info.penStyle = static_cast<Qt::PenStyle>(pen);
+      }
       info.defaultVisible   = map.contains("color") && map["visible"].toBool();
       info.scientific       = map["notation"].toString() == "scientific";
     }

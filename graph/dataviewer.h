@@ -27,12 +27,6 @@ public:
     ZOOM
   };
 
-  enum class CursorMode : uint8_t {
-    NONE,
-    LEGEND_ONLY,
-    LEGEND_CURSOR
-  };
-
 public:
   explicit DataViewer(Logger *logger, bool addSecondLogAxis = false, QWidget *parent = nullptr);
   ~DataViewer() = default;
@@ -52,26 +46,32 @@ public:
   void switchControlMode();
   void setControlMode(ControlMode mode);
 
-  void       switchCursor();
-  void       setCursorMode(CursorMode mode);
-  CursorMode getCursorMode() const;
+  // the box with the line labels over the top left of the chart
+  void setLabelsVisible(bool visible);
+  bool labelsVisible() const;
+  // a label with the value of the line under the mouse, a circle on its point and a time line
+  void setValuesVisible(bool visible);
+  bool valuesVisible() const;
 
   void moveView(double addX, double addY);
 
-  // legend as one row under the plot with the channel names only, always shown (values are shown elsewhere)
+  // legend as one row under the plot with the channel names only, always shown
   void setCompactLegend(bool compact);
   void zoomView(double mulX, double mulY);
 
 signals:
   void controlModeChanged(ControlMode);
-  void cursorPositionChanged(double);
+
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
   void applyStyles();
   void applyStyle(int index, QVariantMap const &stateVariantMap, bool shadow = false);
   void updateData();
   void updateRange();
-  void updateLegend();
+  void updateValueCursor(QPointF const &pos);
+  void hideValueCursor();
   void initGraphs(uint16_t graphCount);
   void mouseEventHeadler(QMouseEvent *event);
   void wheelEventHandler(QWheelEvent *event);
@@ -100,16 +100,18 @@ private:
   DataViewerLegend m_legendController;
   QVariantList     m_stateListVariant;
 
-  QCPItemStraightLine *m_cursor{nullptr};
-  QCPItemTracer       *m_tracer{nullptr};
-  double               m_lastTracerKey{0.0};
+  QCPItemStraightLine *m_cursor{nullptr};  // crosshair: vertical
+  QCPItemStraightLine *m_cursorH{nullptr}; // and horizontal line
+  QCPItemTracer       *m_tracer{nullptr}; // circle on the point the value label refers to
+  QCPItemText         *m_valueText{nullptr};
 
   QCPItemText *m_textItem;
 
   QRectF      m_currentView;
   ControlMode m_controlMode;
   ControlMode m_controlModeOnPress;
-  CursorMode  m_cursorMode;
+  bool        m_labelsVisible{false};
+  bool        m_valuesVisible{false};
   QPointF     m_pointPress;
   QPointF     m_pointRelease;
 
@@ -127,8 +129,12 @@ inline QCustomPlot *DataViewer::getPlot() {
   return m_plot;
 }
 
-inline DataViewer::CursorMode DataViewer::getCursorMode() const {
-  return m_cursorMode;
+inline bool DataViewer::labelsVisible() const {
+  return m_labelsVisible;
+}
+
+inline bool DataViewer::valuesVisible() const {
+  return m_valuesVisible;
 }
 
 inline QRectF DataViewer::getCurrentView() const {

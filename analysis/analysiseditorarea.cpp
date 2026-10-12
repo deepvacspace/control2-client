@@ -1,9 +1,7 @@
 #include "analysiseditorarea.h"
 
-#include <QEvent>
 #include <QLabel>
 #include <QMenu>
-#include <QPushButton>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTabBar>
@@ -17,9 +15,6 @@
 namespace deepvaccontrol {
 
 namespace {
-constexpr int MENU_BUTTON_WIDTH{44};
-char const    MENU_BUTTON_NAME[]{"paneMenuButton"};
-
 void equalize(QSplitter *splitter) {
   int const total{splitter->orientation() == Qt::Horizontal ? splitter->width() : splitter->height()};
   QList<int> sizes;
@@ -76,31 +71,6 @@ QTabWidget *AnalysisEditorArea::makeGroup() {
     group->tabBar()->setFont(font);
   }
 
-  // The corner widget only reserves room next to the tabs; the menu button is laid over it
-  // so it spans exactly the tab row (QTabWidget does not align corner widgets with the tabs).
-  auto *cornerSpacer = new QWidget(group);
-  cornerSpacer->setFixedSize(MENU_BUTTON_WIDTH * utils::ssf(), 1);
-  group->setCornerWidget(cornerSpacer, Qt::TopRightCorner);
-
-  auto *menuBtn = new QPushButton(QStringLiteral("☰"), group);
-  menuBtn->setObjectName(MENU_BUTTON_NAME);
-  menuBtn->setToolTip(tr("Split / move / close tabs, sync crosshair"));
-  menuBtn->setFocusPolicy(Qt::NoFocus);
-  connect(menuBtn, &QPushButton::clicked, this, [this, group, menuBtn] {
-    m_activeGroup = group;
-    showTabMenu(group, group->currentIndex(), menuBtn->mapToGlobal(menuBtn->rect().bottomLeft()));
-  });
-  // highlighted while the crosshair is synced
-  auto updateSyncLook = [menuBtn](bool enabled) {
-    menuBtn->setStyleSheet(enabled ? "QPushButton { background-color: #2563eb; color: white; }" : QString{});
-  };
-  updateSyncLook(m_syncHub->isEnabled());
-  connect(m_syncHub, &CrosshairSyncHub::enabledChanged, menuBtn, updateSyncLook);
-
-  group->installEventFilter(this);
-  group->tabBar()->installEventFilter(this);
-  placeMenuButton(group);
-
   group->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(group->tabBar(), &QWidget::customContextMenuRequested, this, [this, group](QPoint const &pos) {
     int const index{group->tabBar()->tabAt(pos)};
@@ -147,13 +117,36 @@ AnalysisRunPage *AnalysisEditorArea::page(QString const &key) const {
   return nullptr;
 }
 
-void AnalysisEditorArea::addPage(AnalysisRunPage *page) {
+void AnalysisEditorArea::addPage(AnalysisRunPage *page, bool splitRight) {
   QTabWidget *group = m_groups.contains(m_activeGroup) ? m_activeGroup : m_groups.first();
+  if (splitRight && (group->count() > 0)) {
+    QTabWidget *target = makeGroup();
+    insertGroupNextTo(group, target, Qt::Horizontal);
+    group = target;
+  }
   page->chart()->setSyncHub(m_syncHub);
   int const index{group->addTab(page, page->tabTitle())};
   group->setTabToolTip(index, page->title());
   group->setCurrentIndex(index);
   updatePlaceholder();
+}
+
+bool AnalysisEditorArea::splitPageRight(QString const &key) {
+  for (QTabWidget *group : std::as_const(m_groups)) {
+    for (int i{0}; i < group->count(); ++i) {
+      auto *page = qobject_cast<AnalysisRunPage *>(group->widget(i));
+      if (page && (page->key() == key)) {
+        if (group->count() > 1) {
+          splitPage(group, i, Qt::Horizontal);
+        } else {
+          group->setCurrentIndex(i); // alone in its pane: already on its own
+          m_activeGroup = group;
+        }
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 int AnalysisEditorArea::pageCount() const {
@@ -162,31 +155,6 @@ int AnalysisEditorArea::pageCount() const {
     count += group->count();
   }
   return count;
-}
-
-void AnalysisEditorArea::placeMenuButton(QTabWidget *group) {
-  auto *menuBtn = group->findChild<QPushButton *>(MENU_BUTTON_NAME, Qt::FindDirectChildrenOnly);
-  if (!menuBtn) {
-    return;
-  }
-  int const width{static_cast<int>(MENU_BUTTON_WIDTH * utils::ssf())};
-  int const tabBarHeight{group->tabBar()->height()};
-  int const height{tabBarHeight > 1 ? tabBarHeight : static_cast<int>(36 * utils::ssf())};
-  menuBtn->setGeometry(group->width() - width, 0, width, height);
-  menuBtn->raise();
-}
-
-bool AnalysisEditorArea::eventFilter(QObject *watched, QEvent *event) {
-  if ((event->type() == QEvent::Resize) || (event->type() == QEvent::Show)) {
-    if (auto *group = qobject_cast<QTabWidget *>(watched)) {
-      placeMenuButton(group);
-    } else if (auto *tabBar = qobject_cast<QTabBar *>(watched)) {
-      if (auto *group = qobject_cast<QTabWidget *>(tabBar->parentWidget())) {
-        placeMenuButton(group);
-      }
-    }
-  }
-  return QWidget::eventFilter(watched, event);
 }
 
 void AnalysisEditorArea::showTabMenu(QTabWidget *group, int index, QPoint const &globalPos) {
@@ -203,15 +171,10 @@ void AnalysisEditorArea::showTabMenu(QTabWidget *group, int index, QPoint const 
   }
   menu.addSeparator();
 
-  bool const canSplit{group->count() > 1};
   menu.addAction(tr("Split right"), this, [this, group, index] {
         splitPage(group, index, Qt::Horizontal);
       })
-    ->setEnabled(canSplit);
-  menu.addAction(tr("Split down"), this, [this, group, index] {
-        splitPage(group, index, Qt::Vertical);
-      })
-    ->setEnabled(canSplit);
+    ->setEnabled(group->count() > 1);
 
   if (m_groups.size() > 1) {
     menu.addSeparator();

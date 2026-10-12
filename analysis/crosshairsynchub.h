@@ -24,7 +24,8 @@ public:
   void               setEnabled(bool enabled);
   [[nodiscard]] bool isEnabled() const;
 
-  void broadcast(AnalysisChart *source, double x, double y);
+  // series: label of the line hovered in the source chart, empty for none
+  void broadcast(AnalysisChart *source, double x, double y, QString const &series);
   void broadcastHide(AnalysisChart *source);
 
 signals:

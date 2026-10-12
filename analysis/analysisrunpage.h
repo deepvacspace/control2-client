@@ -116,8 +116,10 @@ private:
   void onAnnotationDrawn(double x0, double x1);
   void addRule();
 
-  void exportChartPng();
-  void exportRunCsv();
+  // format: "png", "bmp" or "jpg"
+  void exportChartImage(QString const &format);
+  // the experiment's samples (or those of the visible range) as CSV or tab separated text
+  void exportRunData(bool visibleOnly, bool tabSeparated);
   void exportComparisonCsv();
   void saveToDatabase();
   void askExportPath(QString const &extension, std::function<bool(QString const &)> writer);
@@ -125,6 +127,9 @@ private:
   [[nodiscard]] bool              compareMode() const;
   [[nodiscard]] int               compareChannel() const;
   [[nodiscard]] QColor            channelColor(int index) const;
+  [[nodiscard]] Qt::PenStyle      channelPenStyle(int index) const;
+  [[nodiscard]] int               channelWidth(int index) const;
+  void                            editChannelStyle(int index);
   [[nodiscard]] QVector<double>   elapsed(ExperimentData const &data) const;
   [[nodiscard]] int              channelIndexIn(ExperimentData const &data, int channel) const;
   // values of one of this page's channels in another experiment (derived ones are computed), empty if missing
@@ -144,6 +149,8 @@ private:
   QVector<ChannelInfo>                                   m_channels;
   QVector<int>                                           m_selected; // sorted channel indexes
   QHash<int, QColor>                                     m_colorOverrides;
+  QHash<int, Qt::PenStyle>                               m_penOverrides;
+  QHash<int, int>                                        m_widthOverrides;
   QStringList                                            m_compareKeys;
   QHash<QString, std::shared_ptr<ExperimentData const>> m_compareData;
   QHash<QString, core::ExperimentAnalysis>               m_compareAnalyses;

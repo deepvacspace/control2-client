@@ -23,7 +23,6 @@ constexpr double CANVAS_W{740.0};
 constexpr double CANVAS_H{620.0};
 
 // schematic geometry (canvas units)
-double const  FLANGE_Y{196};                      // top flange of the chamber
 QPointF const TMP{262, 112};                      // turbo pump
 double const  TMP_R{34};
 double const  VAC_Y{40};                          // top run of the vacuum line
@@ -33,9 +32,11 @@ QPointF const BP{600, 452};                       // backing pump
 double const  BP_R{30};
 QRectF const  DEWAR{548, 528, 96, 40};            // LN2 dewar
 QRectF const  FRIDGE{18, 470, 90, 66};            // refrigeration unit
-QRectF const  VESSEL{150, 204, 320, 388};          // the chamber body
-QRectF const  PLATE{190, 514, 240, 32};            // plate at the bottom: heater on top, coolant channel below
-double const  CHANNEL_Y{538};                      // coolant channel inside the plate
+QRectF const  VESSEL{150, 204, 320, 388};          // the chamber body (cabinet)
+QRectF const  OPENING{174, 228, 272, 340};         // front edge of the inner space, inside door frame and gasket
+QRectF const  BACK{217, 271, 186, 220};            // back wall of the inner space (perspective)
+QRectF const  PLATE{204, 512, 212, 30};            // plate on the floor: heater on top, coolant channel below
+double const  CHANNEL_Y{536};                      // coolant channel inside the plate
 QRectF const  PLC{22, 26, 112, 58};               // PLC miniature
 
 QFont canvasFont(double pixels, bool bold = false) {
@@ -43,6 +44,13 @@ QFont canvasFont(double pixels, bool bold = false) {
   font.setPixelSize(qMax(1, static_cast<int>(std::lround(pixels))));
   font.setBold(bold);
   return font;
+}
+
+// a colour between two others (t = 0: a, 1: b)
+QColor mix(QColor const &a, QColor const &b, double t) {
+  return QColor::fromRgbF(static_cast<float>(a.redF() + (b.redF() - a.redF()) * t),
+                          static_cast<float>(a.greenF() + (b.greenF() - a.greenF()) * t),
+                          static_cast<float>(a.blueF() + (b.blueF() - a.blueF()) * t));
 }
 
 QString valueText(double value, int decimals, QString const &unit) {
@@ -316,47 +324,87 @@ void ChamberView::drawValve(QPainter &p, QPointF const &at, QString const &key, 
 void ChamberView::drawChamber(QPainter &p) {
   theme::Colors const &c = theme::colors();
 
-  // ports on the top flange
-  p.setPen(QPen(c.muted, 4, Qt::SolidLine, Qt::FlatCap));
-  p.drawLine(QPointF(132, FLANGE_Y), QPointF(488, FLANGE_Y));
+  QColor const base = theme::isDark() ? c.window : c.panelAlt;
+  QPen const   edge(c.muted, 1.3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
 
-  // vessel
+  // lifting eyes and a fitting on top, hinges on the left, latch on the right: drawn first, the body covers their feet
+  p.setPen(QPen(c.muted, 2.5));
+  p.setBrush(c.panel);
+  for (double const x : {204.0, 376.0}) {
+    p.drawEllipse(QPointF(x, VESSEL.top() - 7), 10, 10);
+    p.drawEllipse(QPointF(x, VESSEL.top() - 7), 4.5, 4.5);
+  }
+  p.drawRoundedRect(QRectF(418, VESSEL.top() - 9, 36, 12), 2, 2);
+  for (double const y : {244.0, 538.0}) {
+    p.drawRoundedRect(QRectF(VESSEL.left() - 8, y, 12, 42), 2.5, 2.5);
+  }
+
+  // cabinet: body, door frame, gasket
   p.setPen(QPen(c.muted, 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-  p.setBrush(theme::isDark() ? c.window : c.panelAlt);
+  p.setBrush(c.panel);
   p.drawRoundedRect(VESSEL, 12, 12);
-  p.setFont(canvasFont(13, true));
-  p.setPen(c.text);
-  p.drawText(QPointF(166, FLANGE_Y + 30), tr("Chamber"));
+  p.setPen(QPen(c.muted, 2));
+  p.setBrush(Qt::NoBrush);
+  p.drawRoundedRect(VESSEL.adjusted(10, 10, -10, -10), 9, 9);
+  p.setPen(QPen(theme::isDark() ? c.muted : c.muted.darker(125), 4.5));
+  p.drawRoundedRect(VESSEL.adjusted(17, 17, -17, -17), 7, 7);
 
-  // light: a lamp at the top, glowing when on
-  QPointF const lamp{430, FLANGE_Y + 24};
+  // inner space in perspective: ceiling, side walls and floor towards the back wall
+  QPolygonF const ceiling{{OPENING.topLeft(), OPENING.topRight(), BACK.topRight(), BACK.topLeft()}};
+  QPolygonF const left{{OPENING.topLeft(), BACK.topLeft(), BACK.bottomLeft(), OPENING.bottomLeft()}};
+  QPolygonF const right{{OPENING.topRight(), OPENING.bottomRight(), BACK.bottomRight(), BACK.topRight()}};
+  QPolygonF const floorWall{{BACK.bottomLeft(), BACK.bottomRight(), OPENING.bottomRight(), OPENING.bottomLeft()}};
+  p.setPen(edge);
+  p.setBrush(mix(base, c.muted, 0.16));
+  p.drawPolygon(ceiling);
+  p.setBrush(mix(base, c.muted, 0.09));
+  p.drawPolygon(left);
+  p.drawPolygon(right);
+  p.setBrush(mix(base, c.muted, 0.04));
+  p.drawPolygon(floorWall);
+  p.setBrush(mix(base, c.panel, 0.5));
+  p.drawRect(BACK);
+
+  // latch on the right of the door
+  p.setPen(QPen(c.muted, 2.5));
+  p.setBrush(c.panel);
+  p.drawRoundedRect(QRectF(VESSEL.right() - 4, 380, 10, 60), 3, 3);
+  p.drawRoundedRect(QRectF(VESSEL.right() - 10, 396, 22, 28), 4, 4);
+  p.drawEllipse(QPointF(VESSEL.right() + 1, 410), 3.5, 6);
+
+  // light: a bulb at the top, glowing when on
+  QPointF const lamp{400, 252}; // on the ceiling
+  QPointF const glass{lamp.x(), lamp.y() - 3};
   bool const    lightOn{on("light")};
   if (lightOn) {
     double const    radius = 56 + 6 * std::sin(m_phase * 0.2);
-    QRadialGradient glow(lamp, radius);
+    QRadialGradient glow(glass, radius);
     glow.setColorAt(0.0, QColor(250, 204, 21, 120));
     glow.setColorAt(1.0, QColor(250, 204, 21, 0));
     p.setPen(Qt::NoPen);
     p.setBrush(glow);
-    p.drawEllipse(lamp, radius, radius);
+    p.drawEllipse(glass, radius, radius);
   }
-  p.setPen(QPen(fitted("light") ? c.muted : c.off, 2, fitted("light") ? Qt::SolidLine : Qt::DotLine));
-  p.setBrush(lightOn ? QColor(250, 204, 21) : c.panel);
-  p.drawEllipse(lamp, 8, 8);
-  addTip(QRectF(lamp.x() - 12, lamp.y() - 12, 24, 24), fitted("light") ? tr("Chamber light") : tr("Chamber light: not fitted on this chamber"));
-  drawTag(p, QPointF(lamp.x() - 14, lamp.y() + 2), Qt::AlignRight | Qt::AlignVCenter, "light", tr("Chamber light"));
-
-  // temperature and setpoint, large in the middle
-  double const temp{value("temp")};
-  double const ref{value("temp_ref")};
-  p.setPen(c.text);
-  p.setFont(canvasFont(54, true));
-  p.drawText(QRectF(150, 262, 320, 70), Qt::AlignCenter, valueText(temp, 1, QString()));
-  p.setFont(canvasFont(15));
-  p.setPen(c.muted);
-  p.drawText(QRectF(150, 330, 320, 22), Qt::AlignCenter,
-             std::isnan(ref) ? QStringLiteral("°C") : tr("°C  →  %1").arg(valueText(ref, 1, QStringLiteral(" °C"))));
-  addTip(QRectF(170, 262, 280, 92), tr("Chamber temperature and setpoint"));
+  {
+    // glass: a circle narrowing to the neck, then the screw base
+    double const r{7};
+    QPainterPath bulb;
+    bulb.moveTo(lamp.x() - 3.5, lamp.y() + 6);
+    bulb.arcTo(QRectF(glass.x() - r, glass.y() - r, 2 * r, 2 * r), 225, -270);
+    bulb.lineTo(lamp.x() + 3.5, lamp.y() + 6);
+    bulb.closeSubpath();
+    QColor const line = fitted("light") ? c.muted : c.off;
+    p.setPen(QPen(line, 1.6, fitted("light") ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap, Qt::RoundJoin));
+    p.setBrush(lightOn ? QColor(250, 204, 21) : c.panel);
+    p.drawPath(bulb);
+    p.setBrush(line);
+    p.setPen(Qt::NoPen);
+    p.drawRoundedRect(QRectF(lamp.x() - 3.5, lamp.y() + 6.5, 7, 2.2), 0.8, 0.8);
+    p.drawRoundedRect(QRectF(lamp.x() - 3.5, lamp.y() + 9.3, 7, 2.2), 0.8, 0.8);
+    p.drawEllipse(QPointF(lamp.x(), lamp.y() + 12.6), 1.6, 1.2);
+  }
+  addTip(QRectF(lamp.x() - 12, lamp.y() - 14, 24, 28), fitted("light") ? tr("Light") : tr("Light: disconnected"));
+  drawTag(p, QPointF(lamp.x() - 14, lamp.y() + 2), Qt::AlignRight | Qt::AlignVCenter, "light", tr("Light"), true);
 
   // the plate: heater element on top, coolant channel below (refrigeration unit and LN₂ feed it)
   bool const heating{on("heater")};
@@ -375,7 +423,8 @@ void ChamberView::drawChamber(QPainter &p) {
   QColor const heatColor = !fitted("heater") ? c.off : (heating ? c.heat : c.muted);
   QPainterPath zigzag;
   zigzag.moveTo(PLATE.left() + 8, PLATE.top() + 9);
-  for (int i{0}; i < 22; ++i) {
+  int const zigs{static_cast<int>((PLATE.width() - 26) / 10)};
+  for (int i{0}; i < zigs; ++i) {
     zigzag.lineTo(PLATE.left() + 18 + i * 10, PLATE.top() + 9 + ((i % 2 == 0) ? -4 : 4));
   }
   p.setBrush(Qt::NoBrush);
@@ -394,24 +443,21 @@ void ChamberView::drawChamber(QPainter &p) {
     p.drawLine(channel);
   }
   addTip(PLATE, fitted("heater") ? tr("Plate: heater and coolant channel") : tr("Plate: coolant channel (no heater fitted)"));
-  drawTag(p, QPointF(PLATE.center().x(), PLATE.bottom() + 4), Qt::AlignHCenter | Qt::AlignTop, "heater", tr("Heater"));
+  drawTag(p, QPointF(PLATE.center().x(), PLATE.bottom() + 4), Qt::AlignHCenter | Qt::AlignTop, "heater", tr("Thermal Plate"), true);
 
   // sensor T1, on the plate
   double const  probeR{22};
-  QPointF const probe{310, PLATE.top() - probeR};
+  QPointF const probe{262, PLATE.top() - probeR};
   bool const    sensorFitted{fitted("sensor")};
   p.setPen(QPen(sensorFitted ? c.muted : c.off, 2));
   p.setBrush(c.panel);
   p.drawEllipse(probe, probeR, probeR);
-  p.drawLine(probe + QPointF(-probeR, 0), probe + QPointF(probeR, 0));
-  p.setFont(canvasFont(11, true));
+  p.setFont(canvasFont(12, true));
   p.setPen(c.text);
-  p.drawText(QRectF(probe.x() - probeR, probe.y() - probeR + 2, 2 * probeR, probeR - 2), Qt::AlignCenter, QStringLiteral("T1"));
-  p.setFont(canvasFont(10));
-  p.setPen(std::isnan(temp) ? c.muted : c.accent);
-  p.drawText(QRectF(probe.x() - probeR, probe.y(), 2 * probeR, probeR - 2), Qt::AlignCenter, valueText(temp, 1, QString()));
+  p.drawText(QRectF(probe.x() - probeR, probe.y() - probeR, 2 * probeR, 2 * probeR), Qt::AlignCenter, QStringLiteral("T1"));
   addTip(QRectF(probe.x() - probeR, probe.y() - probeR, 2 * probeR, 2 * probeR), tr("Temperature sensor T1"));
-  drawTag(p, QPointF(probe.x() + probeR + 6, probe.y()), Qt::AlignLeft | Qt::AlignVCenter, "sensor", tr("Temperature sensor"));
+  // the reading is in its tag
+  drawTag(p, QPointF(probe.x() + probeR + 6, probe.y()), Qt::AlignLeft | Qt::AlignVCenter, "sensor", tr("Temperature sensor"), true);
 }
 
 void ChamberView::drawVacuum(QPainter &p) {
@@ -427,7 +473,7 @@ void ChamberView::drawVacuum(QPainter &p) {
   QPointF const vk{548, JUNCTION.y()};
   drawLine(p, {TMP + QPointF(0, -TMP_R), QPointF(TMP.x(), VAC_Y), vtmh}, fitted("tmp"), tmpOn && vtmhOpen && bpOn, c.accent);
   drawLine(p, {vtmh, QPointF(MAIN_X, VAC_Y), QPointF(MAIN_X, 78)}, anyFitted, vtmhOpen && bpOn, c.accent);
-  drawLine(p, {QPointF(TMP.x(), FLANGE_Y), TMP + QPointF(0, TMP_R)}, fitted("tmp"), tmpOn && bpOn, c.accent);
+  drawLine(p, {QPointF(TMP.x(), VESSEL.top()), TMP + QPointF(0, TMP_R)}, fitted("tmp"), tmpOn && bpOn, c.accent);
   // main line: a pipe, gas flowing down to the backing pump
   drawPipe(p, QPointF(MAIN_X, 78), QPointF(MAIN_X, JUNCTION.y() - 6), anyFitted, (vtmhOpen || vkOpen) && bpOn, c.accent);
   addTip(QRectF(MAIN_X - 10, 78, 20, JUNCTION.y() - 84), tr("Main line"));
@@ -544,7 +590,8 @@ void ChamberView::drawSnowflake(QPainter &p, QPointF const &center, double radiu
   }
 }
 
-void ChamberView::drawTag(QPainter &p, QPointF const &anchor, Qt::Alignment align, QString const &key, QString const &title) {
+void ChamberView::drawTag(QPainter &p, QPointF const &anchor, Qt::Alignment align, QString const &key, QString const &title,
+                          bool backdrop) {
   theme::Colors const &c = theme::colors();
   Tag const            t = tag(key);
   bool const           active{t.state == State::ACTIVE};
@@ -566,6 +613,11 @@ void ChamberView::drawTag(QPainter &p, QPointF const &anchor, Qt::Alignment alig
   }
   QRectF const box(corner, QSizeF(width, height));
 
+  if (backdrop) {
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(c.panel.red(), c.panel.green(), c.panel.blue(), 225));
+    p.drawRoundedRect(box, 7, 7);
+  }
   // lit while the component is on
   if (active) {
     p.setPen(QPen(QColor(c.active.red(), c.active.green(), c.active.blue(), 120), 1));

@@ -2,6 +2,7 @@
 
 #include <QButtonGroup>
 #include <QDir>
+#include <QFileDialog>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -12,7 +13,6 @@
 #include "datamanager.h"
 #include "dataviewer.h"
 #include "daterangedialog.h"
-#include "filesavedialogpathprovider.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -131,13 +131,20 @@ ExportDialog::ExportDialog(ResHolder *resHolder, std::shared_ptr<DataHolder> int
     if (selectableRangeRadioBtn->isChecked()) {
       compileCustomInterval();
     }
-    auto sourceList = QStringList{deepvaccontrol::EXPORT_DIR};
-    sourceList.append(m_resHolder->usb->getAvailableDrives());
-    auto *pathProvider = new FileSaveDialogPathProvider(sourceList, m_resHolder->logger, this);
-    pathProvider->getPathAsync(this, QString{}, [this](QString const &filePath) {
-      m_selectedFilePath = filePath;
-      accept();
-    });
+    // file browser in the export folder
+    QString const extension = m_selectedFileExtension;
+    QDir().mkpath(deepvaccontrol::EXPORT_DIR);
+    QString const suggested = QDir(deepvaccontrol::EXPORT_DIR)
+                                .absoluteFilePath(QStringLiteral("chart_%1.%2").arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"), extension));
+    QString filePath = QFileDialog::getSaveFileName(this, tr("Export"), suggested, QStringLiteral("%1 (*.%2)").arg(extension.toUpper(), extension));
+    if (filePath.isEmpty()) {
+      return;
+    }
+    if (filePath.endsWith("." + extension, Qt::CaseInsensitive)) {
+      filePath.chop(extension.size() + 1); // the caller adds the extension
+    }
+    m_selectedFilePath = filePath;
+    accept();
   });
 
   auto dt = QDateTime::currentDateTime();

@@ -53,6 +53,7 @@ struct ChannelInfo {
   QString name;
   QString label;
   QColor  color;
+  Qt::PenStyle penStyle{Qt::SolidLine}; // as on the main chart ("pen" in the settings)
   bool    defaultVisible{false};
   bool    scientific{false}; // drawn on a logarithmic axis
 };

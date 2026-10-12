@@ -18,6 +18,7 @@ struct ChartSeries {
   QVector<double> x; // elapsed sec from run start
   QVector<double> y;
   int             width{2};
+  Qt::PenStyle    penStyle{Qt::SolidLine};
   bool            logAxis{false};
 };
 
@@ -84,12 +85,14 @@ public:
   void                       resetView();
   [[nodiscard]] QPair<double, double> dataXRange() const;
   [[nodiscard]] QPair<double, double> viewXRange() const;
-  bool                       exportPng(QString const &path);
+  // format: "png", "bmp" or "jpg"
+  bool                       exportImage(QString const &path, char const *format);
   // the chart as an image of the given size (reports), independent of the widget's own size
   [[nodiscard]] QImage       renderImage(int width, int height);
 
   void setSyncHub(CrosshairSyncHub *hub);
-  void showSyncCrosshair(double x, double y);
+  // series: the line hovered in the source chart (its point here gets the same label), empty for none
+  void showSyncCrosshair(double x, double y, QString const &series);
   void hideSyncCrosshair();
 
 signals:
@@ -117,6 +120,9 @@ private:
   void onMouseMove(QMouseEvent *event);
   void onSelectionAccepted(QRect const &rect, QMouseEvent *event);
   void setCrosshair(double x, double y, bool visible);
+  // label and circle at a sample of a graph
+  void showPointHover(QCPGraph *graph, int index);
+  void placeHoverText();
   void hideHover();
   void replotCrosshair();
 
@@ -150,6 +156,7 @@ private:
   QCPItemStraightLine       *m_crossV{nullptr};
   QCPItemStraightLine       *m_crossH{nullptr};
   QCPItemText               *m_hoverText{nullptr};
+  QCPItemTracer             *m_hoverDot{nullptr};
 };
 
 } // namespace deepvaccontrol

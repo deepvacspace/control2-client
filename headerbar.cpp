@@ -28,15 +28,25 @@ QString number(SystemValue const *value) {
   if (std::isnan(v) || (v < -10e9) || (v > 10e9)) {
     return QStringLiteral("--");
   }
+  if (value->isSciNotation()) {
+    return utils::formatScientific(v, static_cast<int>(value->getPrec()));
+  }
   return QString::number(v, 'f', static_cast<int>(value->getPrec()));
 }
 
-QString unitOf(QString const &name) {
+QString unitOf(QString const &name, SystemValue const *value) {
   if (name == QLatin1String("temp")) {
     return QStringLiteral(" °C");
   }
   if (name == QLatin1String("hum")) {
     return QStringLiteral(" %");
+  }
+  if (name == QLatin1String("pres")) {
+    // "Pressure, mbar" -> mbar; mmHg when the label has no unit
+    QString const label = value->getLabel();
+    qsizetype const comma = label.lastIndexOf(',');
+    QString const unit = (comma >= 0) ? label.mid(comma + 1).trimmed() : QString{};
+    return QStringLiteral(" ") + (unit.isEmpty() ? QObject::tr("mmHg") : unit);
   }
   return {};
 }
@@ -212,12 +222,15 @@ void HeaderBar::updateValues() {
       continue;
     }
     SystemValue const *value = m_resHolder->states->getSysValue(name);
+    QString const      unit  = unitOf(name, value);
     QString            part  = QStringLiteral("<span style='font-weight:bold; font-size:%1pt; color:%2'>%3%4</span>")
                      .arg(font().pointSizeF() * 1.3)
-                     .arg(c.text.name(), number(value), unitOf(name));
+                     .arg(c.text.name(), number(value), unit);
     if (m_resHolder->states->contains(name + "_ref")) {
-      part += QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>[%2]</span>")
-                .arg(c.muted.name(), number(m_resHolder->states->getSysValue(name + "_ref")));
+      // the pressure setpoint with its unit too
+      part += QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>[%2%3]</span>")
+                .arg(c.muted.name(), number(m_resHolder->states->getSysValue(name + "_ref")),
+                     (name == QLatin1String("pres")) ? unit : QString{});
     }
     parts << part;
   }

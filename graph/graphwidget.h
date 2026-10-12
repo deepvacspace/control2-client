@@ -16,13 +16,12 @@ class GraphWidget : public QWidget {
 public:
   explicit GraphWidget(ResHolder *resHolder, QWidget *parent = nullptr);
 
-  void updateModeSelectButton(DataViewer::ControlMode mode);
   void handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
 
 private:
   void              exportData();
   void              updateDayButton();
-  // legend box over the chart: line labels only, or labels with the values under the mouse
+  // labels box over the chart and value label at the mouse, independent of each other
   void              updateLegendMode();
   // the calendar: experiments of the experiment database, or the live data of today
   void              openCalendar();
@@ -32,12 +31,12 @@ private:
   QPushButton      *m_labelsBtn{nullptr};
   QPushButton      *m_valuesBtn{nullptr};
   QPushButton      *m_dayBtn{nullptr};
-  QString           m_experimentName; // experiment shown; empty for the live data
+  QString           m_experimentName;  // experiment shown; empty for the live data
+  QString           m_experimentLabel; // its short text on the day button
   bool              m_loading{false};
   ResHolder        *m_resHolder;
   DataViewer       *m_dataViewer;
   GraphStyleEditor *m_styleEditor;
-  QPushButton      *m_modeSelectBtn;
   QPushButton      *m_exportToBtn;
   QPushButton      *m_styleBtn;
 };

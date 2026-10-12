@@ -5,7 +5,11 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QDir>
+#include <QPainter>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -51,7 +55,6 @@
 #include "constants.h"
 #include "flowlayout.h"
 #include "dialogs/messagedialog.h"
-#include "filesavedialogpathprovider.h"
 #include "lineeditnum.h"
 #include "lineeditscreen.h"
 #include "runstore.h"
@@ -199,6 +202,21 @@ QString csvNumber(double value) {
 QString limitText(double value) {
   return std::isnan(value) ? QString{} : QString::number(value, 'g', 6);
 }
+
+// a short line in the given style, for the style combo
+QIcon lineIcon(QColor const &color, Qt::PenStyle style, int width) {
+  double const ssf{utils::ssf()};
+  QPixmap      pix(static_cast<int>(80 * ssf), static_cast<int>(14 * ssf));
+  pix.fill(Qt::transparent);
+  QPainter painter(&pix);
+  painter.setRenderHint(QPainter::Antialiasing);
+  QPen pen(color);
+  pen.setWidthF(width * ssf);
+  pen.setStyle(style);
+  painter.setPen(pen);
+  painter.drawLine(QPointF(2 * ssf, 7 * ssf), QPointF(78 * ssf, 7 * ssf));
+  return QIcon(pix);
+}
 } // namespace
 
 AnalysisRunPage::AnalysisRunPage(ResHolder          *resHolder,
@@ -336,9 +354,17 @@ void AnalysisRunPage::buildUi() {
   m_exportBtn      = new QPushButton(tr("Export"), this);
   m_exportBtn->setVisible(false);
   auto *exportMenu = new QMenu(tr("Export"), this);
-  exportMenu->addAction(tr("Chart PNG"), this, &AnalysisRunPage::exportChartPng);
-  exportMenu->addAction(tr("Experiment CSV"), this, &AnalysisRunPage::exportRunCsv);
-  exportMenu->addAction(tr("Comparison CSV"), this, &AnalysisRunPage::exportComparisonCsv);
+  QMenu *imageMenu = exportMenu->addMenu(tr("Chart image"));
+  imageMenu->addAction(tr("PNG…"), this, [this] { exportChartImage("png"); });
+  imageMenu->addAction(tr("BMP…"), this, [this] { exportChartImage("bmp"); });
+  imageMenu->addAction(tr("JPEG…"), this, [this] { exportChartImage("jpg"); });
+  QMenu *dataMenu = exportMenu->addMenu(tr("Data"));
+  dataMenu->addAction(tr("Whole experiment (CSV)…"), this, [this] { exportRunData(false, false); });
+  dataMenu->addAction(tr("Whole experiment (TXT)…"), this, [this] { exportRunData(false, true); });
+  dataMenu->addSeparator();
+  dataMenu->addAction(tr("Visible range (CSV)…"), this, [this] { exportRunData(true, false); });
+  dataMenu->addAction(tr("Visible range (TXT)…"), this, [this] { exportRunData(true, true); });
+  exportMenu->addAction(tr("Comparison CSV…"), this, &AnalysisRunPage::exportComparisonCsv);
   exportMenu->addSeparator();
   exportMenu->addAction(tr("Experiment report (HTML)…"), this, [this] { exportReport(false); });
   exportMenu->addAction(tr("Experiment report (PDF)…"), this, [this] { exportReport(true); });
@@ -1042,6 +1068,76 @@ QColor AnalysisRunPage::channelColor(int index) const {
   return m_colorOverrides.value(index, m_channels.value(index).color);
 }
 
+Qt::PenStyle AnalysisRunPage::channelPenStyle(int index) const {
+  return m_penOverrides.value(index, m_channels.value(index).penStyle);
+}
+
+int AnalysisRunPage::channelWidth(int index) const {
+  return m_widthOverrides.value(index, ChartSeries{}.width);
+}
+
+void AnalysisRunPage::editChannelStyle(int index) {
+  QDialog dialog(this);
+  dialog.setWindowTitle(m_channels.value(index).label);
+  auto *lay  = new QVBoxLayout(&dialog);
+  auto *grid = new QGridLayout();
+  lay->addLayout(grid);
+  double const ssf{utils::ssf()};
+
+  auto color = std::make_shared<QColor>(channelColor(index));
+  auto *colorBtn = new QPushButton(&dialog);
+  colorBtn->setFixedSize(static_cast<int>(40 * ssf), static_cast<int>(26 * ssf));
+  auto *styleCombo = new QComboBox(&dialog);
+  styleCombo->setIconSize(QSize(static_cast<int>(80 * ssf), static_cast<int>(14 * ssf)));
+  for (int style{Qt::SolidLine}; style < Qt::CustomDashLine; ++style) {
+    styleCombo->addItem(QString{}, style);
+  }
+  auto *widthCombo = new QComboBox(&dialog);
+  for (int width{1}; width <= 4; ++width) {
+    widthCombo->addItem(tr("%1 px").arg(width), width);
+  }
+  styleCombo->setCurrentIndex(styleCombo->findData(static_cast<int>(channelPenStyle(index))));
+  widthCombo->setCurrentIndex(std::max(0, widthCombo->findData(channelWidth(index))));
+
+  // the colour swatch and the line previews follow the choices
+  auto refresh = [colorBtn, styleCombo, widthCombo, color] {
+    colorBtn->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #94a3b8; border-radius: 3px;").arg(color->name()));
+    for (int i{0}; i < styleCombo->count(); ++i) {
+      styleCombo->setItemIcon(i, lineIcon(*color, static_cast<Qt::PenStyle>(styleCombo->itemData(i).toInt()),
+                                          widthCombo->currentData().toInt()));
+    }
+  };
+  refresh();
+  connect(colorBtn, &QPushButton::clicked, &dialog, [&dialog, color, refresh] {
+    QColor const picked = QColorDialog::getColor(*color, &dialog);
+    if (picked.isValid()) {
+      *color = picked;
+      refresh();
+    }
+  });
+  connect(widthCombo, &QComboBox::currentIndexChanged, &dialog, refresh);
+
+  grid->addWidget(new QLabel(tr("Colour"), &dialog), 0, 0);
+  grid->addWidget(colorBtn, 0, 1, Qt::AlignLeft);
+  grid->addWidget(new QLabel(tr("Line style"), &dialog), 1, 0);
+  grid->addWidget(styleCombo, 1, 1);
+  grid->addWidget(new QLabel(tr("Line width"), &dialog), 2, 0);
+  grid->addWidget(widthCombo, 2, 1);
+
+  auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  lay->addWidget(buttons);
+
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  m_colorOverrides[index] = *color;
+  m_penOverrides[index]   = static_cast<Qt::PenStyle>(styleCombo->currentData().toInt());
+  m_widthOverrides[index] = widthCombo->currentData().toInt();
+  refreshChart();
+}
+
 void AnalysisRunPage::refreshStats() {
   QDateTime const start = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.start));
   QDateTime const end   = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_run.end));
@@ -1139,9 +1235,11 @@ void AnalysisRunPage::refreshChart() {
         continue;
       }
       ChartSeries item;
-      item.label   = m_channels[index].label;
-      item.color   = channelColor(index);
-      item.x       = m_elapsed;
+      item.label    = m_channels[index].label;
+      item.color    = channelColor(index);
+      item.penStyle = channelPenStyle(index);
+      item.width    = channelWidth(index);
+      item.x        = m_elapsed;
       item.y       = m_data->states[index];
       item.logAxis = m_channels[index].scientific;
       series.push_back(item);
@@ -1858,13 +1956,10 @@ void AnalysisRunPage::openChannelsMenu() {
     swatch->setFocusPolicy(Qt::NoFocus);
     swatch->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #94a3b8; border-radius: 3px;")
                             .arg(channelColor(i).name()));
+    swatch->setToolTip(tr("Colour, line style and width"));
     connect(swatch, &QPushButton::clicked, this, [this, i, menu]() {
       menu->close();
-      QColor const picked = QColorDialog::getColor(channelColor(i), this, m_channels[i].label);
-      if (picked.isValid()) {
-        m_colorOverrides[i] = picked;
-        refreshChart();
-      }
+      QTimer::singleShot(0, this, [this, i] { editChannelStyle(i); }); // after the menu closed
     });
 
     rowLay->addWidget(check, 1);
@@ -2074,54 +2169,63 @@ void AnalysisRunPage::addRule() {
 }
 
 void AnalysisRunPage::askExportPath(QString const &extension, std::function<bool(QString const &)> writer) {
-  QStringList sources{deepvaccontrol::EXPORT_DIR};
-  sources.append(m_resHolder->usb->getAvailableDrives());
-  auto *pathProvider = new FileSaveDialogPathProvider(sources, m_resHolder->logger, this);
-  pathProvider->getPathAsync(this, QString{}, [this, extension, writer, pathProvider](QString const &filePath) {
-    pathProvider->deleteLater();
-    if (filePath.isEmpty()) {
-      return;
-    }
-    QString const fullPath = filePath.endsWith("." + extension) ? filePath : filePath + "." + extension;
-    bool const    ok{writer(fullPath)};
-    (new MessageDialog(tr("Export"), ok ? tr("Saved to %1").arg(fullPath) : tr("Failed to write %1").arg(fullPath)))->open();
-  });
+  // file browser in the export folder, named after the experiment
+  QString name = m_run.title;
+  name.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]+")), QStringLiteral("_"));
+  QDir().mkpath(deepvaccontrol::EXPORT_DIR);
+  QString const suggested = QDir(deepvaccontrol::EXPORT_DIR).absoluteFilePath(QStringLiteral("%1.%2").arg(name, extension));
+  QString const filePath  = QFileDialog::getSaveFileName(this, tr("Export"), suggested,
+                                                         tr("%1 files (*.%2)").arg(extension.toUpper(), extension));
+  if (filePath.isEmpty()) {
+    return;
+  }
+  QString const fullPath = filePath.endsWith("." + extension, Qt::CaseInsensitive) ? filePath : filePath + "." + extension;
+  bool const    ok{writer(fullPath)};
+  (new MessageDialog(tr("Export"), ok ? tr("Saved to %1").arg(fullPath) : tr("Failed to write %1").arg(fullPath)))->open();
 }
 
-void AnalysisRunPage::exportChartPng() {
+void AnalysisRunPage::exportChartImage(QString const &format) {
   if (!m_data) {
     return;
   }
-  askExportPath("png", [this](QString const &path) {
-    return m_chart->exportPng(path);
+  askExportPath(format, [this, format](QString const &path) {
+    return m_chart->exportImage(path, format.toLatin1().constData());
   });
 }
 
-void AnalysisRunPage::exportRunCsv() {
+void AnalysisRunPage::exportRunData(bool visibleOnly, bool tabSeparated) {
   if (!m_data) {
     return;
   }
-  askExportPath("csv", [this](QString const &path) {
+  auto const [from, to] = m_chart->viewXRange();
+  askExportPath(tabSeparated ? "txt" : "csv", [this, visibleOnly, tabSeparated, from, to](QString const &path) {
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
       return false;
     }
     QTextStream out(&file);
     out.setGenerateByteOrderMark(true);
+    QChar const separator{tabSeparated ? QLatin1Char('\t') : QLatin1Char(',')};
+    auto        field = [tabSeparated](QString const &text) {
+      return tabSeparated ? QString(text).replace('\t', ' ') : csvQuote(text);
+    };
 
     QStringList header{tr("Time"), tr("Elapsed, s")};
     for (ChannelInfo const &channel : std::as_const(m_channels)) {
-      header.push_back(csvQuote(channel.label));
+      header.push_back(field(channel.label));
     }
-    out << header.join(',') << '\n';
+    out << header.join(separator) << '\n';
 
     for (qsizetype i{0}; i < m_data->times.size(); ++i) {
+      if (visibleOnly && ((m_elapsed[i] < from) || (m_elapsed[i] > to))) {
+        continue;
+      }
       QStringList row{QDateTime::fromSecsSinceEpoch(static_cast<qint64>(m_data->times[i])).toString("yyyy-MM-dd HH:mm:ss"),
                       csvNumber(m_elapsed[i])};
       for (auto const &channel : m_data->states) {
         row.push_back(csvNumber(i < channel.size() ? channel[i] : qQNaN()));
       }
-      out << row.join(',') << '\n';
+      out << row.join(separator) << '\n';
     }
     out.flush();
     return file.commit();
@@ -2235,9 +2339,11 @@ ExperimentReportData AnalysisRunPage::buildReport() {
         continue;
       }
       ChartSeries item;
-      item.label = m_channels[index].label;
-      item.color = channelColor(index);
-      item.x     = m_elapsed;
+      item.label    = m_channels[index].label;
+      item.color    = channelColor(index);
+      item.penStyle = channelPenStyle(index);
+      item.width    = channelWidth(index);
+      item.x        = m_elapsed;
       item.y     = m_data->states[index];
       series.push_back(item);
     }

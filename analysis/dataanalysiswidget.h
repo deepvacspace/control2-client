@@ -43,7 +43,8 @@ protected:
 private:
   void populateTree();
   void applyFilter();
-  void openRun(ExperimentRun const &run);
+  // splitRight: in a new pane to the right of the active one
+  void openRun(ExperimentRun const &run, bool splitRight = false);
   void openItem(QTreeWidgetItem *item);
   void openCustomRange();
   QDate selectedDay() const;
