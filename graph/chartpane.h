@@ -4,8 +4,10 @@
 #include <QFrame>
 #include <memory>
 
+#include "chartcomparison.h"
 #include "dataholder.h"
 
+class QStackedWidget;
 class QTabBar;
 
 namespace deepvaccontrol {
@@ -15,7 +17,8 @@ class DataViewer;
 
 /**
  * @brief One side of the chart page: a row of small tabs and the chart of the selected one. A tab shows the live data
- * of today (only in the first pane, where it cannot be closed) or recorded data.
+ * of today (only in the first pane, where it stays first and cannot be closed) or recorded data. Tabs are reordered
+ * by dragging them along the row, and dragged to the other pane (or to the right half of the chart to split).
  */
 class ChartPane : public QFrame {
   Q_OBJECT
@@ -26,27 +29,44 @@ public:
     QString                           name;   // full: tool tip and title on the chart
     QString                           runKey; // annotations drawn here belong to it
     std::shared_ptr<DataHolder const> data;   // recorded data; the live one comes from the data manager
+    QString                           storeKey; // experiment database key (experiment details, bundle), if any
+    bool                              loading{false}; // data still being read (a spinner in the tab)
+    std::shared_ptr<ChartComparison const> comparison; // set: a comparison tab
+    DataViewer                       *ownViewer{nullptr}; // comparison tabs have their own chart (in the pane holding them)
+    double                            zoomFrom{qQNaN()}; // elapsed s: shown once the data is there
+    double                            zoomTo{qQNaN()};
   };
   static QString const LIVE_KEY;
 
   // takes the chart (configured by the page); channelNames: state name of each line (variable rules)
   ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList const &channelNames, QWidget *parent = nullptr);
 
+  // the chart shown (a comparison tab's own one, or the pane's)
   [[nodiscard]] DataViewer *viewer() const;
+  // the pane's chart (live and recorded tabs) and all of its charts
+  [[nodiscard]] DataViewer *mainViewer() const;
+  [[nodiscard]] QVector<DataViewer *> viewers() const;
   [[nodiscard]] QTabBar    *tabBar() const;
   [[nodiscard]] int         count() const;
   [[nodiscard]] Tab const  *tab(int index) const;
   [[nodiscard]] Tab const  *currentTab() const;
+  [[nodiscard]] int         indexOf(QString const &key) const;
   [[nodiscard]] bool        liveShown() const;
   // epoch s of the first sample shown (NaN: none)
   [[nodiscard]] double      dataStart() const;
 
   // selects the tab with that key; false when it is not open here
   bool selectTab(QString const &key);
-  // opens (and selects) the tab, or selects it when its key is open already
-  void addTab(Tab const &tab);
-  // removes the tab; emitted emptied() when it was the last one
+  // opens (and selects) the tab at `at` (-1: at the end), or selects it when its key is open already
+  void addTab(Tab const &tab, int at = -1);
+  // removes the tab (its own chart, if any, is the caller's now); emits emptied() when it was the last one
   Tab  takeTab(int index);
+  // removes the tab for good
+  void closeTab(int index);
+  // a comparison tab gets new settings: it shows a spinner until setTabData()
+  void updateTab(QString const &key, QString const &label, QString const &name, std::shared_ptr<ChartComparison const> const &comparison);
+  // the data of a loading tab arrived
+  void setTabData(QString const &key, std::shared_ptr<DataHolder const> const &data);
 
   void setNotes(AnalysisNotesStore *notes);
   // annotations and variable rules of the shown tab
@@ -55,28 +75,55 @@ public:
   void reloadLive(double key);
   // highlighted as the pane the buttons act on (only while the page is split)
   void setHighlighted(bool highlighted);
+  // the left pane: a tab dropped on the right half of its own chart splits the page
+  void setPrimary(bool primary);
 
 signals:
   void activated(); // clicked: the buttons now act on this pane
+  // from the chart shown
+  void annotationDrawn(double x0, double x1);
+  void cursorMoved(double x, int graph);
+  void cursorHidden();
   void currentTabChanged();
   void tabMenuRequested(int index, QPoint const &globalPos);
   void emptied();
+  // a tab of `source` dropped here: at `at` in the tab row (-1: at the end); rightHalf: on the right half of the chart
+  void tabDropped(ChartPane *source, QString const &key, int at, bool rightHalf);
+  // a tab is being dragged out of this pane (no pane may go away until it ends)
+  void tabDragStarted();
+  void tabDragFinished();
 
 protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
+  void dragEnterEvent(QDragEnterEvent *event) override;
+  void dragMoveEvent(QDragMoveEvent *event) override;
+  void dragLeaveEvent(QDragLeaveEvent *event) override;
+  void dropEvent(QDropEvent *event) override;
+  void resizeEvent(QResizeEvent *event) override;
 
 private:
   void showTab(int index);
+  void attachViewer(DataViewer *viewer);
+  void detachViewer(DataViewer *viewer);
+  void startTabDrag(QString const &key);
+  // where a drop at pos would go; false when it would do nothing
+  bool dropTarget(ChartPane *source, QPoint const &pos, int &at, bool &rightHalf, QRect &hint) const;
 
   DataViewer         *m_viewer;
   DataManager        *m_dataManager;
   QStringList         m_channelNames;
   QTabBar            *m_tabBar;
+  QStackedWidget     *m_stack;
+  QWidget            *m_dropHint;
   QVector<Tab>        m_tabs;
   AnalysisNotesStore *m_notes{nullptr};
+  bool                m_primary{false};
+  // tab pressed in the row (drag out of it)
+  QString             m_pressKey;
+  QPoint              m_pressPos;
 };
 
-inline DataViewer *ChartPane::viewer() const {
+inline DataViewer *ChartPane::mainViewer() const {
   return m_viewer;
 }
 

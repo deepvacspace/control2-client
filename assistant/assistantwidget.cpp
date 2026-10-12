@@ -2,6 +2,8 @@
 
 #include <QComboBox>
 #include <QFrame>
+#include <QHash>
+#include <array>
 #include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -14,7 +16,7 @@
 
 #include "analysistools.h"
 #include "assistantengine.h"
-#include "dataanalysiswidget.h"
+#include "analysisservices.h"
 #include "experimentlibrary.h"
 #include "llmclient.h"
 #include "resholder.h"
@@ -26,35 +28,26 @@ namespace deepvaccontrol::assistant {
 namespace {
 QString const SETTINGS_SECTION{QStringLiteral("assistant")};
 
-QString cell(QString text) {
-  return text.replace(QLatin1Char('|'), QStringLiteral("\\|")).replace(QLatin1Char('\n'), QLatin1Char(' '));
+// what the user is told while a tool runs (the tool itself is not shown)
+QString lookupText(QString const &tool) {
+  static QHash<QString, char const *> const texts{
+    {"get_run_summary", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the experiment…")},
+    {"compare_runs", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Comparing the experiments…")},
+    {"rank_runs", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Ranking the experiments…")},
+    {"get_stages", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the stages…")},
+    {"get_kpis", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the KPIs…")},
+    {"get_anomalies", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the anomalies…")},
+    {"list_runs", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking through the experiments…")},
+    {"get_run_details", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the experiment details…")},
+    {"get_events", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the events…")},
+    {"plot_run", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Opening the chart…")},
+    {"generate_report", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Writing the report…")}};
+  char const *text = texts.value(tool, QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the data…"));
+  return QCoreApplication::translate("deepvaccontrol::assistant::AssistantWidget", text);
 }
 
-// a tool result as DeepVac renders it: title, facts, table
-QString cardMarkdown(QJsonObject const &card) {
-  QString markdown = QStringLiteral("**%1**\n\n").arg(card.value("title").toString());
-  for (QJsonValue const &fact : card.value("facts").toArray()) {
-    markdown += QStringLiteral("- %1\n").arg(fact.toString());
-  }
-  QJsonObject const table   = card.value("table").toObject();
-  QJsonArray const  columns = table.value("columns").toArray();
-  if (!columns.isEmpty()) {
-    QStringList header;
-    QStringList rule;
-    for (QJsonValue const &column : columns) {
-      header << cell(column.toString());
-      rule << QStringLiteral("---");
-    }
-    markdown += QStringLiteral("\n| %1 |\n| %2 |\n").arg(header.join(QStringLiteral(" | ")), rule.join(QStringLiteral(" | ")));
-    for (QJsonValue const &row : table.value("rows").toArray()) {
-      QStringList cells;
-      for (QJsonValue const &value : row.toArray()) {
-        cells << cell(value.toString());
-      }
-      markdown += QStringLiteral("| %1 |\n").arg(cells.join(QStringLiteral(" | ")));
-    }
-  }
-  return markdown;
+QString muted(QString const &text) {
+  return QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg(text.toHtmlEscaped());
 }
 
 QString userMarkdown(QString text) {
@@ -142,6 +135,9 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
   connect(newChatBtn, &QPushButton::clicked, this, [this] {
     m_engine->reset();
     m_blocks.clear();
+    m_liveBlock   = -1;
+    m_statusBlock = -1;
+    m_checkBlock  = -1;
     render();
   });
   for (QPushButton *button : {m_sendBtn, m_stopBtn, newChatBtn}) {
@@ -156,15 +152,29 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
 
   connect(m_sidecar, &LlmSidecar::stateChanged, this, &AssistantWidget::onStateChanged);
   connect(m_engine, &AssistantEngine::busyChanged, this, &AssistantWidget::updateButtons);
-  connect(m_engine, &AssistantEngine::toolCalled, this, [this](QString const &name, QString const &arguments) {
-    m_liveBlock = -1; // text written before a tool call stays as it is
-    append(QStringLiteral("<span style=\"color:#64748b\">⚙ %1 %2</span>").arg(name.toHtmlEscaped(), arguments.left(200).toHtmlEscaped()));
+  connect(m_engine, &AssistantEngine::toolCalled, this, [this](QString const &name, QString const &) {
+    if (m_checkBlock >= 0) {
+      return; // the background correction: the answer shown stays, with its check note
+    }
+    if (m_liveBlock >= 0) {
+      m_blocks.removeAt(m_liveBlock); // text written before a tool call is not the answer
+      m_liveBlock = -1;
+    }
+    setStatus(lookupText(name));
   });
-  connect(m_engine, &AssistantEngine::toolCard, this, [this](QString const &, QJsonObject const &card) { append(cardMarkdown(card)); });
   connect(m_engine, &AssistantEngine::partialAnswer, this, [this](QString const &text) {
+    if (text.trimmed().isEmpty()) {
+      return;
+    }
     if (m_liveBlock < 0) {
-      m_blocks.push_back(text);
-      m_liveBlock = static_cast<int>(m_blocks.size()) - 1;
+      if (m_statusBlock >= 0) { // the answer takes the place of the status line
+        m_liveBlock   = m_statusBlock;
+        m_statusBlock = -1;
+        m_blocks[m_liveBlock] = text;
+      } else {
+        m_blocks.push_back(text);
+        m_liveBlock = static_cast<int>(m_blocks.size()) - 1;
+      }
     } else {
       m_blocks[m_liveBlock] = text;
     }
@@ -172,23 +182,22 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
       m_renderTimer.start(); // at most ~8 redraws per second while tokens arrive
     }
   });
-  connect(m_engine, &AssistantEngine::toolFinished, this, [this](QString const &name, bool ok, QString const &summary) {
-    if (!ok) {
-      append(QStringLiteral("<span style=\"color:#d97706\">⚠ %1: %2</span>").arg(name.toHtmlEscaped(), summary.toHtmlEscaped()));
-    }
-  });
   connect(m_engine, &AssistantEngine::answered, this, [this](QString const &text) {
-    if (m_liveBlock >= 0) {
-      m_blocks[m_liveBlock] = text; // the streamed text, plus the grounding note if any
-      m_liveBlock           = -1;
+    int const live{m_liveBlock};
+    m_liveBlock = -1;
+    clearNotes();
+    if ((live >= 0) && (live < m_blocks.size())) {
+      m_blocks[live] = text; // the streamed text (or the better corrected one), plus the grounding note if any
       render();
     } else {
       append(text);
     }
   });
-  connect(m_engine, &AssistantEngine::answerRetracted, this, [this] {
-    if (m_liveBlock >= 0) {
-      m_blocks[m_liveBlock] = QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg(tr("Checking the answer against the results…"));
+  // the shown answer stays while a better one is looked for
+  connect(m_engine, &AssistantEngine::checkingAnswer, this, [this] {
+    if (m_checkBlock < 0) {
+      m_blocks.push_back(muted(tr("Checking the values against the experiment data…")));
+      m_checkBlock = static_cast<int>(m_blocks.size()) - 1;
       render();
     }
   });
@@ -197,6 +206,7 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
   connect(&m_renderTimer, &QTimer::timeout, this, &AssistantWidget::render);
   connect(m_engine, &AssistantEngine::failed, this, [this](QString const &error) {
     m_liveBlock = -1;
+    clearNotes();
     append(QStringLiteral("<span style=\"color:#dc2626\">%1</span>").arg(tr("Error: %1").arg(error).toHtmlEscaped()));
   });
 
@@ -210,12 +220,12 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
 
 AssistantWidget::~AssistantWidget() = default;
 
-void AssistantWidget::setAnalysis(DataAnalysisWidget *analysis, std::function<void()> showPage) {
+void AssistantWidget::setServices(AnalysisServices *analysis, std::function<void()> showPage) {
   m_analysis = analysis;
   AnalysisViewer viewer;
   viewer.show = [analysis, showPage](ExperimentRun const &run, QStringList const &channels, double from, double to,
                                      QVector<ExperimentRun> const &compare) {
-    QString const error = analysis->showRun(run, channels, from, to, compare);
+    QString const error = analysis->show(run, channels, from, to, compare);
     if (error.isEmpty() && showPage) {
       showPage();
     }
@@ -346,6 +356,32 @@ void AssistantWidget::updateButtons() {
   bool const working{m_engine->busy() || !m_queued.isEmpty()};
   m_sendBtn->setEnabled(!working);
   m_stopBtn->setEnabled(working);
+}
+
+void AssistantWidget::setStatus(QString const &text) {
+  if (m_statusBlock >= 0) {
+    m_blocks[m_statusBlock] = muted(text);
+    render();
+    return;
+  }
+  m_blocks.push_back(muted(text));
+  m_statusBlock = static_cast<int>(m_blocks.size()) - 1;
+  render();
+}
+
+void AssistantWidget::clearNotes() {
+  // the later block first, so the other index stays valid
+  for (int *note : (m_checkBlock > m_statusBlock) ? std::array<int *, 2>{&m_checkBlock, &m_statusBlock}
+                                                  : std::array<int *, 2>{&m_statusBlock, &m_checkBlock}) {
+    if ((*note >= 0) && (*note < m_blocks.size())) {
+      m_blocks.removeAt(*note);
+      if ((m_liveBlock > *note)) {
+        --m_liveBlock;
+      }
+    }
+    *note = -1;
+  }
+  render();
 }
 
 void AssistantWidget::append(QString const &markdown) {

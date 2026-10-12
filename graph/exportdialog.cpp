@@ -1,205 +1,297 @@
 #include "exportdialog.h"
 
 #include <QButtonGroup>
+#include <QDateTimeEdit>
 #include <QDir>
 #include <QFileDialog>
+#include <QFrame>
 #include <QGridLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QVBoxLayout>
 
 #include "constants.h"
-#include "datamanager.h"
 #include "dataviewer.h"
-#include "daterangedialog.h"
+#include "stringpathprovider.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
-ExportDialog::ExportDialog(ResHolder *resHolder, std::shared_ptr<DataHolder> interval, QWidget *parent)
-    : QDialog{parent}, m_resHolder{resHolder}, m_interval{interval} {
-  // boxes / btns
-  auto *mainLay = new QVBoxLayout(this);
 
-  // range select | type select
-  auto *boxesLay = new QHBoxLayout();
+namespace {
+int px(double value) {
+  return qMax(1, static_cast<int>(value * utils::ssf()));
+}
 
-  auto *rangeBox = new QGroupBox(tr("Диапазон"), this);
-  auto *rangeLay = new QVBoxLayout(rangeBox);
-  rangeLay->setSpacing(2 * utils::ssf());
+QLabel *caption(QString const &text, QWidget *parent) {
+  auto *label = new QLabel(text.toUpper(), parent);
+  label->setProperty("muted", true);
+  QFont font = label->font();
+  font.setPointSizeF(font.pointSizeF() * 0.82);
+  font.setBold(true);
+  font.setLetterSpacing(QFont::PercentageSpacing, 108);
+  label->setFont(font);
+  return label;
+}
 
-  auto *formatBox = new QGroupBox(tr("Тип файла"), this);
-  auto *formatLay = new QVBoxLayout(formatBox);
-  formatLay->setSpacing(2 * utils::ssf());
+QFrame *card(QWidget *parent) {
+  auto *frame = new QFrame(parent);
+  frame->setObjectName("exportCard");
+  theme::Colors const &c = theme::colors();
+  frame->setStyleSheet(QStringLiteral("QFrame#exportCard { background: %1; border: %2px solid %3; border-radius: %4px; }")
+                         .arg(c.panelAlt.name())
+                         .arg(px(1))
+                         .arg(c.border.name())
+                         .arg(px(8)));
+  return frame;
+}
 
-  boxesLay->addWidget(rangeBox);
-  boxesLay->addWidget(formatBox);
+struct Format {
+  char const *id;
+  char const *label;
+};
+} // namespace
 
-  auto *dateRangeBox    = new QGroupBox(this);
-  auto *dateRangeBoxLay = new QGridLayout(dateRangeBox);
-  dateRangeBoxLay->setContentsMargins(8 * utils::ssf(), 0, 8 * utils::ssf(), 12 * utils::ssf());
+ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, QWidget *parent)
+    : QDialog{parent}, m_resHolder{resHolder}, m_day{day} {
+  setWindowTitle(tr("Export"));
+  auto *lay = new QVBoxLayout(this);
+  lay->setContentsMargins(px(20), px(18), px(20), px(16));
+  lay->setSpacing(px(12));
 
-  m_datesLabel = new QLabel("date1\ndate2", this);
-  m_datesLabel->setWordWrap(true);
-  m_datesLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  auto *title = new QLabel(tr("Export"), this);
+  QFont font  = title->font();
+  font.setBold(true);
+  font.setPointSizeF(font.pointSizeF() * 1.25);
+  title->setFont(font);
+  lay->addWidget(title);
 
-  auto *changeDatesBtn = new QPushButton(tr("Изменить"), this);
-  auto *previewBtn     = new QPushButton(tr("Предпросмотр"), this);
-  changeDatesBtn->setFixedSize(100 * utils::ssf(), 40 * utils::ssf());
-  previewBtn->setFixedSize(100 * utils::ssf(), 40 * utils::ssf());
+  auto *columns = new QHBoxLayout();
+  columns->setSpacing(px(12));
+  lay->addLayout(columns, 1);
 
-  dateRangeBoxLay->addWidget(m_datesLabel, 0, 0, 1, 2);
-  dateRangeBoxLay->addWidget(previewBtn, 1, 0);
-  dateRangeBoxLay->addWidget(changeDatesBtn, 1, 1);
-  dateRangeBoxLay->setAlignment(m_datesLabel, Qt::AlignLeft);
-
-  QList<QRadioButton *> rangeBtnsList;
-  auto                 *rangeTypeGroup = new QButtonGroup(this); // not a widget
-
-  auto *currentViewRangeRadioBtn = new QRadioButton(tr("Текущая область видимости"), this);
-  rangeTypeGroup->addButton(currentViewRangeRadioBtn, 0);
-  rangeBtnsList.push_back(currentViewRangeRadioBtn);
-  auto *currentDayRangeRadioBtn = new QRadioButton(tr("Текущий день"), this);
-  rangeTypeGroup->addButton(currentDayRangeRadioBtn, 1);
-  rangeBtnsList.push_back(currentDayRangeRadioBtn);
-  auto *selectableRangeRadioBtn = new QRadioButton(tr("Настраиваемый"), this);
-  rangeTypeGroup->addButton(selectableRangeRadioBtn, 2);
-  rangeBtnsList.push_back(selectableRangeRadioBtn);
-
-  for (auto &btn : rangeBtnsList) {
-    if (utils::ssf() > 1) {
-      btn->setStyleSheet(utils::readStyleFromFile(":/styles/radioBtnBig.qss")
-                         + QString("QRadioButton::indicator{width: %1px; height: %1px;}").arg(20 * utils::ssf()));
+  // ---- what: file types as chips, in three groups
+  auto *formatCard = card(this);
+  auto *formatLay  = new QVBoxLayout(formatCard);
+  formatLay->setContentsMargins(px(14), px(12), px(14), px(14));
+  formatLay->setSpacing(px(6));
+  m_formats = new QButtonGroup(this);
+  m_formats->setExclusive(true);
+  auto addGroup = [&](QString const &name, QString const &note, std::initializer_list<Format> formats, bool enabled) {
+    formatLay->addWidget(caption(name, formatCard));
+    auto *row = new QHBoxLayout();
+    row->setSpacing(px(6));
+    for (Format const &format : formats) {
+      auto *chip = new QPushButton(tr(format.label), formatCard);
+      chip->setCheckable(true);
+      chip->setMinimumSize(px(64), px(30));
+      chip->setFocusPolicy(Qt::NoFocus);
+      chip->setProperty("format", QString(format.id));
+      chip->setEnabled(enabled);
+      if (!enabled) {
+        chip->setToolTip(note);
+      }
+      m_formats->addButton(chip);
+      row->addWidget(chip);
     }
-    rangeLay->addWidget(btn);
-  }
-  rangeLay->addWidget(dateRangeBox);
-  rangeLay->addStretch();
-
-  auto *formatTypeGroup = new QButtonGroup(this); // not a widget
-
-  QStringList const formatsList{"txt", "csv", "bmp", "png", "jpeg"};
-  for (int i{0U}; i < formatsList.size(); ++i) {
-    auto *btn = new QRadioButton(formatsList[i], this);
-    if (utils::ssf() > 1) {
-      btn->setStyleSheet(utils::readStyleFromFile(":/styles/radioBtnBig.qss")
-                         + QString("QRadioButton::indicator{width: %1px; height: %1px;}").arg(20 * utils::ssf()));
+    row->addStretch();
+    formatLay->addLayout(row);
+    formatLay->addSpacing(px(6));
+  };
+  addGroup(tr("Chart image"), QString{}, {{"png", "PNG"}, {"bmp", "BMP"}, {"jpeg", "JPEG"}}, true);
+  addGroup(tr("Data"), QString{}, {{"csv", "CSV"}, {"txt", "TXT"}}, true);
+  formatLay->addWidget(caption(tr("Experiment"), formatCard));
+  {
+    auto *row = new QHBoxLayout();
+    row->setSpacing(px(6));
+    for (auto const &[id, label, enabled, note] :
+         {std::tuple{"html", QT_TR_NOOP("Report HTML"), canReport, tr("Reports need the experiment list")},
+          std::tuple{"pdf", QT_TR_NOOP("Report PDF"), canReport, tr("Reports need the experiment list")},
+          std::tuple{"json", QT_TR_NOOP("Bundle JSON"), canBundle, tr("Only for experiments saved in the experiment database")}}) {
+      auto *chip = new QPushButton(tr(label), formatCard);
+      chip->setCheckable(true);
+      chip->setMinimumSize(px(64), px(30));
+      chip->setFocusPolicy(Qt::NoFocus);
+      chip->setProperty("format", QString(id));
+      chip->setEnabled(enabled);
+      if (!enabled) {
+        chip->setToolTip(note);
+      }
+      m_formats->addButton(chip);
+      row->addWidget(chip);
     }
-    formatTypeGroup->addButton(btn, i);
-    formatLay->addWidget(btn);
+    row->addStretch();
+    formatLay->addLayout(row);
   }
   formatLay->addStretch();
+  m_formats->buttons().first()->setChecked(true);
+  columns->addWidget(formatCard, 3);
 
-  auto btnsLay   = new QHBoxLayout();
-  auto cancelBtn = new QPushButton(tr("Отмена"), this);
-  auto saveBtn   = new QPushButton(tr("Далее"), this);
+  // ---- which range
+  auto *rangeCard = card(this);
+  auto *rangeLay  = new QVBoxLayout(rangeCard);
+  rangeLay->setContentsMargins(px(14), px(12), px(14), px(14));
+  rangeLay->setSpacing(px(6));
+  rangeLay->addWidget(caption(tr("Range"), rangeCard));
+  m_ranges = new QButtonGroup(this);
+  for (auto const &[id, text] : {std::pair{Range::VIEW, tr("Visible view")},
+                                 std::pair{Range::EXPERIMENT, tr("Whole experiment shown")},
+                                 std::pair{Range::DAY, tr("Day %1").arg(m_day.toString("yyyy-MM-dd"))},
+                                 std::pair{Range::CUSTOM, tr("Custom")}}) {
+    auto *radio = new QRadioButton(text, rangeCard);
+    m_ranges->addButton(radio, static_cast<int>(id));
+    rangeLay->addWidget(radio);
+  }
+  m_ranges->button(static_cast<int>(Range::VIEW))->setChecked(true);
+  for (Range const fromFiles : {Range::DAY, Range::CUSTOM}) {
+    m_ranges->button(static_cast<int>(fromFiles))->setVisible(canUseFiles);
+  }
+  auto *customGrid = new QGridLayout();
+  customGrid->setContentsMargins(px(24), 0, 0, 0);
+  customGrid->setHorizontalSpacing(px(8));
+  QDateTime const dayStart(m_day, QTime(0, 0));
+  m_fromEdit = new QDateTimeEdit(dayStart, rangeCard);
+  m_toEdit   = new QDateTimeEdit(QDateTime(m_day, QTime(23, 59, 59)), rangeCard);
+  int row{0};
+  for (auto const &[label, edit] : {std::pair{tr("From"), m_fromEdit}, std::pair{tr("To"), m_toEdit}}) {
+    edit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    edit->setMinimumHeight(px(28));
+    auto *name = new QLabel(label, rangeCard);
+    name->setVisible(canUseFiles);
+    customGrid->addWidget(name, row, 0);
+    customGrid->addWidget(edit, row, 1);
+    ++row;
+  }
+  rangeLay->addLayout(customGrid);
+  for (QWidget *edit : std::initializer_list<QWidget *>{m_fromEdit, m_toEdit}) {
+    edit->setVisible(canUseFiles);
+  }
+  m_rangeNote = new QLabel(rangeCard);
+  m_rangeNote->setProperty("muted", true);
+  m_rangeNote->setWordWrap(true);
+  rangeLay->addWidget(m_rangeNote);
+  rangeLay->addStretch();
+  columns->addWidget(rangeCard, 2);
 
-  cancelBtn->setFixedSize(120 * utils::ssf(), 40 * utils::ssf());
-  saveBtn->setFixedSize(120 * utils::ssf(), 40 * utils::ssf());
+  // ---- buttons
+  auto *buttons = new QHBoxLayout();
+  m_previewBtn  = new QPushButton(tr("Preview"), this);
+  auto *cancelBtn = new QPushButton(tr("Cancel"), this);
+  auto *exportBtn = new QPushButton(tr("Export…"), this);
+  m_previewBtn->setProperty("outline", true);
+  cancelBtn->setProperty("outline", true);
+  exportBtn->setObjectName("primaryButton");
+  exportBtn->setDefault(true);
+  for (QPushButton *button : {m_previewBtn, cancelBtn, exportBtn}) {
+    button->setMinimumSize(px(100), px(32));
+    button->setFocusPolicy(Qt::NoFocus);
+  }
+  buttons->addWidget(m_previewBtn);
+  buttons->addStretch();
+  buttons->addWidget(cancelBtn);
+  buttons->addWidget(exportBtn);
+  lay->addLayout(buttons);
 
-  btnsLay->addWidget(cancelBtn);
-  btnsLay->addStretch();
-  btnsLay->addWidget(saveBtn);
-
-  mainLay->addLayout(boxesLay);
-  mainLay->addLayout(btnsLay);
-
-  rangeTypeGroup->button(0)->setChecked(true);
-  formatTypeGroup->button(0)->setChecked(true);
-
-  dateRangeBox->setEnabled(false);
-
-  connect(selectableRangeRadioBtn, &QRadioButton::toggled, dateRangeBox, &QGroupBox::setEnabled);
-
-  connect(changeDatesBtn, &QPushButton::clicked, this, [this] {
-    auto *dateDialog = new DateRangeDialog(m_dateStart, m_dateEnd, this);
-    connect(dateDialog, &DateRangeDialog::dateSelected, this, &ExportDialog::updateDates);
-    dateDialog->open();
-  });
-
-  connect(previewBtn, &QPushButton::clicked, this, [this] {
-    compileCustomInterval();
-    auto *previewDialog = new DataViewerDialog(
-      m_resHolder->logger, m_interval, m_resHolder->settings->settingsMap()["states"].toList(), this);
-    previewDialog->open();
-  });
-
+  connect(m_formats, &QButtonGroup::buttonToggled, this, &ExportDialog::updateState);
+  connect(m_ranges, &QButtonGroup::idToggled, this, &ExportDialog::updateState);
   connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
-  connect(saveBtn, &QPushButton::clicked, this, [this, formatTypeGroup, rangeTypeGroup, selectableRangeRadioBtn]() {
-    m_selectedFileExtension = formatTypeGroup->checkedButton()->text();
-    m_selectedType          = rangeTypeGroup->checkedId();
-    if (selectableRangeRadioBtn->isChecked()) {
-      compileCustomInterval();
-    }
-    // file browser in the export folder
-    QString const extension = m_selectedFileExtension;
-    QDir().mkpath(deepvaccontrol::EXPORT_DIR);
-    QString const suggested = QDir(deepvaccontrol::EXPORT_DIR)
-                                .absoluteFilePath(QStringLiteral("chart_%1.%2").arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"), extension));
-    QString filePath = QFileDialog::getSaveFileName(this, tr("Export"), suggested, QStringLiteral("%1 (*.%2)").arg(extension.toUpper(), extension));
-    if (filePath.isEmpty()) {
-      return;
-    }
-    if (filePath.endsWith("." + extension, Qt::CaseInsensitive)) {
-      filePath.chop(extension.size() + 1); // the caller adds the extension
-    }
-    m_selectedFilePath = filePath;
-    accept();
+  connect(exportBtn, &QPushButton::clicked, this, &ExportDialog::choosePath);
+  connect(m_previewBtn, &QPushButton::clicked, this, [this] {
+    auto *preview = new DataViewerDialog(m_resHolder->logger, readInterval(), m_resHolder->settings->settingsMap()["states"].toList(), this);
+    preview->open();
   });
 
-  auto dt = QDateTime::currentDateTime();
-  dt.setTime(QTime(12, 0, 0));
-  updateDates(dt.addDays(-2), dt);
-
-  this->setWindowTitle(tr("Экспорт данных"));
-  // this->setAttribute(Qt::WA_DeleteOnClose);
-  this->adjustSize();
-  setFixedSize(size());
+  updateState();
+  resize(px(720), sizeHint().height());
 }
 
-void ExportDialog::updateDates(QDateTime rangeStart, QDateTime rangeEnd) {
-  m_dateStart = rangeStart;
-  m_dateEnd   = rangeEnd;
-
-  m_datesLabel->setText(tr("начало") + ": " + m_dateStart.toString("yyyy-MM-dd HH:mm:ss") + "\r\n" + tr("конец") + ": "
-                        + m_dateEnd.toString("yyyy-MM-dd HH:mm:ss"));
+QString ExportDialog::format() const {
+  return m_formats->checkedButton() ? m_formats->checkedButton()->property("format").toString() : QString{};
 }
 
-void ExportDialog::compileCustomInterval() {
-  QList<double> possibleKeys;
+ExportDialog::Range ExportDialog::range() const {
+  return static_cast<Range>(m_ranges->checkedId());
+}
 
-  qint64 daysDiff{m_dateStart.daysTo(m_dateEnd)};
-  auto   dateFromInterval = m_dateStart;
-  while (daysDiff >= 0) {
-    possibleKeys.push_back(utils::calculateKey(dateFromInterval.toSecsSinceEpoch()));
-    dateFromInterval = dateFromInterval.addDays(1);
-    --daysDiff;
+QDateTime ExportDialog::from() const {
+  return (range() == Range::DAY) ? QDateTime(m_day, QTime(0, 0)) : std::min(m_fromEdit->dateTime(), m_toEdit->dateTime());
+}
+
+QDateTime ExportDialog::to() const {
+  return (range() == Range::DAY) ? QDateTime(m_day, QTime(23, 59, 59)) : std::max(m_fromEdit->dateTime(), m_toEdit->dateTime());
+}
+
+QString ExportDialog::filePath() const {
+  return m_filePath;
+}
+
+bool ExportDialog::isImage(QString const &format) {
+  return QStringList{"png", "bmp", "jpeg"}.contains(format);
+}
+
+bool ExportDialog::isData(QString const &format) {
+  return QStringList{"csv", "txt"}.contains(format);
+}
+
+void ExportDialog::updateState() {
+  QString const fmt = format();
+  bool const    bundle{fmt == QLatin1String("json")};
+  // a bundle is the whole saved experiment
+  for (QAbstractButton *radio : m_ranges->buttons()) {
+    radio->setEnabled(!bundle);
   }
+  bool const custom{!bundle && (range() == Range::CUSTOM)};
+  m_fromEdit->setEnabled(custom);
+  m_toEdit->setEnabled(custom);
+  bool const fromFiles{!bundle && ((range() == Range::DAY) || (range() == Range::CUSTOM))};
+  m_previewBtn->setVisible(fromFiles && (isImage(fmt) || isData(fmt)));
+  m_rangeNote->setText(bundle      ? tr("The bundle holds the whole experiment as saved in the database.")
+                       : fromFiles ? tr("Read from the recorded data of this computer.")
+                                   : QString{});
+}
 
-  QDir       dir(INTERVALS_DIR);
-  auto const intervalFiles = dir.entryList(QDir::Files, QDir::Name);
+void ExportDialog::choosePath() {
+  QString const extension = format();
+  if (extension.isEmpty()) {
+    return;
+  }
+  QDir().mkpath(deepvaccontrol::EXPORT_DIR);
+  QString const suggested = QDir(deepvaccontrol::EXPORT_DIR)
+                              .absoluteFilePath(QStringLiteral("chart_%1.%2").arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"), extension));
+  QString path = QFileDialog::getSaveFileName(this, tr("Export"), suggested, QStringLiteral("%1 (*.%2)").arg(extension.toUpper(), extension));
+  if (path.isEmpty()) {
+    return;
+  }
+  if (!path.endsWith("." + extension, Qt::CaseInsensitive)) {
+    path += "." + extension;
+  }
+  m_filePath = path;
+  accept();
+}
 
-  QStringList filesList;
-  for (int i{0U}; i < possibleKeys.size(); ++i) {
-    QString const intervalFileName{
-      QDateTime::fromSecsSinceEpoch(utils::calculateKey(possibleKeys[i])).toString("yyyy-MM-dd_HH-mm-ss") + ".dat"};
+std::shared_ptr<DataHolder> ExportDialog::readInterval() const {
+  auto         interval = std::make_shared<DataHolder>(m_resHolder->states->size(), m_resHolder->logger, 0);
+  QDateTime const start = from();
+  QDateTime const end   = to();
 
-    if (intervalFiles.contains(intervalFileName)) {
-      filesList.push_back(intervalFileName);
+  // the interval files (one per day) covering the range
+  QDir const        dir(INTERVALS_DIR);
+  QStringList const files = dir.entryList(QDir::Files, QDir::Name);
+  for (QDate date = start.date(); date <= end.date(); date = date.addDays(1)) {
+    double const  key{utils::calculateKey(QDateTime(date, QTime(12, 0)).toSecsSinceEpoch())};
+    QString const name = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(key)).toString("yyyy-MM-dd_HH-mm-ss") + ".dat";
+    if (!files.contains(name)) {
+      continue;
     }
+    StringPathProvider path(INTERVALS_DIR + name, m_resHolder->logger);
+    auto dayData = std::make_shared<DataHolder>(m_resHolder->states->size(), m_resHolder->logger, 0);
+    dayData->loadFromFile(&path);
+    dayData->slice(static_cast<double>(start.toSecsSinceEpoch()), static_cast<double>(end.toSecsSinceEpoch()));
+    interval->append(dayData.get());
   }
-
-  double const secsStart{static_cast<double>(m_dateStart.toSecsSinceEpoch())};
-  double const secsEnd{static_cast<double>(m_dateEnd.toSecsSinceEpoch())};
-
-  m_interval->clean();
-  while (!filesList.empty()) {
-    StringPathProvider path(INTERVALS_DIR + filesList.first(), m_resHolder->logger);
-    auto               dataInterval = std::make_shared<DataHolder>(m_resHolder->states->size(), m_resHolder->logger, 0);
-    dataInterval->loadFromFile(&path);
-    dataInterval->slice(secsStart, secsEnd);
-    m_interval->append(dataInterval.get());
-    filesList.removeFirst();
-  }
+  return interval;
 }
+
 } // namespace deepvaccontrol

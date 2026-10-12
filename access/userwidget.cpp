@@ -144,11 +144,11 @@ void UserWidget::initGui() {
   m_usersList->setFocusPolicy(Qt::NoFocus);
   usersLay->addWidget(m_usersList, 1);
 
-  m_selectUserBtn = new QPushButton(tr("Выбрать"), usersCard);
+  m_selectUserBtn = new QPushButton(tr("Select"), usersCard);
   m_selectUserBtn->setObjectName("primaryButton");
-  m_addUserBtn  = new QPushButton(tr("Добавить пользователя"), usersCard);
-  m_editUserBtn = new QPushButton(tr("Редактировать"), usersCard);
-  m_delUserBtn  = new QPushButton(tr("Удалить пользователя"), usersCard);
+  m_addUserBtn  = new QPushButton(tr("Add user"), usersCard);
+  m_editUserBtn = new QPushButton(tr("Edit"), usersCard);
+  m_delUserBtn  = new QPushButton(tr("Delete user"), usersCard);
   m_delUserBtn->setProperty("outline", true);
   auto *buttonsLay = new QHBoxLayout();
   buttonsLay->setSpacing(8 * ssf);
@@ -252,12 +252,12 @@ void UserWidget::switchUser() {
 
   if (!selectedUserName.isEmpty() && (m_accessManager->getCurrentUserName() != selectedUserName)) {
     if (m_accessManager->getCurrentAccessLevel() < m_accessManager->userInfo(selectedUserName).second) {
-      auto *keyboard = new VirtualKeyboard(tr("Проверка пароля"), VirtualKeyboard::EN, this);
+      auto *keyboard = new VirtualKeyboard(tr("Password check"), VirtualKeyboard::EN, this);
 
       connect(keyboard, &VirtualKeyboard::textTyped, this, [this, selectedUserName](QString const &pass) {
         bool switchResult = m_accessManager->switchUser(selectedUserName, pass);
         if (!switchResult) {
-          auto *msg = new MessageDialog(tr("Предупреждение"), tr("Введён неверный пароль"), this);
+          auto *msg = new MessageDialog(tr("Warning"), tr("Incorrect password entered"), this);
           msg->open();
         }
       });

@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 
+#include "analysisservices.h"
+
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QThread>
@@ -53,6 +55,8 @@ void MainWindow::initGui() {
   m_resHolder->recorder = new ExperimentRecorder(m_resHolder, this);
   // local-network sharing with other Deepvac apps (settings: Connections tab)
   m_resHolder->collab = new CollabManager(m_resHolder, this);
+  // experiment library, notes and reports, shared by the chart and data analysis pages and the assistant
+  m_resHolder->analysis = new AnalysisServices(m_resHolder, this);
 
   m_head             = new Head(m_resHolder, this);
   m_manual           = new Manual(m_resHolder, this);
@@ -61,9 +65,8 @@ void MainWindow::initGui() {
   m_graphWidget      = new GraphWidget(m_resHolder, this);
   m_dataAnalysisWidget = new DataAnalysisWidget(m_resHolder, this);
   m_aiWidget         = new AiWidget(m_resHolder, this);
-  m_aiWidget->setAnalysis(m_dataAnalysisWidget, [this] { selectWidgetWindow(m_stackedWidget->indexOf(m_dataAnalysisWidget)); });
-  // the chart page opens the experiments of the data analysis page and shares its annotations
-  m_graphWidget->setAnalysis(m_dataAnalysisWidget->library(), m_dataAnalysisWidget->notes());
+  // the assistant shows experiments on the chart page
+  m_aiWidget->setServices(m_resHolder->analysis, [this] { selectWidgetWindow(m_stackedWidget->indexOf(m_graphWidget)); });
   auto *userWidget   = new UserWidget(m_resHolder->logger, m_resHolder->users, this);
   auto *systemWidget = new SystemWidget(m_resHolder, this);
 
@@ -74,15 +77,15 @@ void MainWindow::initGui() {
     m_menu->addItem(label, icon);
   };
 
-  addWidgetToStacked(m_head, tr("Главная"), "home");
-  addWidgetToStacked(m_manual, tr("Ручное\nуправление"), "manual");
-  addWidgetToStacked(m_programWidget, tr("Программное\nуправление"), "program");
-  addWidgetToStacked(m_graphWidget, tr("График"), "chart");
+  addWidgetToStacked(m_head, tr("Home"), "home");
+  addWidgetToStacked(m_manual, tr("Manual\ncontrol"), "manual");
+  addWidgetToStacked(m_programWidget, tr("Program\ncontrol"), "program");
+  addWidgetToStacked(m_graphWidget, tr("Chart"), "chart");
   addWidgetToStacked(m_dataAnalysisWidget, tr("Data\nanalysis"), "analysis");
   addWidgetToStacked(m_aiWidget, tr("AI"), "ai");
-  addWidgetToStacked(m_settingsWidget, tr("Настройки"), "settings");
-  addWidgetToStacked(userWidget, tr("Пользователи"), "users");
-  addWidgetToStacked(systemWidget, tr("Система"), "system");
+  addWidgetToStacked(m_settingsWidget, tr("Settings"), "settings");
+  addWidgetToStacked(userWidget, tr("Users"), "users");
+  addWidgetToStacked(systemWidget, tr("System"), "system");
 
   selectWidgetWindow(0);
 
@@ -212,7 +215,7 @@ void MainWindow::selectWidgetWindow(int index) {
 }
 
 void MainWindow::displayMsgFromGate(QString const &msg) {
-  auto *msgDlg = new MessageDialog(tr("Внимание"), msg);
+  auto *msgDlg = new MessageDialog(tr("Warning"), msg);
   msgDlg->open();
 }
 

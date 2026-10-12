@@ -57,7 +57,7 @@ MessageDialog::MessageDialog(QString const &title, QString const &message, QWidg
   m_btnLayout = new QHBoxLayout();
   m_btnLayout->setSpacing(10 * ssf);
   m_btnLayout->addStretch();
-  m_closeBtn = new QPushButton(tr("Закрыть"), this);
+  m_closeBtn = new QPushButton(tr("Close"), this);
   m_closeBtn->setObjectName("primaryButton");
   m_closeBtn->setMinimumSize(static_cast<int>(110 * ssf), static_cast<int>(36 * ssf));
   m_btnLayout->addWidget(m_closeBtn);

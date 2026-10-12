@@ -10,8 +10,8 @@
 #include "utils.h"
 
 namespace deepvaccontrol {
-PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{"Выкл.", parent} {
-  setText(tr("Выкл"));
+PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{QString{}, parent} {
+  setText(tr("Off"));
   setObjectName("offButton");
   setFixedSize(92 * utils::ssf(), 34 * utils::ssf());
   QColor const danger = theme::colors().danger;
@@ -27,14 +27,14 @@ PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{"�
   connect(this, &QPushButton::clicked, this, [this, resHolder] {
     if (HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()) {
       auto *msgDlg
-        = new MessageDialog(tr("Предупреждение"), tr("Для выключения оборудования необходимо остановить работу"), this);
+        = new MessageDialog(tr("Warning"), tr("Stop operation before shutting down equipment"), this);
       msgDlg->open();
     } else {
       ConfDialog *confDialog
-        = new ConfDialog(tr("Подтверждение"),
-                         tr("The chamber will be turned off and the program will be closed.\n\nThe Windows computer will stay on.\n\nDo you want to continue?"),
-                         tr("Да"),
-                         tr("Нет"),
+        = new ConfDialog(tr("Confirmation"),
+                         tr("The chamber will be turned off and the program will be closed.\n\nDo you want to continue?"),
+                         tr("Yes"),
+                         tr("No"),
                          this);
       connect(confDialog, &ConfDialog::finished, this, [this, resHolder](int result) {
         if (1 == result) {

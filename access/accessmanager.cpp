@@ -51,7 +51,7 @@ bool AccessManager::addUser(QString const &username, AccessLevel accessLevel, QS
   QString const hashedPassword{hashPassword(password, salt)};
   m_users[username] = User{accessLevel, salt, hashedPassword};
   m_resHolder->actions->addAction(ActionManager::ActionType::APP,
-                                  QString(tr("Пользователь '%1' добавлен")).arg(username));
+                                  QString(tr("User '%1' added")).arg(username));
   emit userListChanged();
   return true;
 }
@@ -88,7 +88,7 @@ bool AccessManager::removeUser(QString const &username) {
   }
 
   m_users.remove(username);
-  m_resHolder->actions->addAction(ActionManager::ActionType::APP, QString(tr("Пользователь '%1' удалён")).arg(username));
+  m_resHolder->actions->addAction(ActionManager::ActionType::APP, QString(tr("User '%1' deleted")).arg(username));
   emit userListChanged();
   return true;
 }
@@ -110,7 +110,7 @@ void AccessManager::switchUserImpl(QString const &username, bool shadow) {
     << QString("User '%1' with level %2 selected").arg(m_currentUser).arg(m_currentAccessLevel);
   if (!shadow) {
     m_resHolder->actions->addAction(ActionManager::ActionType::APP,
-                                    QString(tr("Выбран пользователь '%1'")).arg(m_currentUser));
+                                    QString(tr("User '%1' selected")).arg(m_currentUser));
   }
 }
 

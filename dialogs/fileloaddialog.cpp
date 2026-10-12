@@ -18,9 +18,9 @@ FileLoadDialog::FileLoadDialog(QList<QString> pathList, QString const &filter, Q
   selectPath(drivePathSelect->getSelectedPath());
 
   auto *mainLay  = new QGridLayout(this);
-  auto *openBtn  = new QPushButton(tr("Выбрать"), this);
-  auto *delBtn   = new QPushButton(tr("Удалить"), this);
-  auto *closeBtn = new QPushButton(tr("Отмена"), this);
+  auto *openBtn  = new QPushButton(tr("Select"), this);
+  auto *delBtn   = new QPushButton(tr("Delete"), this);
+  auto *closeBtn = new QPushButton(tr("Cancel"), this);
 
   openBtn->setFixedHeight(40 * utils::ssf());
   delBtn->setFixedHeight(40 * utils::ssf());
@@ -45,7 +45,7 @@ FileLoadDialog::FileLoadDialog(QList<QString> pathList, QString const &filter, Q
   connect(drivePathSelect, &DrivePathSelect::selectedPathChanged, this, &FileLoadDialog::selectPath);
 
   setGeometry(100, 100, 500 * utils::ssf(), 250 * utils::ssf());
-  setWindowTitle(tr("Выбор файла"));
+  setWindowTitle(tr("Select file"));
   setModal(true);
   setAttribute(Qt::WA_DeleteOnClose);
 }
@@ -65,7 +65,7 @@ void FileLoadDialog::handleFileRemoving(QModelIndex const &index) {
   }
 
   auto *confDlg
-    = new ConfDialog(tr("Подтверждение"), tr("Вы действительно хотите удалить файл?"), tr("Да"), tr("Нет"), this);
+    = new ConfDialog(tr("Confirmation"), tr("Do you really want to delete the file?"), tr("Yes"), tr("No"), this);
   connect(confDlg, &ConfDialog::finished, this, [this, index]() {
     QString const filePath{m_fileSysModel->filePath(m_sortedModel->mapToSource(index))};
     QFile         file(filePath);

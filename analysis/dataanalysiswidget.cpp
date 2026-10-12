@@ -10,6 +10,7 @@
 #include <QVBoxLayout>
 
 #include "analysiseditorarea.h"
+#include "analysisservices.h"
 #include "analysisnotesstore.h"
 #include "analysisrunpage.h"
 #include "experimentbrowser.h"
@@ -28,13 +29,8 @@ namespace deepvaccontrol {
 DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}
     , m_resHolder{resHolder}
-    , m_library{new ExperimentLibrary(deepvaccontrol::INTERVALS_DIR,
-                                      deepvaccontrol::ACTIONS_FILE,
-                                      [resHolder]() {
-                                        return resHolder->settings->settingsMap()["states"].toList();
-                                      },
-                                      this)}
-    , m_notes{new AnalysisNotesStore(deepvaccontrol::ANALYSIS_NOTES_FILE, this)}
+    , m_library{resHolder->analysis->library()} // shared with the chart page and the assistant
+    , m_notes{resHolder->analysis->notes()}
     , m_editor{new AnalysisEditorArea(this)} {
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
@@ -95,15 +91,6 @@ DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
     m_browser->setVisible(true);
   });
 
-  if (m_resHolder->recorder) {
-    connect(m_resHolder->recorder, &ExperimentRecorder::runSaved, m_library, &ExperimentLibrary::refresh);
-  }
-  if (m_resHolder->collab) {
-    connect(m_resHolder->collab, &CollabManager::localDataChanged, this, [this] {
-      m_notes->notifyExternalChange();
-      m_library->refresh();
-    });
-  }
 }
 
 ExperimentLibrary *DataAnalysisWidget::library() const {
@@ -128,22 +115,7 @@ QString DataAnalysisWidget::showRun(ExperimentRun const &run, QStringList const 
 }
 
 QString DataAnalysisWidget::writeReport(ExperimentRun const &run, QVector<ExperimentRun> const &compare, bool pdf, QString &path) {
-  openRun(run);
-  AnalysisRunPage *page = m_editor->page(run.key);
-  if (!page) {
-    return tr("Could not open %1").arg(run.title);
-  }
-  if (QString const error = page->applyView({}, qQNaN(), qQNaN(), compare); !error.isEmpty()) {
-    return error;
-  }
-  QString name = run.title;
-  name.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]+")), QStringLiteral("_"));
-  QDir const folder(QDir(deepvaccontrol::EXPORT_DIR).absoluteFilePath(QStringLiteral("reports")));
-  QDir().mkpath(folder.absolutePath());
-  path = folder.filePath(QStringLiteral("%1_%2.%3").arg(name, QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"), pdf ? "pdf" : "html"));
-  ExperimentReportData const report = page->buildReport();
-  bool const ok{pdf ? experimentreport::writePdf(path, report) : experimentreport::writeHtml(path, report)};
-  return ok ? QString{} : tr("Could not write %1").arg(path);
+  return m_resHolder->analysis->writeReport(run, compare, pdf, path); // built without a page
 }
 
 void DataAnalysisWidget::showEvent(QShowEvent *event) {

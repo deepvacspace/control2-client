@@ -269,7 +269,8 @@ QWidget *ChartStatisticsDialog::buildRulesPage() {
   return page;
 }
 
-void ChartStatisticsDialog::setSource(DataViewer *viewer, QString const &runKey, QString const &title) {
+void ChartStatisticsDialog::setSource(DataViewer *viewer, QString const &runKey, QString const &title, QStringList const &channelNames) {
+  m_channelNames = channelNames;
   if (m_viewer) {
     disconnect(m_viewer->getPlot()->xAxis, nullptr, m_rangeTimer, nullptr);
   }
@@ -298,6 +299,7 @@ void ChartStatisticsDialog::updateButtons() {
   m_editBtn->setEnabled(annotation);
   m_removeAnnotationBtn->setEnabled(annotation);
   m_removeRuleBtn->setEnabled(m_rulesList->currentItem() != nullptr);
+  m_ruleButtons.first()->setEnabled(!m_runKey.isEmpty()); // add: not for a comparison
 }
 
 int ChartStatisticsDialog::selectedRow(QTableWidget *table) const {
@@ -321,15 +323,14 @@ void ChartStatisticsDialog::refreshRange() {
 
   // the visible channels
   QVector<QVector<double>> const states = data->getStates();
-  QVariantList const             styles = m_resHolder->settings->settingsMap()["states"].toList();
-  QStringList const              names  = m_resHolder->states->getNames();
+  QStringList const              names  = m_channelNames;
   QCustomPlot *const             plot   = m_viewer->getPlot();
   m_rangeTable->setRowCount(0);
   for (int i{0}; (i < states.size()) && (i < plot->graphCount()); ++i) {
     if (!plot->graph(i)->visible()) {
       continue;
     }
-    QString const label = (i < styles.size()) ? styles[i].toMap()["label"].toString() : names.value(i);
+    QString const label = m_viewer->channelLabel(i).isEmpty() ? names.value(i) : m_viewer->channelLabel(i);
     core::SeriesStats const stats = core::computeStats(times, states[i], from, to);
     QStringList const cells{label, QString::number(stats.n), QString::number(stats.missing), statText(stats.min), statText(stats.max),
                             statText(stats.mean), statText(stats.std), statText(stats.rms), statText(stats.slopePerS * 60.0),
@@ -346,6 +347,10 @@ void ChartStatisticsDialog::refreshRange() {
   // control KPIs of the visible slice (temp against temp_ref)
   int const temp{static_cast<int>(names.indexOf("temp"))};
   int const reference{static_cast<int>(names.indexOf("temp_ref"))};
+  if (names.isEmpty()) {
+    m_kpiLabel->setText(tr("Control KPIs are given for one experiment at a time."));
+    return;
+  }
   if ((temp < 0) || (reference < 0) || (temp >= states.size()) || (reference >= states.size())) {
     m_kpiLabel->setText(tr("Control KPIs need the channels temp and temp_ref."));
     return;
@@ -398,7 +403,7 @@ void ChartStatisticsDialog::refreshAnnotations() {
   auto const data = m_viewer ? m_viewer->getData() : nullptr;
   QVector<double> const times = data ? data->getTimes() : QVector<double>{};
   m_annotationsTable->setRowCount(0);
-  if (times.isEmpty()) {
+  if (times.isEmpty() || m_runKey.isEmpty()) { // a comparison has no annotations
     updateButtons();
     return;
   }

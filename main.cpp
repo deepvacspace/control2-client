@@ -16,9 +16,10 @@ static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QT
   switch (lang) {
     case deepvaccontrol::UiLanguage::Russian: {
       qDebug() << "Set UiLanguage::Russian";
-      // if (translator.load(":/language_ru.qm")) {
-      //   app.installTranslator(&translator);
-      // }
+      // the texts in the code are English; res/language_ru.ts holds their Russian
+      if (translator.load(":/language_ru.qm")) {
+        app.installTranslator(&translator);
+      }
       // Set global locale for entire app
       QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
       break;
@@ -26,10 +27,7 @@ static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QT
     case deepvaccontrol::UiLanguage::English:
     default: {
       qDebug() << "Set UiLanguage::English";
-      if (translator.load(":/language_en.qm")) {
-        app.installTranslator(&translator);
-      }
-      QLocale::setDefault(QLocale(QLocale::English, QLocale::UnitedStates));
+      QLocale::setDefault(QLocale(QLocale::English, QLocale::UnitedStates)); // the texts in the code
       break;
     }
   }

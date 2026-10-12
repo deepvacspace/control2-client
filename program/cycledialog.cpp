@@ -20,9 +20,9 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
   auto *lay2 = new QHBoxLayout();
   auto *lay3 = new QHBoxLayout();
 
-  auto *label1 = new QLabel(tr("Начальный интервал:"));
-  auto *label2 = new QLabel(tr("Конечный интервал:"));
-  auto *label3 = new QLabel(tr("Количество повтореий:"));
+  auto *label1 = new QLabel(tr("Start interval:"));
+  auto *label2 = new QLabel(tr("End interval:"));
+  auto *label3 = new QLabel(tr("Repeat count:"));
 
   auto *startIndexEdit  = new LineEditNum(1, interval, 0, true, this);
   auto *endIndexEdit    = new LineEditNum(1, interval, 0, true, this);
@@ -32,7 +32,7 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
   endIndexEdit->setFixedWidth(70 * utils::ssf());
   cycleNumberEdit->setFixedWidth(70 * utils::ssf());
 
-  auto *infinity = new QCheckBox(tr("Бесконечное потоврение"));
+  auto *infinity = new QCheckBox(tr("Infinite repeat"));
   infinity->setChecked(false);
 
   // Fill fields
@@ -64,9 +64,9 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
     cycleNumberEdit->setEnabled(!value);
   });
 
-  auto *cancelBtn = new QPushButton(tr("Отмена"), this);
-  auto *acceptBtn = new QPushButton(tr("Сохранить"), this);
-  auto *delBtn    = new QPushButton(tr("Удалить"), this);
+  auto *cancelBtn = new QPushButton(tr("Cancel"), this);
+  auto *acceptBtn = new QPushButton(tr("Save"), this);
+  auto *delBtn    = new QPushButton(tr("Delete"), this);
 
   cancelBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
   acceptBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
@@ -116,7 +116,7 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
                 + QString("QCheckBox::indicator{width: %1px; height: %1px;}").arg(26 * utils::ssf()));
 
   setMinimumHeight(100 * utils::ssf());
-  setWindowTitle(tr("Изменение цикла"));
+  setWindowTitle(tr("Edit cycle"));
   setAttribute(Qt::WA_DeleteOnClose);
   setWindowFlag(Qt::WindowStaysOnTopHint);
   setModal(true);

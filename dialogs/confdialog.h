@@ -11,8 +11,8 @@ class ConfDialog : public MessageDialog {
 public:
   explicit ConfDialog(QString const &title,
                       QString const &message,
-                      QString const &btn1Name = tr("Да"),
-                      QString const &btn2Name = tr("Нет"),
+                      QString const &btn1Name = tr("Yes"),
+                      QString const &btn2Name = tr("No"),
                       QWidget       *parent   = nullptr);
   ~ConfDialog() {
   }

@@ -9,7 +9,7 @@
 class QTabWidget;
 
 namespace deepvaccontrol {
-class DataAnalysisWidget;
+class AnalysisServices;
 namespace assistant {
 class AssistantWidget;
 }
@@ -26,7 +26,7 @@ public:
   explicit AiWidget(ResHolder *resHolder, QWidget *parent = nullptr);
 
   // the assistant's tools read the experiments of the Data analysis page and can show runs there
-  void setAnalysis(DataAnalysisWidget *analysis, std::function<void()> showPage);
+  void setServices(AnalysisServices *services, std::function<void()> showPage);
 
 private:
   QTabWidget                   *m_tabWidget;

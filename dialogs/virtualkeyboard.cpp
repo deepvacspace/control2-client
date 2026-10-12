@@ -90,8 +90,8 @@ void VirtualKeyboard::populateLayout(
 }
 
 void VirtualKeyboard::initCtrlLayout() {
-  auto *rejectBtn = new VirtKeyBtn(tr("Отмена"), "", this);
-  auto *enterBtn  = new VirtKeyBtn(tr("Ввод"), "", this);
+  auto *rejectBtn = new VirtKeyBtn(tr("Cancel"), "", this);
+  auto *enterBtn  = new VirtKeyBtn(tr("Enter"), "", this);
   rejectBtn->setFixedSize(QSize(120 * utils::ssf(), 50 * utils::ssf()));
   enterBtn->setFixedSize(QSize(120 * utils::ssf(), 50 * utils::ssf()));
 

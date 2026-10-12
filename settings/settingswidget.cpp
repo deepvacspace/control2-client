@@ -86,7 +86,7 @@ void SettingsWidget::initGui() {
 
   // 1 - general plc settings
   auto *settingsList = new SettingsListWidget(m_resHolder, this);
-  tabWidget->addTab(settingsList, tr("Параметры работы"));
+  tabWidget->addTab(settingsList, tr("Operating parameters"));
 
   QVariantMap const settingsVariantMap    = m_resHolder->settings->settingsMap();
   QVariantMap const plcSettingsVariantMap = settingsVariantMap["plc_settings"].toMap();
@@ -123,7 +123,7 @@ void SettingsWidget::initGui() {
 
   // 4 - аварии
   auto *alarmListWidget = new AlarmListWidget(m_resHolder, this);
-  tabWidget->addTab(alarmListWidget, tr("Аварии"));
+  tabWidget->addTab(alarmListWidget, tr("Alarms"));
 
   // App-only AI setting (not part of the settings sent to the PLC)
   double const ssf{utils::ssf()};
@@ -198,8 +198,8 @@ void SettingsWidget::initGui() {
   auto *btnsLay = new QHBoxLayout();
   mainLay->addLayout(btnsLay);
 
-  auto *sendBtn = new QPushButton(tr("Загрузить настройки в ПЛК"), this);
-  auto *getBtn  = new QPushButton(tr("Получить настройки из ПЛК"), this);
+  auto *sendBtn = new QPushButton(tr("Upload settings to PLC"), this);
+  auto *getBtn  = new QPushButton(tr("Get settings from PLC"), this);
   sendBtn->setObjectName("primaryButton");
   for (QPushButton *button : {getBtn, sendBtn}) {
     button->setFixedSize(190 * utils::ssf(), 32 * utils::ssf());

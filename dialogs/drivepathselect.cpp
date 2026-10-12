@@ -18,12 +18,12 @@ DrivePathSelect::DrivePathSelect(QList<QString> pathList, QWidget *parent) : QWi
 
   auto *mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
-  auto *box           = new QGroupBox(tr("Расположение:"), this);
+  auto *box           = new QGroupBox(tr("Location:"), this);
   auto *pathSelectLay = new QHBoxLayout(box);
 
   qDebug() << pathList.first() << pathDir.exists();
 
-  QStringList const labels{tr("Внутренний накопитель"), tr("Внешний")};
+  QStringList const labels{tr("Internal storage"), tr("External")};
   for (int i{0U}; i < pathList.size(); ++i) {
     auto const &pathString = pathList[i];
     auto       *radioBtn   = new QRadioButton(labels[qMin(i, 1)] + "\n( " + pathString + " )", this);

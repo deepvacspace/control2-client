@@ -57,6 +57,11 @@ public:
   void                              setView(QRectF const &view); // used in graph review
   QRectF                            getCurrentView() const;
   void                              setIndexesForLogAxis(QVector<int> const &indexes);
+  [[nodiscard]] QVector<int>        logAxisIndexes() const;
+  [[nodiscard]] bool                hasLogAxis() const;
+  // the styles of the lines (label, colour, pen, width, visible), as set
+  [[nodiscard]] QVariantList        styles() const;
+  [[nodiscard]] QString             channelLabel(int index) const;
 
   QCustomPlot *getPlot();
 
@@ -81,10 +86,15 @@ public:
   // centred moving average over `samples` samples (1: raw data)
   void setSmoothingWindow(int samples);
   int  smoothingWindow() const;
-  // dashed lines at the min / max / average of the visible channels on the main value axis
-  void setOverlays(bool min, bool max, bool avg);
+  // dashed lines at the min / max / average of one channel (state name; its lines, e.g. all experiments of a comparison)
+  void setOverlays(bool min, bool max, bool avg, QString const &channel);
   // shows [from, to] (epoch s) with the value axes fitted to it
   void setTimeRange(double from, double to);
+  // time axis: wall clock (false) or time from the first sample shown (true)
+  void setRelativeTime(bool relative);
+  bool relativeTime() const;
+  // no data (e.g. while it is read); text on the chart
+  void clear(QString const &text);
   // left-drag marks a time range (annotationDrawn) instead of moving the view
   void setAnnotateMode(bool enabled);
 
@@ -151,7 +161,12 @@ private:
   QVector<QCPAbstractItem *> m_decorationItems;
   QVector<Band>              m_bands;
   int                        m_smoothing{1};
+  bool                       m_relativeTime{false};
+  QSharedPointer<QCPAxisTicker> m_clockTicker;
+  QSharedPointer<QCPAxisTicker> m_elapsedTicker;
+  void                       updateTimeOrigin();
   bool                       m_overlayMin{false};
+  QString                    m_overlayChannel{QStringLiteral("temp")};
   bool                       m_overlayMax{false};
   bool                       m_overlayAvg{false};
 
@@ -167,6 +182,7 @@ private:
 
   bool         m_compactLegend{false};
   bool         m_useLogAxis;
+  bool         m_graphsStale{false}; // the log axis channels changed: graphs made again with the next data
   QVector<int> m_logAxisDataIndexes;
 
   QTimer           m_renderTimer;
@@ -181,6 +197,22 @@ inline QCustomPlot *DataViewer::getPlot() {
 
 inline bool DataViewer::labelsVisible() const {
   return m_labelsVisible;
+}
+
+inline bool DataViewer::relativeTime() const {
+  return m_relativeTime;
+}
+
+inline QVector<int> DataViewer::logAxisIndexes() const {
+  return m_logAxisDataIndexes;
+}
+
+inline bool DataViewer::hasLogAxis() const {
+  return m_useLogAxis;
+}
+
+inline QVariantList DataViewer::styles() const {
+  return m_stateListVariant;
 }
 
 inline int DataViewer::smoothingWindow() const {

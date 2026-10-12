@@ -185,7 +185,7 @@ void GateTcp::setState(ConnectionState const newState) {
       emit showRedFlag(false);
       if ((m_contConnectingTryCount > 1) || (m_successConnectionCount > 0)) {
         auto *msgDialog = new MessageDialog(
-          tr("Уведомление"), QString(tr("Соединение с %1:%2 установлено")).arg(m_serverIp4Address.toString()).arg(m_port));
+          tr("Notification"), QString(tr("Connected to %1:%2")).arg(m_serverIp4Address.toString()).arg(m_port));
         msgDialog->open(3000);
       }
 
@@ -224,7 +224,7 @@ void GateTcp::sendData(QByteArray const &data) {
         << QString("(%1)").arg(packet.size()) << packet.first(maxDisplay).toHex(' ') << "...";
     }
   } else {
-    m_logger->stream(Logger::Level::ERR) << "Попытка записи в неподключенный сокет";
+    m_logger->stream(Logger::Level::ERR) << "Attempt to write to a socket that is not connected";
   }
 }
 

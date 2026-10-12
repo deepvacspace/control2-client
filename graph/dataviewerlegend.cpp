@@ -125,7 +125,7 @@ DataViewerLegend::DataViewerLegend(QCustomPlot *plot) : m_plot{plot}, m_valueVis
     m_legend->addElement(0, 0, m_timeLay);
 
     m_timeValue = new QCPTextElement(m_plot, "00:00:00");
-    m_timeLabel = new QCPTextElement(m_plot, QObject::tr("Время"));
+    m_timeLabel = new QCPTextElement(m_plot, QObject::tr("Time"));
     m_timeValue->setTextColor(Qt::black);
     m_timeValue->setTextFlags(Qt::AlignLeft);
     m_timeValue->setLayer("legend");

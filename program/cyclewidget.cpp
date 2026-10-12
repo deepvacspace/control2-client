@@ -15,12 +15,12 @@ void CycleWidget::initGui() {
   auto *mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
 
-  m_text = new QLabel(tr("нет"), this);
+  m_text = new QLabel(tr("none"), this);
   QFont font = m_text->font();
   font.setBold(true);
   font.setPointSizeF(font.pointSizeF() * 1.15);
   m_text->setFont(font);
-  auto *editBtn = new QPushButton(tr("Изменить"), this);
+  auto *editBtn = new QPushButton(tr("Edit"), this);
   editBtn->setFixedSize(80 * utils::ssf(), 26 * utils::ssf());
 
   mainLay->addWidget(m_text, 1);
@@ -46,9 +46,9 @@ void CycleWidget::setParams(QVariantMap const &newParams) {
 void CycleWidget::updateGui() {
   if (m_params.value("count").toInt() > 0) {
     QString cycles_number_string
-      = (m_params.value("count").toInt() == 65535 ? tr("бесконечно")
-                                                  : tr("%1 раз(а)").arg(m_params.value("count").toInt()));
-    m_text->setText(tr("c %1 по %2\n%3")
+      = (m_params.value("count").toInt() == 65535 ? tr("infinite")
+                                                  : tr("%1").arg(m_params.value("count").toInt()));
+    m_text->setText(tr("Intervals %1 – %2  ×  %3")
                       .arg(m_params.value("start").toInt()+1)
                       .arg(m_params.value("end").toInt()+1)
                       .arg(cycles_number_string));

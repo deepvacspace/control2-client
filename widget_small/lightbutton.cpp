@@ -19,7 +19,7 @@ LightButton::LightButton(ResHolder *resHolder, QWidget *parent) : QPushButton{pa
       break;
     }
   }
-  setText(tr("Свет"));
+  setText(tr("Light"));
   setFocusPolicy(Qt::NoFocus);
   setFixedSize(92 * utils::ssf(), 34 * utils::ssf());
 

@@ -35,8 +35,12 @@ QRectF const  FRIDGE{18, 470, 90, 66};            // refrigeration unit
 QRectF const  VESSEL{150, 204, 320, 388};          // the chamber body (cabinet)
 QRectF const  OPENING{174, 228, 272, 340};         // front edge of the inner space, inside door frame and gasket
 QRectF const  BACK{217, 271, 186, 220};            // back wall of the inner space (perspective)
-QRectF const  PLATE{204, 512, 212, 30};            // plate on the floor: heater on top, coolant channel below
-double const  CHANNEL_Y{536};                      // coolant channel inside the plate
+// thermal plate on the floor, in perspective: top face (heater coil) between the back and front edges, front face
+// (coolant channel) below the front edge
+QPointF const PLATE_BACK_LEFT{220, 484};
+QPointF const PLATE_BACK_RIGHT{400, 484};
+QRectF const  PLATE{190, 538, 240, 16};             // front face
+double const  CHANNEL_Y{546};                       // coolant channel in the front face
 QRectF const  PLC{22, 26, 112, 58};               // PLC miniature
 
 QFont canvasFont(double pixels, bool bold = false) {
@@ -406,33 +410,71 @@ void ChamberView::drawChamber(QPainter &p) {
   addTip(QRectF(lamp.x() - 12, lamp.y() - 14, 24, 28), fitted("light") ? tr("Light") : tr("Light: disconnected"));
   drawTag(p, QPointF(lamp.x() - 14, lamp.y() + 2), Qt::AlignRight | Qt::AlignVCenter, "light", tr("Light"), true);
 
-  // the plate: heater element on top, coolant channel below (refrigeration unit and LN₂ feed it)
+  // the plate: a slab on the floor, heater coil on its top face, coolant channel in its front (cooling unit and LN₂)
   bool const heating{on("heater")};
   bool const chilled{cooling() || on("ln2")};
+  // a point of the top face: u across (0 left .. 1 right), v in depth (0 back .. 1 front)
+  auto top = [](double u, double v) {
+    double const back{PLATE_BACK_LEFT.x() + (PLATE_BACK_RIGHT.x() - PLATE_BACK_LEFT.x()) * u};
+    double const front{PLATE.left() + PLATE.width() * u};
+    return QPointF(back + (front - back) * v, PLATE_BACK_LEFT.y() + (PLATE.top() - PLATE_BACK_LEFT.y()) * v);
+  };
+  QPolygonF const topFace{{top(0, 0), top(1, 0), top(1, 1), top(0, 1)}};
   if (heating) {
-    int const    alpha = 30 + static_cast<int>(30 * (0.5 + 0.5 * std::sin(m_phase * 0.25))); // pulsing glow
-    QRectF const halo  = PLATE.adjusted(-10, -10, 10, 10);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(c.heat.red(), c.heat.green(), c.heat.blue(), alpha));
-    p.drawRoundedRect(halo, 10, 10);
+    int const alpha = 25 + static_cast<int>(30 * (0.5 + 0.5 * std::sin(m_phase * 0.25))); // pulsing glow
+    p.setPen(QPen(QColor(c.heat.red(), c.heat.green(), c.heat.blue(), alpha), 16, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.setBrush(Qt::NoBrush);
+    p.drawPolygon(QPolygonF{{top(0, 0), top(1, 0), PLATE.bottomRight(), PLATE.bottomLeft()}});
   }
+  // feet, then the front face, then the top face with its rim
+  p.setPen(QPen(c.muted, 1.4));
+  p.setBrush(mix(base, c.muted, 0.25));
+  for (double const x : {PLATE.left() + 14, PLATE.right() - 14}) {
+    p.drawEllipse(QPointF(x, PLATE.bottom() + 2), 5, 2.5);
+  }
+  p.setPen(QPen(c.muted, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+  p.setBrush(mix(base, c.muted, 0.14));
+  p.drawRect(PLATE);
   QColor const tint = heating ? c.heat : (chilled ? c.cold : QColor());
-  p.setPen(QPen(c.muted, 2));
-  p.setBrush(tint.isValid() ? QBrush(QColor(tint.red(), tint.green(), tint.blue(), 40)) : QBrush(c.panel));
-  p.drawRoundedRect(PLATE, 4, 4);
-  QColor const heatColor = !fitted("heater") ? c.off : (heating ? c.heat : c.muted);
-  QPainterPath zigzag;
-  zigzag.moveTo(PLATE.left() + 8, PLATE.top() + 9);
-  int const zigs{static_cast<int>((PLATE.width() - 26) / 10)};
-  for (int i{0}; i < zigs; ++i) {
-    zigzag.lineTo(PLATE.left() + 18 + i * 10, PLATE.top() + 9 + ((i % 2 == 0) ? -4 : 4));
-  }
+  p.setBrush(tint.isValid() ? QBrush(mix(c.panel, tint, 0.18)) : QBrush(c.panel));
+  p.drawPolygon(topFace);
+  p.setPen(QPen(mix(c.panel, c.muted, 0.45), 1));
   p.setBrush(Qt::NoBrush);
-  p.setPen(QPen(heatColor, 2, fitted("heater") ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap, Qt::RoundJoin));
-  p.drawPath(zigzag);
+  p.drawPolygon(QPolygonF{{top(0.03, 0.08), top(0.97, 0.08), top(0.97, 0.92), top(0.03, 0.92)}});
+
+  // heater coil: three long rounded grooves across the top face
+  QColor const heatColor = !fitted("heater") ? c.off : (heating ? c.heat : c.muted);
+  QPainterPath coil;
+  double const rv{0.075};                  // half groove width, in depth
+  double const ru{rv * (PLATE.top() - PLATE_BACK_LEFT.y()) / 215.0}; // the same on screen, across
+  for (double const centre : {0.27, 0.5, 0.73}) {
+    double const u1{0.1};
+    double const u2{0.9};
+    QVector<QPointF> points;
+    for (int i{0}; i <= 8; ++i) { // far edge, right end, near edge, left end
+      points << top(u1 + (u2 - u1) * i / 8.0, centre - rv);
+    }
+    for (int i{1}; i < 12; ++i) {
+      double const a{-M_PI / 2 + M_PI * i / 12.0};
+      points << top(u2 + ru * std::cos(a), centre + rv * std::sin(a));
+    }
+    for (int i{0}; i <= 8; ++i) {
+      points << top(u2 - (u2 - u1) * i / 8.0, centre + rv);
+    }
+    for (int i{1}; i < 12; ++i) {
+      double const a{M_PI / 2 + M_PI * i / 12.0};
+      points << top(u1 + ru * std::cos(a), centre + rv * std::sin(a));
+    }
+    coil.addPolygon(QPolygonF(points));
+    coil.closeSubpath();
+  }
+  p.setPen(QPen(heatColor, 1.8, fitted("heater") ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap, Qt::RoundJoin));
+  p.drawPath(coil);
+
+  // coolant channel along the front face
   bool const   channelFitted{fitted("fridge") || fitted("ln2")};
   QColor const channelColor = !channelFitted ? c.off : (chilled ? c.cold : c.muted);
-  QLineF const channel(PLATE.left() + 4, CHANNEL_Y, PLATE.right() - 4, CHANNEL_Y);
+  QLineF const channel(PLATE.left() + 6, CHANNEL_Y, PLATE.right() - 6, CHANNEL_Y);
   p.setPen(QPen(channelColor, 2.5, channelFitted ? Qt::SolidLine : Qt::DotLine, Qt::FlatCap));
   p.drawLine(channel);
   if (chilled) {
@@ -442,12 +484,14 @@ void ChamberView::drawChamber(QPainter &p) {
     p.setPen(flow);
     p.drawLine(channel);
   }
-  addTip(PLATE, fitted("heater") ? tr("Plate: heater and coolant channel") : tr("Plate: coolant channel (no heater fitted)"));
-  drawTag(p, QPointF(PLATE.center().x(), PLATE.bottom() + 4), Qt::AlignHCenter | Qt::AlignTop, "heater", tr("Thermal Plate"), true);
+  QRectF const plateArea(PLATE.left(), PLATE_BACK_LEFT.y(), PLATE.width(), PLATE.bottom() - PLATE_BACK_LEFT.y());
+  addTip(plateArea, fitted("heater") ? tr("Plate: heater and coolant channel") : tr("Plate: coolant channel (no heater fitted)"));
+  drawTag(p, QPointF(PLATE.center().x(), PLATE.bottom() + 6), Qt::AlignHCenter | Qt::AlignTop, "heater", tr("Thermal Plate"), true);
 
   // sensor T1, on the plate
   double const  probeR{22};
-  QPointF const probe{262, PLATE.top() - probeR};
+  // in the middle of the plate's top face
+  QPointF const probe{PLATE.center().x(), (PLATE_BACK_LEFT.y() + PLATE.top()) / 2.0};
   bool const    sensorFitted{fitted("sensor")};
   p.setPen(QPen(sensorFitted ? c.muted : c.off, 2));
   p.setBrush(c.panel);
@@ -457,7 +501,8 @@ void ChamberView::drawChamber(QPainter &p) {
   p.drawText(QRectF(probe.x() - probeR, probe.y() - probeR, 2 * probeR, 2 * probeR), Qt::AlignCenter, QStringLiteral("T1"));
   addTip(QRectF(probe.x() - probeR, probe.y() - probeR, 2 * probeR, 2 * probeR), tr("Temperature sensor T1"));
   // the reading is in its tag
-  drawTag(p, QPointF(probe.x() + probeR + 6, probe.y()), Qt::AlignLeft | Qt::AlignVCenter, "sensor", tr("Temperature sensor"), true);
+  // centred above it, just over the back edge of the plate
+  drawTag(p, QPointF(probe.x(), probe.y() - probeR - 4), Qt::AlignHCenter | Qt::AlignBottom, "sensor", tr("Temperature sensor"), true);
 }
 
 void ChamberView::drawVacuum(QPainter &p) {

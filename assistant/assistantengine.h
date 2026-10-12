@@ -39,6 +39,8 @@ public:
   static QStringList mentionedRuns(QString const &question);
   // temperatures in Kelvin ("298.15 K", "kelvin"): never produced by DeepVac
   static bool usesKelvin(QString const &answer);
+  // the answer up to the first sentence it repeats (small models can loop), without check-mark / pin emojis
+  static QString cleanAnswer(QString const &answer);
   void setMaxResultChars(int chars);
   [[nodiscard]] QString systemPrompt() const;
 
@@ -47,13 +49,17 @@ signals:
   void toolFinished(QString const &name, bool ok, QString const &summary);
   void toolCard(QString const &name, QJsonObject const &card); // DeepVac's rendering of a tool result
   void partialAnswer(QString const &text);                     // the answer so far, while it is generated
-  void answerRetracted();                                      // the streamed answer failed the checks and is being redone
+  // the answer shown has values that are in no result: a second answer is asked for in the background, and replaces
+  // the shown one only if it is better
+  void checkingAnswer();
   void answered(QString const &text);
   void failed(QString const &error);
   void busyChanged(bool busy);
 
 private:
   void request();
+  // the reply without tool calls: checked, maybe corrected once, then answered()
+  void onAnswer(QString content);
   void finish();
   void trimHistory();
 
@@ -69,6 +75,11 @@ private:
   bool                m_corrected{false}; // the corrective round of this question was used
   bool                m_requireTool{false}; // the next request must call a tool (corrective round)
   QString             m_evidence; // tool results of the current question
+  QString             m_question; // its numbers count as known (e.g. "did it reach 100 °C?")
+  bool                m_silent{false}; // the corrective round: nothing is streamed
+  QString             m_firstAnswer;   // the answer shown before the corrective round
+  QString             m_streamed;      // streamed so far (cut when the model starts repeating itself)
+  bool                m_repetitionStop{false};
 };
 
 } // namespace deepvaccontrol::assistant

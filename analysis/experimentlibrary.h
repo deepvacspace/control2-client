@@ -106,6 +106,8 @@ public:
   [[nodiscard]] ExperimentRun                 makeRangeRun(double start, double end) const;
 
   std::shared_ptr<ExperimentData const> load(ExperimentRun const &run, QString *error = nullptr);
+  // as load(), without the library's cache: safe to call from another thread
+  static std::shared_ptr<ExperimentData const> loadDetached(ExperimentRun const &run, QString *error = nullptr);
   QVector<ExperimentEvent>              events(double start, double end);
   QVector<ChannelInfo>                  channels(ExperimentData const &data) const;
 
@@ -126,6 +128,10 @@ private:
 
   void                                    applySegmentation();
   std::shared_ptr<ParsedFile const>       parsedFile(QString const &path);
+  // the run's samples, its interval files read by fileOf
+  static std::shared_ptr<ExperimentData const> assemble(ExperimentRun const &run,
+                                                        std::function<std::shared_ptr<ParsedFile const>(QString const &)> const &fileOf,
+                                                        QString *error);
   QVector<ExperimentRun>                  segment(QVector<FileSummary> const &files) const;
 
   QString      m_intervalsDir;

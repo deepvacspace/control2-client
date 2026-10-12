@@ -204,9 +204,9 @@ void HeaderBar::updateStatus() {
   if (m_resHolder->states->contains("work_type")) {
     int const jobType{static_cast<int>(m_resHolder->states->getSysValue("work_type")->getValue())};
     if (jobType == 1) {
-      text += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "по уставке");
+      text += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "(setpoint)");
     } else if (jobType == 2) {
-      text += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "по программе");
+      text += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "(program)");
     }
   }
   m_status->setText(text);

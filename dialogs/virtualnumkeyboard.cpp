@@ -35,8 +35,8 @@ VirtualNumKeyboard::VirtualNumKeyboard(QWidget *parent) : QDialog{parent}, host{
   minus  = new QPushButton("-", this);
   del    = new QPushButton(this);
   e      = new QPushButton("E", this);
-  enter  = new QPushButton(tr("ВВОД"), this);
-  cancel = new QPushButton(tr("Отмена"), this);
+  enter  = new QPushButton(tr("ENTER"), this);
+  cancel = new QPushButton(tr("Cancel"), this);
   controlButtons << point << minus << del << enter << cancel << e;
   del->setIcon(QIcon(":/imgs/backspace.png"));
   del->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));

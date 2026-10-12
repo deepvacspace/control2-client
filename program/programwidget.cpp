@@ -64,7 +64,7 @@ ProgramWidget::ProgramWidget(ResHolder *resHolder, QWidget *parent)
     if (m_model) {
       auto *delaySelectDialog = new DelaySelectDialog(this);
       connect(delaySelectDialog, &DelaySelectDialog::startTimeSelected, this, [this](QDateTime startTime) {
-        auto *delayInfoDialog = new DelayInfoDialog(tr("Работа по программе"), startTime, this);
+        auto *delayInfoDialog = new DelayInfoDialog(tr("Program operation"), startTime, this);
         connect(delayInfoDialog, &QDialog::accepted, this, &ProgramWidget::sendProgram);
         delayInfoDialog->open();
       });
@@ -230,7 +230,7 @@ void ProgramWidget::initGui() {
   bottomLay->addWidget(intervalsCard, 62);
 
   // ---- cycle, run details, start
-  auto *runCard = makeCard(tr("Цикл"));
+  auto *runCard = makeCard(tr("Cycle"));
   auto *runLay  = static_cast<QVBoxLayout *>(runCard->layout());
   m_cycleWidget = new CycleWidget(runCard);
   runLay->addWidget(m_cycleWidget);
@@ -255,9 +255,9 @@ void ProgramWidget::initGui() {
   m_runStatus->setWordWrap(true);
   runLay->addWidget(m_runStatus);
   runLay->addStretch();
-  m_startBtn = new QPushButton(tr("Пуск"), runCard);
+  m_startBtn = new QPushButton(tr("Start"), runCard);
   m_startBtn->setObjectName("startButton");
-  m_startDelayedBtn = new QPushButton(tr("Отлож.\nпуск").replace('\n', ' '), runCard);
+  m_startDelayedBtn = new QPushButton(tr("Delay\nstart").replace('\n', ' '), runCard);
   for (QPushButton *btn : {m_startBtn, m_startDelayedBtn}) {
     btn->setFixedHeight(32 * ssf);
     QFont font = btn->font();
@@ -327,7 +327,7 @@ void ProgramWidget::sendProgram() {
   }
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, m_model->makeSendData());
   QString const actionMsg{
-    QString(tr("Запуск работы по программе. %1 интервал(а,ов).")).arg(m_model->getStandardModel()->columnCount())};
+    QString(tr("Starting program operation. %1 interval(s).")).arg(m_model->getStandardModel()->columnCount())};
   m_resHolder->actions->addAction(ActionManager::ActionType::PLC,
                                   m_runningName.isEmpty() ? actionMsg : QStringLiteral("%1 (%2)").arg(actionMsg, m_runningName));
   updateRunStatus();

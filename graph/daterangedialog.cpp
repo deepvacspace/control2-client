@@ -9,8 +9,8 @@
 
 namespace deepvaccontrol {
 DateRangeDialog::DateRangeDialog(QDateTime date1, QDateTime date2, QWidget *parent) : QDialog{parent} {
-  auto *acceptBtn = new QPushButton(tr("Установить"), this);
-  auto *cancelBtn = new QPushButton(tr("Отмена"), this);
+  auto *acceptBtn = new QPushButton(tr("Set"), this);
+  auto *cancelBtn = new QPushButton(tr("Cancel"), this);
 
   acceptBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
   cancelBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
@@ -24,9 +24,9 @@ DateRangeDialog::DateRangeDialog(QDateTime date1, QDateTime date2, QWidget *pare
   auto *mainLay = new QVBoxLayout(this);
 
   auto *gridLay = new QGridLayout();
-  gridLay->addWidget(new QLabel(tr("Начало диапазона:"), this), 0, 0);
+  gridLay->addWidget(new QLabel(tr("Range start:"), this), 0, 0);
   gridLay->addWidget(startTimeEdit, 0, 1);
-  gridLay->addWidget(new QLabel(tr("Конец диапазона:"), this), 1, 0);
+  gridLay->addWidget(new QLabel(tr("Range end:"), this), 1, 0);
   gridLay->addWidget(endTimeEdit, 1, 1);
 
   auto *layBtns = new QHBoxLayout();
@@ -50,7 +50,7 @@ DateRangeDialog::DateRangeDialog(QDateTime date1, QDateTime date2, QWidget *pare
   startTimeEdit->setStyleSheet(utils::readStyleFromFile(":/styles/dateTimeEdit.qss"));
   endTimeEdit->setStyleSheet(utils::readStyleFromFile(":/styles/dateTimeEdit.qss"));
 
-  setWindowTitle(tr("Выбор временного диапазона"));
+  setWindowTitle(tr("Select time range"));
   this->adjustSize();
   setFixedSize(size());
 

@@ -1,6 +1,7 @@
 #include "assistantengine.h"
 
 #include <QDate>
+#include <QSet>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -15,6 +16,14 @@ namespace deepvaccontrol::assistant {
 
 namespace {
 constexpr int HISTORY_MESSAGES{24}; // kept besides the system prompt
+
+// without the check marks / pins small models like to add
+QString withoutMarks(QString text) {
+  for (QString const &mark : {QStringLiteral("✅"), QStringLiteral("☑"), QStringLiteral("✔"), QStringLiteral("📌")}) {
+    text.remove(mark);
+  }
+  return text;
+}
 
 QString compact(QJsonObject const &object) {
   return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
@@ -39,11 +48,12 @@ QString AssistantEngine::systemPrompt() const {
            "- Temperatures are always in °C, as in the cards. Never use Kelvin, never convert units, never calculate "
            "numbers yourself.\n"
            "- Experiments: '#N', a title, or 'latest'; 'experiment 105' or 'run 105' is '105'. 'Final stabilization' is stage 'last_hold'.\n"
-           "- The user already sees every tool result as a card with its facts and table, right above your answer. "
-           "Do not repeat the card.\n"
-           "- Answer in at most 3 short sentences: the direct answer to the question, then the most important "
-           "observation. Quote at most 3 values, exactly as written in the facts and with their units. Never "
-           "calculate new numbers.\n"
+           "- The user does not see the tool results: your answer is all they read. Never mention tools, functions, "
+           "cards or results; just answer.\n"
+           "- Answer in at most 4 short sentences (or a short list when several items are asked for): the direct "
+           "answer first, then the most important observation. Quote values exactly as written in the facts, with "
+           "their units. Never calculate new numbers. For a report, give its file path.\n"
+           "- Write the answer once. No check marks, emojis, self-review or repetition.\n"
            "- You are read-only: you cannot start or stop the chamber or change PID gains, settings or limits; "
            "say that the engineer does this in the control pages.")
     .arg(QDate::currentDate().toString(Qt::ISODate));
@@ -85,6 +95,26 @@ QStringList AssistantEngine::mentionedRuns(QString const &question) {
     }
   }
   return runs;
+}
+
+QString AssistantEngine::cleanAnswer(QString const &answer) {
+  QString const text = withoutMarks(answer);
+  // complete sentences; the first one that comes again ends the answer
+  static QRegularExpression const sentence(QStringLiteral("[^.!?\\n]+[.!?]"));
+  QSet<QString> seen;
+  for (auto it = sentence.globalMatch(text); it.hasNext();) {
+    QRegularExpressionMatch const match = it.next();
+    QString                       key   = match.captured().toLower();
+    key.remove(QRegularExpression(QStringLiteral("[^a-z0-9]")));
+    if (key.size() < 6) {
+      continue; // "Done." and the like are cut below only when repeated as part of a loop
+    }
+    if (seen.contains(key)) {
+      return text.left(match.capturedStart()).trimmed();
+    }
+    seen.insert(key);
+  }
+  return text.trimmed();
 }
 
 bool AssistantEngine::usesKelvin(QString const &answer) {
@@ -205,6 +235,9 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun) {
   m_round     = 0;
   m_cancelled = false;
   m_corrected = false; // evidence is kept: follow-up questions are checked against everything fetched so far
+  m_silent    = false;
+  m_question  = question;
+  m_firstAnswer.clear();
   m_busy      = true;
   emit busyChanged(true);
   request();
@@ -228,9 +261,33 @@ void AssistantEngine::request() {
   // after the last allowed round the model must answer with what it has
   QJsonArray const tools = (m_round < m_maxRounds) ? m_registry->openAiTools() : QJsonArray{};
 
+  m_streamed.clear();
+  m_repetitionStop = false;
+  auto onText      = [this](QString const &text) {
+    if (m_repetitionStop) {
+      return;
+    }
+    QString const clean = cleanAnswer(text);
+    if (clean.size() < withoutMarks(text).trimmed().size()) {
+      // the model started repeating itself: keep what came before and stop it
+      m_repetitionStop = true;
+      m_streamed       = clean;
+      emit partialAnswer(clean);
+      m_client->cancel();
+      return;
+    }
+    m_streamed = text;
+    emit partialAnswer(clean);
+  };
+
   m_client->chat(
     messages, tools,
     [this](LlmReply const &reply) {
+    if (m_repetitionStop) { // stopped on purpose: what came before the loop is the answer
+      m_history.push_back(QJsonObject{{"role", "assistant"}, {"content", m_streamed}});
+      onAnswer(m_streamed);
+      return;
+    }
     if (m_cancelled) {
       finish();
       emit failed(tr("Cancelled"));
@@ -244,42 +301,7 @@ void AssistantEngine::request() {
     m_history.push_back(reply.message);
 
     if (reply.toolCalls.isEmpty()) {
-      QString answer = reply.content.isEmpty() ? tr("(no answer)") : reply.content;
-      if (m_groundingCheck) {
-        QStringList const unknown = ungroundedNumbers(reply.content, m_evidence);
-        bool const        kelvin{usesKelvin(reply.content)};
-        if ((!unknown.isEmpty() || kelvin) && !m_corrected) {
-          // one corrective round: the model is told what was wrong and answers again
-          m_corrected = true;
-          QStringList problems;
-          if (!unknown.isEmpty()) {
-            problems << QStringLiteral("these values are in no tool result: %1").arg(unknown.join(QStringLiteral(", ")));
-          }
-          if (kelvin) {
-            problems << QStringLiteral("temperatures must be in °C, never Kelvin");
-          }
-          m_history.push_back(QJsonObject{
-            {"role", "user"},
-            {"content", QStringLiteral("Correction: %1. Answer the previous question again in at most 3 sentences, using only "
-                                       "values exactly as written in the cards (°C), without converting or calculating. If you "
-                                       "need data you do not have, call a tool.")
-                          .arg(problems.join(QStringLiteral("; ")))}});
-          emit answerRetracted();
-          // an answer with invented numbers means the model skipped the data: this time it must call a tool
-          m_requireTool = (m_round < m_maxRounds);
-          request();
-          return;
-        }
-        if (!unknown.isEmpty()) {
-          answer += QStringLiteral("\n\n")
-                    + tr("⚠ Not found in the analysis results: %1. Check these values in Data analysis.").arg(unknown.join(QStringLiteral(", ")));
-        }
-        if (kelvin) {
-          answer += QStringLiteral("\n\n") + tr("⚠ DeepVac reports temperatures in °C; values in Kelvin did not come from the analysis.");
-        }
-      }
-      finish();
-      emit answered(answer);
+      onAnswer(reply.content);
       return;
     }
 
@@ -304,7 +326,65 @@ void AssistantEngine::request() {
     }
     request();
     },
-    [this](QString const &text) { emit partialAnswer(text); }, 0, std::exchange(m_requireTool, false));
+    m_silent ? std::function<void(QString const &)>{} : std::function<void(QString const &)>{onText}, 0, std::exchange(m_requireTool, false));
+}
+
+void AssistantEngine::onAnswer(QString content) {
+  content = cleanAnswer(content);
+  QString answer = content.isEmpty() ? tr("(no answer)") : content;
+  if (!m_groundingCheck) {
+    finish();
+    emit answered(answer);
+    return;
+  }
+  // values the user gave in the question are known too
+  QString const     known   = m_evidence + QLatin1Char('\n') + m_question;
+  QStringList       unknown = ungroundedNumbers(content, known);
+  bool              kelvin{usesKelvin(content)};
+  if ((!unknown.isEmpty() || kelvin) && !m_corrected) {
+    // one corrective round, in the background: the shown answer stays unless the new one is better
+    m_corrected   = true;
+    m_silent      = true;
+    m_firstAnswer = content;
+    QStringList problems;
+    if (!unknown.isEmpty()) {
+      problems << QStringLiteral("these values are in no tool result: %1").arg(unknown.join(QStringLiteral(", ")));
+    }
+    if (kelvin) {
+      problems << QStringLiteral("temperatures must be in °C, never Kelvin");
+    }
+    m_history.push_back(QJsonObject{
+      {"role", "user"},
+      {"content", QStringLiteral("Correction: %1. Write the answer to my previous question again, once, in at most 4 short "
+                                 "sentences, with values exactly as written in the results (°C). If you need data you do not "
+                                 "have, call a tool.")
+                    .arg(problems.join(QStringLiteral("; ")))}});
+    emit checkingAnswer();
+    // an answer with invented numbers means the model skipped the data: this time it must call a tool
+    m_requireTool = (m_round < m_maxRounds);
+    request();
+    return;
+  }
+  if (m_corrected && !m_firstAnswer.isEmpty()) {
+    // keep the corrected answer only if it is better than the one shown
+    auto score = [&known](QString const &text) {
+      return static_cast<int>(ungroundedNumbers(text, known).size()) + (usesKelvin(text) ? 5 : 0) + (text.trimmed().isEmpty() ? 50 : 0);
+    };
+    if (score(content) >= score(m_firstAnswer)) {
+      answer  = m_firstAnswer;
+      unknown = ungroundedNumbers(m_firstAnswer, known);
+      kelvin  = usesKelvin(m_firstAnswer);
+    }
+  }
+  if (!unknown.isEmpty()) {
+    answer += QStringLiteral("\n\n")
+              + tr("⚠ Not found in the analysis results: %1. Check these values in Data analysis.").arg(unknown.join(QStringLiteral(", ")));
+  }
+  if (kelvin) {
+    answer += QStringLiteral("\n\n") + tr("⚠ DeepVac reports temperatures in °C; values in Kelvin did not come from the analysis.");
+  }
+  finish();
+  emit answered(answer);
 }
 
 void AssistantEngine::finish() {

@@ -3,50 +3,64 @@
 
 #include <QDateTime>
 #include <QDialog>
-#include <QLabel>
 
-#include "qcustomplot.h"
+#include "dataholder.h"
 #include "resholder.h"
 
+class QButtonGroup;
+class QDateTimeEdit;
+class QLabel;
+class QPushButton;
+
 namespace deepvaccontrol {
+
+/**
+ * @brief Chart export: what (chart image, data, experiment report or bundle), of which range (the visible view, the
+ * whole experiment shown, its day or a custom range) and where (file browser).
+ */
 class ExportDialog : public QDialog {
   Q_OBJECT
 public:
-  explicit ExportDialog(ResHolder *resHolder, std::shared_ptr<DataHolder> m_interval, QWidget *parent = nullptr);
-  ~ExportDialog() override {
-    qDebug() << "~ExportDialog()";
-  }
-  QString selectedFileExtension() const;
-  QString selectedFilePath() const;
-  int     selectedType() const;
+  enum class Range : uint8_t {
+    VIEW,
+    EXPERIMENT,
+    DAY,
+    CUSTOM
+  };
+
+  // day: of the data shown; canReport / canBundle: what the shown data offers; canUseFiles: the day and custom ranges
+  // (read from the recorded files) make sense for it
+  ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, QWidget *parent = nullptr);
+
+  // "png", "bmp", "jpeg", "csv", "txt", "html", "pdf" or "json"
+  [[nodiscard]] QString   format() const;
+  [[nodiscard]] Range     range() const;
+  // DAY and CUSTOM
+  [[nodiscard]] QDateTime from() const;
+  [[nodiscard]] QDateTime to() const;
+  // chosen in the file browser, with its extension
+  [[nodiscard]] QString   filePath() const;
+  // the recorded interval files of [from, to] (DAY and CUSTOM)
+  [[nodiscard]] std::shared_ptr<DataHolder> readInterval() const;
+
+  [[nodiscard]] static bool isImage(QString const &format);
+  [[nodiscard]] static bool isData(QString const &format);
 
 private:
-  void updateDates(QDateTime rangeStart, QDateTime rangeEnd);
-  void compileCustomInterval();
+  void updateState();
+  void choosePath();
 
-  ResHolder                  *m_resHolder;
-  std::shared_ptr<DataHolder> m_interval;
-
-  QLabel   *m_datesLabel{nullptr};
-  QDateTime m_dateStart;
-  QDateTime m_dateEnd;
-
-  QString m_selectedFileExtension;
-  QString m_selectedFilePath;
-  int     m_selectedType;
+  ResHolder     *m_resHolder;
+  QDate          m_day;
+  QButtonGroup  *m_formats{nullptr};
+  QButtonGroup  *m_ranges{nullptr};
+  QDateTimeEdit *m_fromEdit{nullptr};
+  QDateTimeEdit *m_toEdit{nullptr};
+  QLabel        *m_rangeNote{nullptr};
+  QPushButton   *m_previewBtn{nullptr};
+  QString        m_filePath;
 };
 
-inline QString ExportDialog::selectedFileExtension() const {
-  return m_selectedFileExtension;
-}
-
-inline QString ExportDialog::selectedFilePath() const {
-  return m_selectedFilePath;
-}
-
-inline int ExportDialog::selectedType() const {
-  return m_selectedType;
-}
 } // namespace deepvaccontrol
 
 #endif // EXPORTDIALOG_H

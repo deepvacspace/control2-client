@@ -9,7 +9,7 @@ void LineEditScreen::mousePressEvent(QMouseEvent *event) {
     return;
   }
 
-  auto *virtualBoard = new VirtualKeyboard(tr("Ввод текста"), m_lang, this);
+  auto *virtualBoard = new VirtualKeyboard(tr("Text input"), m_lang, this);
 
   connect(virtualBoard, &VirtualKeyboard::finished, this, [this] {
     this->clearFocus();

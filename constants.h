@@ -27,18 +27,18 @@ inline static QStringList const APP_STATE_LIST{
   "IDLE", "CONNECTING", "CONNECTED", "ONLINE", "OFFLINE", "DUMMY", "WAIT_IN_DEBUG", "UNKNOWN=ERROR"};
 
 static QStringList hardwareStatusList() {
-  return {QObject::tr("Нет связи"),
-          QObject::tr("Ожидание"),
-          QObject::tr("Работа"),
-          QObject::tr("Завершено"),
-          QObject::tr("Ошибка")};
+  return {QObject::tr("No connection"),
+          QObject::tr("Idle"),
+          QObject::tr("Running"),
+          QObject::tr("Completed"),
+          QObject::tr("Error")};
 }
 
 static QList<QPair<QString, QString>> statusBarStatesList() {
   return {
-    {"temp", QObject::tr("Температура")},
-    { "hum",     QObject::tr("Влажность")},
-    {"pres",       QObject::tr("Давление")}
+    {"temp", QObject::tr("Temperature")},
+    { "hum",     QObject::tr("Humidity")},
+    {"pres",       QObject::tr("Pressure")}
   };
 } // <state name, display text>
 

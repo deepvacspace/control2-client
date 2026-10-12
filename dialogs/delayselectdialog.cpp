@@ -12,8 +12,8 @@ namespace deepvaccontrol {
 DelaySelectDialog::DelaySelectDialog(QWidget *parent) : QDialog{parent} {
   auto *timer1 = new QTimer(this);
 
-  auto *acceptBtn = new QPushButton(tr("Установить"), this);
-  auto *cancelBtn = new QPushButton(tr("Отмена"), this);
+  auto *acceptBtn = new QPushButton(tr("Set"), this);
+  auto *cancelBtn = new QPushButton(tr("Cancel"), this);
 
   acceptBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
   cancelBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
@@ -35,9 +35,9 @@ DelaySelectDialog::DelaySelectDialog(QWidget *parent) : QDialog{parent} {
   auto *mainLay = new QVBoxLayout(this);
 
   auto *gridLay = new QGridLayout(this);
-  gridLay->addWidget(new QLabel(tr("Текущее время:"), this), 0, 0);
+  gridLay->addWidget(new QLabel(tr("Current time:"), this), 0, 0);
   gridLay->addWidget(currentTimeEdit, 0, 1);
-  gridLay->addWidget(new QLabel(tr("Время пуска:"), this), 1, 0);
+  gridLay->addWidget(new QLabel(tr("Start time:"), this), 1, 0);
   gridLay->addWidget(startTimeEdit, 1, 1);
 
   auto layBtn = new QHBoxLayout();
@@ -77,7 +77,7 @@ DelaySelectDialog::DelaySelectDialog(QWidget *parent) : QDialog{parent} {
   startTimeEdit->setStyleSheet(utils::readStyleFromFile(":/styles/dateTimeEdit.qss"));
   currentTimeEdit->setStyleSheet(utils::readStyleFromFile(":/styles/dateTimeEdit.qss"));
 
-  setWindowTitle(tr("Отложенный пуск"));
+  setWindowTitle(tr("Delayed start"));
   this->adjustSize();
   setFixedSize(size());
 }

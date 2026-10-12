@@ -49,6 +49,36 @@ int nearestIndex(QCPGraph const *graph, double key) {
   return best;
 }
 
+// time from an origin (the first sample shown): ticks at round elapsed times
+class ElapsedTicker : public QCPAxisTickerTime {
+public:
+  double origin{0.0};
+
+  void generate(QCPRange const &range, QLocale const &locale, QChar formatChar, int precision, QVector<double> &ticks,
+                QVector<double> *subTicks, QVector<QString> *tickLabels) override {
+    QCPAxisTickerTime::generate(QCPRange(range.lower - origin, range.upper - origin), locale, formatChar, precision, ticks, subTicks,
+                                tickLabels);
+    for (double &tick : ticks) {
+      tick += origin;
+    }
+    if (subTicks) {
+      for (double &tick : *subTicks) {
+        tick += origin;
+      }
+    }
+  }
+};
+
+// "1:02:03" (h:mm:ss) of a duration in s
+QString durationText(double seconds) {
+  qint64 const total{static_cast<qint64>(std::llround(std::fabs(seconds)))};
+  return QStringLiteral("%1%2:%3:%4")
+    .arg(seconds < 0 ? QStringLiteral("−") : QString{})
+    .arg(total / 3600)
+    .arg((total / 60) % 60, 2, 10, QLatin1Char('0'))
+    .arg(total % 60, 2, 10, QLatin1Char('0'));
+}
+
 // centred moving average ignoring NaN, NaN gaps are kept
 QVector<double> smoothed(QVector<double> const &y, int samples) {
   int const window{(samples % 2 == 0) ? samples + 1 : samples};
@@ -100,6 +130,10 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   QSharedPointer<QCPAxisTickerDateTime> timeTicker(new QCPAxisTickerDateTime);
   m_plot->xAxis->setTicker(timeTicker);
   timeTicker->setDateTimeFormat("hh:mm:ss");
+  m_clockTicker = timeTicker;
+  QSharedPointer<ElapsedTicker> elapsedTicker(new ElapsedTicker);
+  elapsedTicker->setTimeFormat("%h:%m:%s");
+  m_elapsedTicker = elapsedTicker;
 
   if (m_useLogAxis) {
     QSharedPointer<QCPAxisTickerLog> logTicker(new QCPAxisTickerLog);
@@ -226,7 +260,8 @@ void DataViewer::setData(std::shared_ptr<DataHolder const> data) {
     }
   }
 
-  if (data->getNumberOfStates() != m_plot->graphCount()) {
+  if (m_graphsStale || (data->getNumberOfStates() != m_plot->graphCount())) {
+    m_graphsStale = false;
     // [re]init graphs
     initGraphs(data->getNumberOfStates());
 
@@ -518,7 +553,8 @@ void DataViewer::showCursor(double x, double y, int graphIndex, int index) {
   QColor const  color = graph->pen().color();
   QString const label = (graphIndex < m_stateListVariant.size()) ? m_stateListVariant[graphIndex].toMap()["label"].toString() : QString{};
   QString const value = m_logAxisDataIndexes.contains(graphIndex) ? utils::formatScientific(point->value, 2) : formatValue(point->value);
-  QString const time  = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(point->key))).toString("hh:mm:ss");
+  QString const clock = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(point->key))).toString("hh:mm:ss");
+  QString const time  = m_relativeTime ? QStringLiteral("t = %1  (%2)").arg(durationText(point->key - m_data->getTimes().first()), clock) : clock;
 
   m_tracer->setGraph(graph);
   m_tracer->setGraphKey(point->key);
@@ -623,6 +659,7 @@ void DataViewer::updateData() {
     return;
   }
 
+  updateTimeOrigin();
   QVector<QVector<double>> const states = m_data->getStates();
   for (int i{0U}; i < graphCount; ++i) {
     m_plot->graph(i)->setData(times, (m_smoothing > 1) ? smoothed(states[i], m_smoothing) : states[i], /*alreadySorted*/ true);
@@ -630,6 +667,36 @@ void DataViewer::updateData() {
 
   updateRange();
   rebuildDecorations();
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setRelativeTime(bool relative) {
+  m_relativeTime = relative;
+  m_plot->xAxis->setTicker(relative ? m_elapsedTicker : m_clockTicker);
+  updateTimeOrigin();
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::updateTimeOrigin() {
+  if (auto *elapsed = dynamic_cast<ElapsedTicker *>(m_elapsedTicker.data()); elapsed && m_data) {
+    QVector<double> const times = m_data->getTimes();
+    elapsed->origin             = times.isEmpty() ? 0.0 : times.first();
+  }
+}
+
+void DataViewer::clear(QString const &text) {
+  if (static_cast<bool>(m_updateDataConnection)) {
+    disconnect(m_updateDataConnection);
+  }
+  m_data.reset();
+  hideValueCursor();
+  for (int i{0}; i < m_plot->graphCount(); ++i) {
+    m_plot->graph(i)->data()->clear();
+  }
+  setRegions({});
+  m_bands.clear();
+  rebuildDecorations();
+  updateTextItem(text);
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
@@ -650,8 +717,9 @@ void DataViewer::setSmoothingWindow(int samples) {
   }
 }
 
-void DataViewer::setOverlays(bool min, bool max, bool avg) {
-  m_overlayMin = min;
+void DataViewer::setOverlays(bool min, bool max, bool avg, QString const &channel) {
+  m_overlayChannel = channel;
+  m_overlayMin     = min;
   m_overlayMax = max;
   m_overlayAvg = avg;
   rebuildDecorations();
@@ -762,17 +830,20 @@ void DataViewer::rebuildDecorations() {
     }
   }
 
-  // min / max / average of the visible channels on the main value axis
+  // min / max / average of the chosen channel (its visible lines)
   if (m_overlayMin || m_overlayMax || m_overlayAvg) {
+    QCPAxis *axis{nullptr};
     double minValue{std::numeric_limits<double>::max()};
     double maxValue{std::numeric_limits<double>::lowest()};
     double sum{0.0};
     qint64 count{0};
     for (int i{0}; i < m_plot->graphCount(); ++i) {
       QCPGraph *graph = m_plot->graph(i);
-      if (!graph->visible() || (graph->valueAxis() != m_plot->yAxis)) {
+      bool const ofChannel{(i < m_stateListVariant.size()) && (m_stateListVariant[i].toMap()["name"].toString() == m_overlayChannel)};
+      if (!graph->visible() || !ofChannel) {
         continue;
       }
+      axis = graph->valueAxis();
       for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
         if (!std::isnan(it->value)) {
           minValue = std::min(minValue, it->value);
@@ -782,10 +853,10 @@ void DataViewer::rebuildDecorations() {
         }
       }
     }
-    if (count > 0) {
+    if ((count > 0) && axis) {
       auto overlay = [&](double value, QString const &name, QColor const &color) {
-        addLine(m_plot->yAxis, value, QPen(color, 1.2, Qt::DashLine));
-        addText(m_plot->yAxis, 0.995, value, Qt::AlignRight | Qt::AlignBottom, QStringLiteral("%1 %2").arg(name, formatValue(value)), color);
+        addLine(axis, value, QPen(color, 1.2, Qt::DashLine));
+        addText(axis, 0.995, value, Qt::AlignRight | Qt::AlignBottom, QStringLiteral("%1 %2").arg(name, formatValue(value)), color);
       };
       if (m_overlayMin) {
         overlay(minValue, tr("Min"), QColor("#0d9488"));
@@ -843,6 +914,10 @@ void DataViewer::initGraphs(uint16_t graphCount) {
     m_plot->addGraph(m_plot->xAxis, desAxis);
     m_plot->graph()->setAdaptiveSampling(false);
     // m_plot->graph()->setAntialiased(false);
+  }
+  // the logarithmic axis only while it has lines
+  if (m_useLogAxis) {
+    m_plot->yAxis2->setVisible(!m_logAxisDataIndexes.isEmpty());
   }
   applyStyles();
 }
@@ -928,7 +1003,12 @@ void DataViewer::zoomViewAt(QPointF const &pixelPos, double mulX, double mulY) {
 }
 
 void DataViewer::setIndexesForLogAxis(QVector<int> const &indexes) {
+  m_graphsStale        = m_graphsStale || (indexes != m_logAxisDataIndexes);
   m_logAxisDataIndexes = indexes;
+}
+
+QString DataViewer::channelLabel(int index) const {
+  return ((index >= 0) && (index < m_stateListVariant.size())) ? m_stateListVariant[index].toMap()["label"].toString() : QString{};
 }
 
 DataViewerDialog::DataViewerDialog(
@@ -942,13 +1022,13 @@ DataViewerDialog::DataViewerDialog(
   ga->setStyles(style);
   ga->resize(600, 400);
 
-  auto *closeBtn = new QPushButton(tr("Закрыть"), this);
+  auto *closeBtn = new QPushButton(tr("Close"), this);
 
   mainLay->addWidget(ga);
   mainLay->addWidget(closeBtn);
   connect(closeBtn, &QPushButton::clicked, this, &QDialog::reject);
 
-  setWindowTitle(tr("Предпросмотр"));
+  setWindowTitle(tr("Preview"));
   resize(600 * utils::ssf(), 400 * utils::ssf());
   setAttribute(Qt::WA_DeleteOnClose);
 }

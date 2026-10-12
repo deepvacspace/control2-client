@@ -16,7 +16,7 @@ class QPushButton;
 class QTextBrowser;
 
 namespace deepvaccontrol {
-class DataAnalysisWidget;
+class AnalysisServices;
 struct ResHolder;
 } // namespace deepvaccontrol
 
@@ -38,7 +38,8 @@ public:
   ~AssistantWidget() override;
 
   // connects the tools to the experiment library; showPage brings the Data analysis page forward
-  void setAnalysis(DataAnalysisWidget *analysis, std::function<void()> showPage);
+  // experiments, notes and reports; showPage brings the page that shows experiments forward
+  void setServices(AnalysisServices *services, std::function<void()> showPage);
 
 protected:
   void showEvent(QShowEvent *event) override;
@@ -54,7 +55,7 @@ private:
   [[nodiscard]] QString focusRun() const;
 
   ResHolder                     *m_resHolder;
-  DataAnalysisWidget            *m_analysis{nullptr};
+  AnalysisServices              *m_analysis{nullptr};
   LlmClient                     *m_client;
   LlmSidecar                    *m_sidecar;
   ToolRegistry                   m_registry;
@@ -71,6 +72,10 @@ private:
   QString       m_queued;        // question waiting for the model to load
   QString       m_queuedFocus;
   int           m_liveBlock{-1}; // transcript block holding the answer being streamed
+  int           m_statusBlock{-1}; // "Looking up …" while the data is fetched (replaced by the answer)
+  int           m_checkBlock{-1};  // "Checking the values …" under the answer while it is checked
+  void          setStatus(QString const &text);
+  void          clearNotes();      // removes the status and check lines
   QTimer        m_renderTimer;
   bool          m_shownOnce{false};
 };

@@ -419,7 +419,7 @@ IntervalHelpWindow::IntervalHelpWindow(QWidget *parent) : QDialog(parent) {
   lay->addWidget(pixLabel);
 
   connect(pixLabel, &IntervalHelpImageLabel::closeIt, this, &QDialog::accept);
-  setWindowTitle(tr("Изменение скорости"));
+  setWindowTitle(tr("Rate change"));
   setAttribute(Qt::WA_DeleteOnClose);
 }
 } // namespace deepvaccontrol

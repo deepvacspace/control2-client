@@ -100,9 +100,9 @@ void Manual::initGui() {
   auto *controlLay  = static_cast<QVBoxLayout *>(controlCard->layout());
   mainLay->addWidget(controlCard, 1);
 
-  m_startBtn = new QPushButton(tr("Пуск"), controlCard);
+  m_startBtn = new QPushButton(tr("Start"), controlCard);
   m_startBtn->setObjectName("startButton");
-  m_startDelayedBtn = new QPushButton(tr("Отлож.\nпуск").replace('\n', ' '), controlCard);
+  m_startDelayedBtn = new QPushButton(tr("Delay\nstart").replace('\n', ' '), controlCard);
   m_stopBtn         = new StopButton(controlCard);
   m_stopBtn->setProperty("outline", true);
   for (QPushButton *button : {static_cast<QPushButton *>(m_startBtn), m_startDelayedBtn, static_cast<QPushButton *>(m_stopBtn)}) {
@@ -119,10 +119,10 @@ void Manual::initGui() {
 
   QMap<QString, QString>         descr;
   QList<QPair<QString, QString>> paramOrder;
-  paramOrder.push_back({"temp", tr("Температура, °C")});
-  paramOrder.push_back({"hum", tr("Относительная влажность, %")});
-  paramOrder.push_back({"pres", tr("Давление, мм рт. ст.")});
-  paramOrder.push_back({"solar", tr("Лампа солнечной радиации")});
+  paramOrder.push_back({"temp", tr("Temperature, °C")});
+  paramOrder.push_back({"hum", tr("Relative humidity, %")});
+  paramOrder.push_back({"pres", tr("Pressure, mmHg")});
+  paramOrder.push_back({"solar", tr("Solar lamp")});
 
   bool tempAlwaysEnable{true};
   if (m_modelSysValuesList->contains("pres")) {
@@ -232,13 +232,13 @@ void Manual::initGui() {
 
   connect(m_stopBtn, &StopButton::confirmPressed, this, [this] {
     m_resHolder->tcpGate->sendTextCmd("stop");
-    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("Работа камеры остановлена пользователем"));
+    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("Chamber operation stopped by user"));
   });
 
   connect(m_startDelayedBtn, &QPushButton::clicked, this, [this] {
     auto *delaySelectDialog = new DelaySelectDialog(this);
     connect(delaySelectDialog, &DelaySelectDialog::startTimeSelected, this, [this](QDateTime startTime) {
-      auto *delayInfoDialog = new DelayInfoDialog(tr("Работа по уставке"), startTime, this);
+      auto *delayInfoDialog = new DelayInfoDialog(tr("Setpoint operation"), startTime, this);
       connect(delayInfoDialog, &QDialog::accepted, this, &Manual::sendProgram);
       delayInfoDialog->open();
     });
@@ -332,7 +332,7 @@ void Manual::sendProgram() {
     m_model->delItem(0);
   }
 
-  sendJob(m_model, tr("Manual setpoint"), QString{}, tr("Запуск работы по уставке"));
+  sendJob(m_model, tr("Manual setpoint"), QString{}, tr("Starting setpoint operation"));
 }
 
 bool Manual::sendJob(ProgramModel *model, QString const &runLabel, QString const &testProfile, QString const &actionText) {
@@ -438,7 +438,7 @@ TempSetWidget::TempSetWidget(quint32          index,
   contentLay->addSpacing(10 * ssf);
 
   // new setpoint: the whole column width
-  contentLay->addWidget(mutedLabel(tr("Новая уставка:").remove(':'), content));
+  contentLay->addWidget(mutedLabel(tr("New setpoint:").remove(':'), content));
   auto *setpoint     = new LineEditNum(manualModel->getSysValue("temp"));
   QFont setpointFont = setpoint->font();
   setpointFont.setPointSizeF(setpointFont.pointSizeF() * 1.25);
@@ -448,7 +448,7 @@ TempSetWidget::TempSetWidget(quint32          index,
   contentLay->addSpacing(12 * ssf);
 
   // ramp rate and hold time: a tick enables the field
-  QString const speedUnitString   = speedUnitIsHour ? tr("час") : tr("мин");
+  QString const speedUnitString   = speedUnitIsHour ? tr("h") : tr("min");
   auto         *tempSpeedSysValue = new SystemValue("temp_speed", 1, this);
   tempSpeedSysValue->setPrec(2);
   tempSpeedSysValue->setMin(0.01 * (speedUnitIsHour ? 60 : 1));
@@ -521,7 +521,7 @@ CommonSetWidget::CommonSetWidget(quint32          index,
   contentLay->addWidget(currentValueRow(manualModel ? m_currentVal : nullptr, unit, content));
   contentLay->addSpacing(10 * ssf);
 
-  contentLay->addWidget(mutedLabel(tr("Новая уставка:").remove(':'), content));
+  contentLay->addWidget(mutedLabel(tr("New setpoint:").remove(':'), content));
   LineEditNum *setpoint = manualModel ? new LineEditNum(manualModel->getSysValue(manualModel->getNames().at(index)))
                                       : new LineEditNum(0, 1, 1, false, content);
   QFont setpointFont = setpoint->font();

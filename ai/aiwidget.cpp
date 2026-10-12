@@ -50,8 +50,8 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   m_tabWidget->addTab(m_assistantWidget, tr("Assistant"));
 }
 
-void AiWidget::setAnalysis(DataAnalysisWidget *analysis, std::function<void()> showPage) {
-  m_assistantWidget->setAnalysis(analysis, std::move(showPage));
+void AiWidget::setServices(AnalysisServices *services, std::function<void()> showPage) {
+  m_assistantWidget->setServices(services, std::move(showPage));
 }
 
 } // namespace deepvaccontrol

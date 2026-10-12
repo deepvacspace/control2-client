@@ -28,8 +28,9 @@ class ChartStatisticsDialog : public QDialog {
 public:
   ChartStatisticsDialog(ResHolder *resHolder, AnalysisNotesStore *notes, QWidget *parent = nullptr);
 
-  // the chart shown (runKey: its annotations and rules)
-  void setSource(DataViewer *viewer, QString const &runKey, QString const &title);
+  // the chart shown (runKey: its annotations and rules, empty: none; channelNames: state name of each line, empty:
+  // lines that are not channels, e.g. a comparison)
+  void setSource(DataViewer *viewer, QString const &runKey, QString const &title, QStringList const &channelNames);
 
 signals:
   // show this range (epoch s) in the chart
@@ -51,6 +52,7 @@ private:
   AnalysisNotesStore *m_notes;
   QPointer<DataViewer> m_viewer;
   QString             m_runKey;
+  QStringList         m_channelNames;
   QTimer             *m_rangeTimer; // the visible range changed: statistics again (throttled)
 
   QTabWidget   *m_tabs{nullptr};

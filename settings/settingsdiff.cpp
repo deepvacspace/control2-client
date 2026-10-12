@@ -24,8 +24,8 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
   auto *btnLay = new QHBoxLayout();
   mainLay->addLayout(btnLay);
 
-  auto *sendBtn = new QPushButton(tr("Загрузить текущие настройки"), this);
-  auto *getBtn  = new QPushButton(tr("Принять настройки из ПЛК"), this);
+  auto *sendBtn = new QPushButton(tr("Load current settings"), this);
+  auto *getBtn  = new QPushButton(tr("Accept settings from PLC"), this);
   sendBtn->setMinimumHeight(40);
   getBtn->setMinimumHeight(40);
   btnLay->addWidget(getBtn);
@@ -56,7 +56,7 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
 
   table->setRowCount(diff.size());
   table->setColumnCount(3);
-  table->setHorizontalHeaderLabels({tr("Настройка"), tr("ПЛК"), tr("Компьютер")});
+  table->setHorizontalHeaderLabels({tr("Setting"), tr("PLC"), tr("Computer")});
 
   auto diffNames = diff.keys();
   int  uniquePlc{0};
@@ -106,7 +106,7 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
   });
 
   setAttribute(Qt::WA_DeleteOnClose);
-  setWindowTitle(tr("Отличающиеся настройки"));
+  setWindowTitle(tr("Different settings"));
   setMinimumSize(410, 450);
 }
 } // namespace deepvaccontrol

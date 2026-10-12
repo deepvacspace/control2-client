@@ -325,6 +325,25 @@ std::shared_ptr<ExperimentLibrary::ParsedFile const> ExperimentLibrary::parsedFi
 }
 
 std::shared_ptr<ExperimentData const> ExperimentLibrary::load(ExperimentRun const &run, QString *error) {
+  return assemble(run, [this](QString const &path) { return parsedFile(path); }, error);
+}
+
+std::shared_ptr<ExperimentData const> ExperimentLibrary::loadDetached(ExperimentRun const &run, QString *error) {
+  return assemble(
+    run,
+    [](QString const &path) -> std::shared_ptr<ParsedFile const> {
+      auto parsed  = std::make_shared<ParsedFile>();
+      parsed->path = path;
+      if (!readIntervalFile(path, parsed->times, parsed->states)) {
+        return nullptr;
+      }
+      return parsed;
+    },
+    error);
+}
+
+std::shared_ptr<ExperimentData const> ExperimentLibrary::assemble(
+  ExperimentRun const &run, std::function<std::shared_ptr<ParsedFile const>(QString const &)> const &fileOf, QString *error) {
   auto data = std::make_shared<ExperimentData>();
   data->run = run;
 
@@ -353,7 +372,7 @@ std::shared_ptr<ExperimentData const> ExperimentLibrary::load(ExperimentRun cons
   }
 
   for (QString const &path : run.files) {
-    auto const file = parsedFile(path);
+    auto const file = fileOf(path);
     if (!file) {
       if (error) {
         *error = tr("Failed to read %1").arg(QFileInfo(path).fileName());

@@ -2,7 +2,13 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDateTimeEdit>
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QRadioButton>
+#include <QSaveFile>
 #include <QFrame>
 #include <QLabel>
 #include <QSpinBox>
@@ -14,7 +20,11 @@
 #include <cmath>
 
 #include "analysisnotesstore.h"
+#include "analysisservices.h"
 #include "annotationdialog.h"
+#include "comparison.h"
+#include "comparisondialog.h"
+#include "experimentinput.h"
 #include "calendardialog.h"
 #include "chartstatisticsdialog.h"
 #include "constants.h"
@@ -22,6 +32,8 @@
 #include "experimentbrowser.h"
 #include "exportdialog.h"
 #include "overlaydrawer.h"
+#include "rundetailsdialog.h"
+#include "dialogs/messagedialog.h"
 #include "theme.h"
 #include "utils.h"
 
@@ -51,7 +63,9 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     QVariant const period = m_resHolder->settings->settingsMap()["app_settings"].toMap()["graphUpdatePeriod"];
     if (period.isValid() && (period.toString().toInt() > 0)) {
       for (ChartPane *pane : std::as_const(m_panes)) {
-        pane->viewer()->setRefreshPeriodMs(1000 * period.toString().toInt());
+        for (DataViewer *chart : pane->viewers()) {
+          chart->setRefreshPeriodMs(1000 * period.toString().toInt());
+        }
       }
     }
   });
@@ -98,7 +112,11 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_listBtn = iconButton("folder", tr("Experiments: open a saved experiment or a recorded day in a new tab"));
   m_listBtn->setEnabled(false); // until the experiment list is set
 
-  // statistics, annotate, export, channels | labels, tooltip, day, options
+  // compare, statistics, annotate, export, channels | labels, tooltip, day, options
+  m_compareBtn = textButton(tr("Compare"));
+  m_compareBtn->setMinimumWidth(84 * ssf);
+  m_compareBtn->setToolTip(tr("Compare channels of open tabs or other experiments in a new tab"));
+  m_compareBtn->setEnabled(false); // until the experiment list is set
   m_statisticsBtn = textButton(tr("Statistics"));
   m_statisticsBtn->setMinimumWidth(90 * ssf);
   m_statisticsBtn->setToolTip(tr("Statistics of the visible range, annotations and variable rules"));
@@ -162,7 +180,8 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   }
   toolBar->addWidget(fitBtn);
   toolBar->addStretch();
-  for (QPushButton *button : {m_statisticsBtn, m_annotateBtn, m_exportToBtn, m_styleBtn, m_labelsBtn, m_valuesBtn, calendarBtn, m_optionsBtn}) {
+  for (QPushButton *button :
+       {m_compareBtn, m_statisticsBtn, m_annotateBtn, m_exportToBtn, m_styleBtn, m_labelsBtn, m_valuesBtn, calendarBtn, m_optionsBtn}) {
     toolBar->addWidget(button);
   }
   cardLay->addLayout(toolBar, 2, 1);
@@ -196,18 +215,24 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     viewer()->moveView(0, -0.2);
   });
   connect(m_styleBtn, &QPushButton::clicked, this, [this] {
-    m_styleEditor->show();
+    Tab const *tab = m_focused->currentTab();
+    if (tab && tab->comparison) {
+      openCompareDialog(tab->key); // a comparison's channels
+    } else {
+      m_styleEditor->show();
+    }
   });
+  connect(m_compareBtn, &QPushButton::clicked, this, [this] { openCompareDialog(); });
 
   // styles apply to every chart
   connect(m_styleEditor, &GraphStyleEditor::styleChanged, this, [this](int index, QVariantMap style) {
     for (ChartPane *pane : std::as_const(m_panes)) {
-      pane->viewer()->setStyle(index, style);
+      pane->mainViewer()->setStyle(index, style);
     }
   });
   connect(m_styleEditor, &GraphStyleEditor::styleAllChanged, this, [this](QVariantList const &styles) {
     for (ChartPane *pane : std::as_const(m_panes)) {
-      pane->viewer()->setStyles(styles);
+      pane->mainViewer()->setStyles(styles);
     }
   });
 
@@ -219,13 +244,15 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_optionsDrawer = new OverlayDrawer(this, 320, OverlayDrawer::Side::RIGHT);
   m_optionsDrawer->setContent(buildOptions());
   connect(m_optionsBtn, &QPushButton::clicked, this, [this] {
-    updateRangeFields();
+    updateOptions();
     m_optionsDrawer->toggle();
   });
 
   connect(m_annotateBtn, &QPushButton::toggled, this, [this](bool on) {
     for (ChartPane *pane : std::as_const(m_panes)) {
-      pane->viewer()->setAnnotateMode(on);
+      for (DataViewer *chart : pane->viewers()) {
+        chart->setAnnotateMode(on);
+      }
     }
   });
 
@@ -242,6 +269,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   updateLegendMode();
   handleAccessChange("", m_resHolder->users->getCurrentAccessLevel());
   connect(m_resHolder->users, &AccessManager::userSelected, this, &GraphWidget::handleAccessChange);
+  initAnalysis();
 }
 
 DataViewer *GraphWidget::makeViewer() {
@@ -288,16 +316,33 @@ ChartPane *GraphWidget::addPane() {
     showTabMenu(pane, index, globalPos);
   });
   connect(pane, &ChartPane::emptied, this, [this, pane] {
-    removePane(pane);
+    if (m_dragDepth == 0) { // otherwise once the drag ended
+      removePane(pane);
+    }
   });
-  connect(pane->viewer(), &DataViewer::annotationDrawn, this, [this, pane](double x0, double x1) {
+  connect(pane, &ChartPane::tabDropped, this, [this, pane](ChartPane *source, QString const &key, int at, bool rightHalf) {
+    onTabDropped(pane, source, key, at, rightHalf);
+  });
+  connect(pane, &ChartPane::tabDragStarted, this, [this] { ++m_dragDepth; });
+  connect(pane, &ChartPane::tabDragFinished, this, [this] {
+    --m_dragDepth;
+    // after the drag's own event loop: an emptied right pane goes now
+    QTimer::singleShot(0, this, [this] {
+      for (ChartPane *each : QVector<ChartPane *>(m_panes)) {
+        if ((each != m_panes.first()) && (each->count() == 0)) {
+          removePane(each);
+        }
+      }
+    });
+  });
+  connect(pane, &ChartPane::annotationDrawn, this, [this, pane](double x0, double x1) {
     onAnnotationDrawn(pane, x0, x1);
   });
   // tooltip on: the other pane mirrors the crosshair
-  connect(pane->viewer(), &DataViewer::valueCursorMoved, this, [this, pane](double x, int graph) {
+  connect(pane, &ChartPane::cursorMoved, this, [this, pane](double x, int graph) {
     syncCursor(pane, x, graph);
   });
-  connect(pane->viewer(), &DataViewer::valueCursorHidden, this, [this, pane] {
+  connect(pane, &ChartPane::cursorHidden, this, [this, pane] {
     for (ChartPane *other : std::as_const(m_panes)) {
       if (other != pane) {
         other->viewer()->hideValueCursor();
@@ -308,6 +353,7 @@ ChartPane *GraphWidget::addPane() {
   if (!m_focused) {
     m_focused = pane;
   }
+  pane->setPrimary(m_panes.size() == 1);
   if (m_panes.size() > 1) {
     int const half{std::max(1, m_split->width() / 2)};
     m_split->setSizes({half, half});
@@ -361,13 +407,80 @@ void GraphWidget::openTab(Tab const &tab, bool splitRight) {
   setFocusedPane(target);
 }
 
-void GraphWidget::moveTab(ChartPane *from, int index, ChartPane *to) {
+void GraphWidget::moveTab(ChartPane *from, int index, ChartPane *to, int at) {
   if ((from == to) || !from->tab(index) || (from->tab(index)->key == ChartPane::LIVE_KEY)) {
     return;
   }
   Tab const moved = from->takeTab(index); // an emptied right pane goes away
-  to->addTab(moved);
+  to->addTab(moved, at);
   setFocusedPane(to);
+}
+
+void GraphWidget::onTabDropped(ChartPane *target, ChartPane *source, QString const &key, int at, bool rightHalf) {
+  if (!m_panes.contains(source) || !m_panes.contains(target)) {
+    return;
+  }
+  int const index{source->indexOf(key)};
+  if (index < 0) {
+    return;
+  }
+  if (rightHalf) {
+    moveTab(source, index, rightPane()); // dropped on the right of its own chart: split
+  } else {
+    moveTab(source, index, target, at);
+  }
+}
+
+ChartPane *GraphWidget::paneWith(QString const &key) const {
+  for (ChartPane *pane : m_panes) {
+    if (pane->indexOf(key) >= 0) {
+      return pane;
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<DataHolder const> GraphWidget::holderFrom(QVector<double> const &times, QStringList const &columns,
+                                                          QVector<QVector<double>> const &values) const {
+  // the channels of the chart, in the order of the states: recorded days keep that order,
+  // database runs name their channels; channels the run lacks stay empty
+  QStringList const        names = m_resHolder->states->getNames();
+  QVector<QVector<double>> states(names.size());
+  for (int i{0}; i < names.size(); ++i) {
+    qsizetype const column = columns.isEmpty() ? i : columns.indexOf(names[i]);
+    states[i] = ((column >= 0) && (column < values.size())) ? values[column] : QVector<double>(times.size(), qQNaN());
+  }
+  auto holder = std::make_shared<DataHolder>(static_cast<quint16>(names.size()), m_resHolder->logger,
+                                             utils::calculateKey(times.isEmpty() ? 0.0 : times.first()));
+  holder->setSeries(times, states);
+  return holder;
+}
+
+void GraphWidget::openLoading(Tab tab, bool splitRight, std::function<bool(Samples &out, QString &error)> read) {
+  if (paneWith(tab.key)) {
+    openTab(tab, splitRight); // open already (or still loading)
+    return;
+  }
+  tab.loading = true;
+  openTab(tab, splitRight);
+  auto     samples = std::make_shared<Samples>();
+  auto     ok      = std::make_shared<bool>(false);
+  auto     error   = std::make_shared<QString>();
+  QThread *thread  = QThread::create([read, samples, ok, error] { *ok = read(*samples, *error); });
+  connect(thread, &QThread::finished, this, [this, thread, samples, ok, error, tab] {
+    thread->deleteLater();
+    ChartPane *pane = paneWith(tab.key);
+    if (!pane) {
+      return; // closed meanwhile
+    }
+    if (!*ok || samples->times.isEmpty()) {
+      pane->closeTab(pane->indexOf(tab.key));
+      QMessageBox::warning(this, tr("Chart"), error->isEmpty() ? tr("%1 could not be read.").arg(tab.name) : *error);
+      return;
+    }
+    pane->setTabData(tab.key, holderFrom(samples->times, samples->columns, samples->values)); // a QObject: made here
+  });
+  thread->start(QThread::LowPriority);
 }
 
 void GraphWidget::showTabMenu(ChartPane *pane, int index, QPoint const &globalPos) {
@@ -387,9 +500,13 @@ void GraphWidget::showTabMenu(ChartPane *pane, int index, QPoint const &globalPo
       moveTab(pane, index, m_panes.first());
     });
   }
+  if (tab->comparison) {
+    QString const key = tab->key;
+    menu.addAction(tr("Change comparison…"), this, [this, key] { openCompareDialog(key); });
+  }
   menu.addSeparator();
   menu.addAction(tr("Close"), this, [pane, index] {
-        pane->takeTab(index);
+        pane->closeTab(index);
       })
     ->setEnabled(!live);
   menu.exec(globalPos);
@@ -400,18 +517,29 @@ void GraphWidget::syncCursor(ChartPane *source, double x, int graph) {
     return;
   }
   double const sourceStart{source->dataStart()};
+  Tab const   *sourceTab = source->currentTab();
   for (ChartPane *other : std::as_const(m_panes)) {
     double const otherStart{other->dataStart()};
     if ((other == source) || std::isnan(sourceStart) || std::isnan(otherStart)) {
       continue;
     }
-    // the same time from the start of the data shown, on the same line
-    other->viewer()->showSyncCursor(otherStart + (x - sourceStart), graph);
+    // the same line where both charts have the same lines (channels, or the same comparison); else the time only
+    Tab const *otherTab = other->currentTab();
+    bool const sameLines{sourceTab && otherTab && (sourceTab->comparison == otherTab->comparison)};
+    // the same time from the start of the data shown
+    other->viewer()->showSyncCursor(otherStart + (x - sourceStart), sameLines ? graph : -1);
   }
 }
 
 void GraphWidget::updateDayButton() {
   Tab const *shown = m_focused ? m_focused->currentTab() : nullptr;
+  // annotations and rules are of recorded time: not on a comparison's aligned axis
+  bool const comparison{shown && shown->comparison};
+  if (comparison && m_annotateBtn->isChecked()) {
+    m_annotateBtn->setChecked(false);
+  }
+  m_annotateBtn->setEnabled(m_canAnnotate && !comparison);
+  m_styleBtn->setText(comparison ? tr("Channels…") : tr("Channels ▾"));
   if (shown && (shown->key != ChartPane::LIVE_KEY)) {
     m_dayBtn->setText(shown->label);
     m_dayBtn->setToolTip(tr("%1\nOpen another experiment, or go back to the live data of today").arg(shown->name));
@@ -429,15 +557,14 @@ void GraphWidget::updateDayButton() {
 
 void GraphWidget::updateLegendMode() {
   for (ChartPane *pane : std::as_const(m_panes)) {
-    pane->viewer()->setLabelsVisible(m_labelsBtn->isChecked());
-    pane->viewer()->setValuesVisible(m_valuesBtn->isChecked());
+    for (DataViewer *chart : pane->viewers()) {
+      chart->setLabelsVisible(m_labelsBtn->isChecked());
+      chart->setValuesVisible(m_valuesBtn->isChecked());
+    }
   }
 }
 
 void GraphWidget::openCalendar() {
-  if (m_loading) {
-    return;
-  }
   auto *dialog = new CalendarDialog(storage::RunStore::spans(), this);
   connect(dialog, &CalendarDialog::experimentSelected, this, &GraphWidget::showExperiment);
   connect(dialog, &CalendarDialog::liveSelected, this, [this] {
@@ -448,9 +575,13 @@ void GraphWidget::openCalendar() {
   dialog->open();
 }
 
-void GraphWidget::setAnalysis(ExperimentLibrary *library, AnalysisNotesStore *notes) {
-  m_library = library;
-  m_notes   = notes;
+void GraphWidget::initAnalysis() {
+  m_services = m_resHolder->analysis;
+  if (!m_services) {
+    return; // no experiment list: the live data only
+  }
+  m_library = m_services->library();
+  m_notes   = m_services->notes();
 
   // experiment list: a drawer over the page, from the button on top of the left column
   m_drawer      = new OverlayDrawer(this, 340);
@@ -462,6 +593,7 @@ void GraphWidget::setAnalysis(ExperimentLibrary *library, AnalysisNotesStore *no
   });
   connect(m_listBtn, &QPushButton::clicked, m_drawer, &OverlayDrawer::toggle);
   m_listBtn->setEnabled(true);
+  m_compareBtn->setEnabled(true);
 
   for (ChartPane *pane : std::as_const(m_panes)) {
     pane->setNotes(m_notes);
@@ -478,15 +610,357 @@ void GraphWidget::setAnalysis(ExperimentLibrary *library, AnalysisNotesStore *no
     m_statistics->raise();
   });
   m_statisticsBtn->setEnabled(true);
+
+  // experiments the assistant shows open here
+  m_services->setShowHandler([this](ExperimentRun const &run, QStringList const &channels, double from, double to,
+                                    QVector<ExperimentRun> const &compare) { return showFromServices(run, channels, from, to, compare); });
   handleAccessChange(QString{}, m_resHolder->users->getCurrentAccessLevel());
 }
 
+QString GraphWidget::showFromServices(ExperimentRun const &run, QStringList const &channels, double from, double to,
+                                      QVector<ExperimentRun> const &compare) {
+  if (!compare.isEmpty()) {
+    ChartComparison comparison;
+    comparison.members.push_back({run.key, startText(run.start), run});
+    for (ExperimentRun const &other : compare) {
+      comparison.members.push_back({other.key, startText(other.start), other});
+    }
+    comparison.channels = channels.isEmpty() ? QStringList{QStringLiteral("temp")} : channels;
+    createComparison(comparison);
+    return {};
+  }
+  if (ChartPane *pane = paneWith(run.key)) { // open already: there, at that range
+    pane->selectTab(run.key);
+    setFocusedPane(pane);
+    double const start{pane->dataStart()};
+    if (!std::isnan(from) && !std::isnan(to) && !std::isnan(start)) {
+      pane->viewer()->setTimeRange(start + from, start + to);
+    }
+    return {};
+  }
+  showRun(run, false, from, to);
+  return {};
+}
+
+ExperimentRun GraphWidget::runOfTab(Tab const &tab) const {
+  if (m_library) {
+    if (auto run = m_library->findRun(tab.key)) {
+      return *run;
+    }
+    if (!tab.storeKey.isEmpty()) {
+      for (ExperimentRun const &stored : m_library->storedRuns()) {
+        if (stored.storeKey == tab.storeKey) {
+          return stored;
+        }
+      }
+    }
+  }
+  // the live data and days: their time range
+  auto const      data  = (tab.key == ChartPane::LIVE_KEY) ? std::shared_ptr<DataHolder const>(m_resHolder->dataManager->getIntervalToDisplay()) : tab.data;
+  QVector<double> times = data ? data->getTimes() : QVector<double>{};
+  ExperimentRun   run   = (m_library && !times.isEmpty()) ? m_library->makeRangeRun(times.first(), times.last()) : ExperimentRun{};
+  run.title             = tab.name;
+  return run;
+}
+
+// ---------------------------------------------------------------- comparisons
+QPair<QString, QString> GraphWidget::comparisonTitles(ChartComparison const &comparison) const {
+  QStringList const  names  = m_resHolder->states->getNames();
+  QVariantList const styles = m_resHolder->settings->settingsMap()["states"].toList();
+  QStringList        channelLabels;
+  for (QString const &channel : comparison.channels) {
+    qsizetype const index{names.indexOf(channel)};
+    QString const   label = (index >= 0) && (index < styles.size()) ? styles[index].toMap()["label"].toString() : channel;
+    channelLabels << label;
+  }
+  QStringList members;
+  for (ChartComparison::Member const &member : comparison.members) {
+    members << member.label;
+  }
+  QString const shortChannel = (channelLabels.size() == 1) ? channelLabels.first().section(QLatin1Char(','), 0, 0).trimmed()
+                                                           : tr("%1 channels").arg(channelLabels.size());
+  return {QStringLiteral("≈ %1 · %2").arg(shortChannel).arg(comparison.members.size()),
+          tr("Comparison of %1: %2").arg(channelLabels.join(QStringLiteral(", ")), members.join(QStringLiteral(" · ")))};
+}
+
+void GraphWidget::styleComparison(DataViewer *chart, ChartComparison const &comparison) const {
+  static QVector<QColor> const palette{QColor("#2563eb"), QColor("#dc2626"), QColor("#16a34a"), QColor("#9333ea"),
+                                       QColor("#d97706"), QColor("#0d9488"), QColor("#db2777"), QColor("#475569")};
+  QStringList const  names  = m_resHolder->states->getNames();
+  QVariantList const states = m_resHolder->settings->settingsMap()["states"].toList();
+  QVariantList       styles;
+  QVector<int>       logIndexes;
+  // one line per experiment and channel: the colour tells the experiment, the dash pattern the channel
+  for (int k{0}; k < comparison.members.size(); ++k) {
+    for (int c{0}; c < comparison.channels.size(); ++c) {
+      qsizetype const   index{names.indexOf(comparison.channels[c])};
+      QVariantMap const channel = ((index >= 0) && (index < states.size())) ? states[index].toMap() : QVariantMap{};
+      QString const     label   = channel.value("label", comparison.channels[c]).toString();
+      if (channel.value("notation").toString() == QLatin1String("scientific")) {
+        logIndexes.push_back(static_cast<int>(styles.size()));
+      }
+      styles.push_back(QVariantMap{{"label", (comparison.channels.size() == 1) ? comparison.members[k].label
+                                                                              : QStringLiteral("%1 · %2").arg(comparison.members[k].label, label)},
+                                   {"name", comparison.channels[c]},
+                                   {"color", palette[k % palette.size()].name()},
+                                   {"pen", (c % 5) + 1},
+                                   {"width", 2},
+                                   {"visible", true}});
+    }
+  }
+  chart->setIndexesForLogAxis(logIndexes);
+  chart->setStyles(styles);
+}
+
+DataViewer *GraphWidget::makeComparisonViewer() {
+  auto *chart = new DataViewer(m_resHolder->logger, true); // the log axis shows only when a line uses it
+  QVariant const period = m_resHolder->settings->settingsMap()["app_settings"].toMap()["graphUpdatePeriod"];
+  if (period.isValid() && (period.toString().toInt() > 0)) {
+    chart->setRefreshPeriodMs(1000 * period.toString().toInt());
+  }
+  chart->setLabelsVisible(m_labelsBtn->isChecked());
+  chart->setValuesVisible(m_valuesBtn->isChecked());
+  applyViewOptions(chart);
+  return chart;
+}
+
+void GraphWidget::openCompareDialog(QString const &editKey) {
+  if (!m_library) {
+    return;
+  }
+  // the tabs that can take part: everything open except comparisons and tabs still being read
+  QVector<ComparisonDialog::OpenTab> openTabs;
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    for (int i{0}; i < pane->count(); ++i) {
+      Tab const *tab = pane->tab(i);
+      if (!tab->comparison && !tab->loading) {
+        openTabs.push_back({tab->key, tab->label, tab->name, runOfTab(*tab)});
+      }
+    }
+  }
+  ChartPane      *editPane = editKey.isEmpty() ? nullptr : paneWith(editKey);
+  Tab const      *edited   = editPane ? editPane->tab(editPane->indexOf(editKey)) : nullptr;
+  ChartComparison initial  = (edited && edited->comparison) ? *edited->comparison : ChartComparison{};
+  Tab const      *current  = m_focused->currentTab();
+  ComparisonDialog dialog(m_resHolder, m_library, openTabs, initial, (current && !current->comparison) ? current->key : QString{}, this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  ChartComparison const comparison = dialog.comparison();
+  if (!edited) {
+    createComparison(comparison);
+    return;
+  }
+  // the same tab, new settings
+  auto const [label, name] = comparisonTitles(comparison);
+  styleComparison(edited->ownViewer, comparison);
+  editPane->updateTab(editKey, label, name, std::make_shared<ChartComparison const>(comparison));
+  computeComparison(editKey, comparison);
+}
+
+void GraphWidget::createComparison(ChartComparison const &comparison, bool splitRight) {
+  auto const [label, name] = comparisonTitles(comparison);
+  Tab tab;
+  tab.key        = QStringLiteral("cmp:%1").arg(++m_comparisons);
+  tab.label      = label;
+  tab.name       = name;
+  tab.loading    = true;
+  tab.comparison = std::make_shared<ChartComparison const>(comparison);
+  tab.ownViewer  = makeComparisonViewer();
+  styleComparison(tab.ownViewer, comparison);
+  openTab(tab, splitRight);
+  computeComparison(tab.key, comparison);
+}
+
+namespace {
+// one experiment of a comparison: its samples (in the order of the states), or the run to read them from
+struct ComparedInput {
+  ExperimentRun            run;
+  bool                     haveData{false};
+  QVector<double>          times; // epoch s
+  QVector<QVector<double>> states;
+};
+
+double typicalPeriod(QVector<double> const &times) {
+  QVector<double> steps;
+  for (int i{1}; (i < times.size()) && (steps.size() < 2000); ++i) {
+    if (times[i] > times[i - 1]) {
+      steps.push_back(times[i] - times[i - 1]);
+    }
+  }
+  if (steps.isEmpty()) {
+    return 1.0;
+  }
+  std::nth_element(steps.begin(), steps.begin() + steps.size() / 2, steps.end());
+  return steps[steps.size() / 2];
+}
+} // namespace
+
+void GraphWidget::computeComparison(QString const &key, ChartComparison const &comparison) {
+  QStringList const names = m_resHolder->states->getNames();
+  // open tabs give their data right away (the live one as it is now); the others are read
+  QVector<ComparedInput> inputs;
+  for (ChartComparison::Member const &member : comparison.members) {
+    ComparedInput input;
+    input.run = member.run;
+    std::shared_ptr<DataHolder const> data;
+    if (member.key == ChartPane::LIVE_KEY) {
+      data = m_resHolder->dataManager->getIntervalToDisplay();
+    } else if (ChartPane *pane = paneWith(member.key)) {
+      data = pane->tab(pane->indexOf(member.key))->data;
+    }
+    if (data && !data->getTimes().isEmpty()) {
+      input.haveData = true;
+      input.times    = data->getTimes();
+      input.states   = data->getStates();
+    }
+    inputs.push_back(input);
+  }
+
+  struct Result {
+    QVector<double>          times;
+    QVector<QVector<double>> values;
+    QString                  error;
+  };
+  auto     result = std::make_shared<Result>();
+  QThread *thread = QThread::create([inputs, names, comparison, result]() mutable {
+    auto const mode = static_cast<core::AlignMode>(comparison.alignMode);
+    QVector<QVector<double>> elapsed;
+    QVector<double>          offsets;
+    QVector<double>          periods;
+    double                   referenceAnchor{qQNaN()};
+    for (int k{0}; k < inputs.size(); ++k) {
+      ComparedInput &input = inputs[k];
+      if (!input.haveData) {
+        QString    error;
+        auto const loaded = ExperimentLibrary::loadDetached(input.run, &error);
+        if (!loaded || loaded->times.isEmpty()) {
+          result->error = error.isEmpty() ? QObject::tr("%1 could not be read.").arg(input.run.title) : error;
+          return;
+        }
+        input.times = loaded->times;
+        input.states.resize(names.size());
+        for (int i{0}; i < names.size(); ++i) { // in the order of the states
+          qsizetype const column = loaded->channelNames.isEmpty() ? i : loaded->channelNames.indexOf(names[i]);
+          input.states[i] = ((column >= 0) && (column < loaded->states.size())) ? loaded->states[column]
+                                                                               : QVector<double>(loaded->times.size(), qQNaN());
+        }
+      }
+      QVector<double> times;
+      times.reserve(input.times.size());
+      for (double const time : std::as_const(input.times)) {
+        times.push_back(time - input.times.first());
+      }
+      // the anchor the experiments are aligned on
+      double offset{0.0};
+      if (mode != core::AlignMode::START) {
+        ExperimentData data;
+        data.run          = input.run;
+        data.times        = input.times;
+        data.states       = input.states;
+        data.channelNames = names;
+        core::ExperimentAnalysis const analysis = core::analyseExperiment(experimentInput(data, names));
+        qsizetype const temp{names.indexOf("temp")};
+        qsizetype const reference{names.indexOf("temp_ref")};
+        double const    anchor = core::alignmentAnchor(analysis, times, (temp >= 0) ? input.states[temp] : QVector<double>{},
+                                                       (reference >= 0) ? input.states[reference] : QVector<double>{}, mode, comparison.alignN);
+        if (k == 0) {
+          referenceAnchor = anchor;
+        } else if (std::isfinite(anchor) && std::isfinite(referenceAnchor)) {
+          offset = referenceAnchor - anchor;
+        }
+      }
+      for (double &time : times) {
+        time += offset;
+      }
+      elapsed.push_back(times);
+      offsets.push_back(offset);
+      periods.push_back(typicalPeriod(times));
+    }
+
+    // a common time grid over all of them (at most 200 000 points)
+    double tMin{std::numeric_limits<double>::max()};
+    double tMax{std::numeric_limits<double>::lowest()};
+    for (QVector<double> const &times : std::as_const(elapsed)) {
+      tMin = std::min(tMin, times.first());
+      tMax = std::max(tMax, times.last());
+    }
+    double const finest{*std::min_element(periods.cbegin(), periods.cend())};
+    double const step{std::max(finest, (tMax - tMin) / 200000.0)};
+    if (!(tMax > tMin) || !(step > 0.0)) {
+      result->error = QObject::tr("The experiments have no time span to compare.");
+      return;
+    }
+    qsizetype const count{static_cast<qsizetype>(std::floor((tMax - tMin) / step)) + 1};
+    double const    base{inputs.first().times.first()}; // the reference experiment's clock
+    result->times.resize(count);
+    for (qsizetype i{0}; i < count; ++i) {
+      result->times[i] = base + tMin + static_cast<double>(i) * step;
+    }
+    // each channel of each experiment, interpolated on the grid; no line across gaps
+    for (int k{0}; k < inputs.size(); ++k) {
+      QVector<double> const &times = elapsed[k];
+      for (QString const &channel : comparison.channels) {
+        qsizetype const       index{names.indexOf(channel)};
+        QVector<double> const values = (index >= 0) ? inputs[k].states[index] : QVector<double>{};
+        QVector<double>       column(count, qQNaN());
+        qsizetype             j{0};
+        for (qsizetype i{0}; (i < count) && !values.isEmpty(); ++i) {
+          double const t{tMin + static_cast<double>(i) * step};
+          if ((t < times.first()) || (t > times.last())) {
+            continue;
+          }
+          while ((j + 1 < times.size()) && (times[j + 1] < t)) {
+            ++j;
+          }
+          if (j + 1 >= times.size()) {
+            column[i] = values.value(j, qQNaN());
+            continue;
+          }
+          double const gap{times[j + 1] - times[j]};
+          double const y0{values.value(j, qQNaN())};
+          double const y1{values.value(j + 1, qQNaN())};
+          if ((gap > 5.0 * periods[k]) || std::isnan(y0) || std::isnan(y1) || (gap <= 0.0)) {
+            column[i] = (std::fabs(t - times[j]) <= periods[k]) ? y0 : qQNaN();
+          } else {
+            column[i] = y0 + (y1 - y0) * (t - times[j]) / gap;
+          }
+        }
+        result->values.push_back(column);
+      }
+    }
+  });
+  connect(thread, &QThread::finished, this, [this, thread, key, result] {
+    thread->deleteLater();
+    ChartPane *pane = paneWith(key);
+    if (!pane) {
+      return; // closed meanwhile
+    }
+    if (!result->error.isEmpty()) {
+      pane->closeTab(pane->indexOf(key));
+      QMessageBox::warning(this, tr("Comparison"), result->error);
+      return;
+    }
+    // a QObject: made here
+    auto holder = std::make_shared<DataHolder>(static_cast<quint16>(result->values.size()), m_resHolder->logger,
+                                               utils::calculateKey(result->times.first()));
+    holder->setSeries(result->times, result->values);
+    pane->setTabData(key, holder);
+  });
+  thread->start(QThread::LowPriority);
+}
+
 void GraphWidget::updateStatisticsSource() {
+  if (m_optionsDrawer && m_optionsDrawer->isOpen()) {
+    updateOptions();
+  }
   if (!m_statistics || !m_focused) {
     return;
   }
   Tab const *tab = m_focused->currentTab();
-  m_statistics->setSource(viewer(), tab ? tab->runKey : QString{}, tab ? tab->name : QString{});
+  bool const comparison{tab && tab->comparison};
+  m_statistics->setSource(viewer(), (tab && !comparison) ? tab->runKey : QString{}, tab ? tab->name : QString{},
+                          comparison ? QStringList{} : m_resHolder->states->getNames());
 }
 
 QWidget *GraphWidget::buildOptions() {
@@ -500,12 +974,6 @@ QWidget *GraphWidget::buildOptions() {
     QFont font  = label->font();
     font.setBold(true);
     label->setFont(font);
-    return label;
-  };
-  auto hint = [page](QString const &text) {
-    auto *label = new QLabel(text, page);
-    label->setProperty("muted", true);
-    label->setWordWrap(true);
     return label;
   };
   auto *title = new QLabel(tr("Options"), page);
@@ -560,30 +1028,63 @@ QWidget *GraphWidget::buildOptions() {
   m_smoothSpin->setSuffix(tr(" samples"));
   m_smoothSpin->setMinimumHeight(30 * ssf);
   lay->addWidget(m_smoothSpin);
-  lay->addWidget(hint(tr("Centred moving average; 1 shows the raw data.")));
   lay->addSpacing(14 * ssf);
 
   // overlays
   lay->addWidget(heading(tr("Overlays")));
+  // of one channel, chamber temperature unless chosen otherwise
+  m_overlayChannel = new QComboBox(page);
+  m_overlayChannel->setMinimumHeight(30 * ssf);
+  {
+    QStringList const  names  = m_resHolder->states->getNames();
+    QVariantList const styles = m_resHolder->settings->settingsMap()["states"].toList();
+    for (int i{0}; i < names.size(); ++i) {
+      QString const label = (i < styles.size()) ? styles[i].toMap()["label"].toString() : QString{};
+      m_overlayChannel->addItem(label.isEmpty() ? names[i] : label, names[i]);
+    }
+    m_overlayChannel->setCurrentIndex(std::max(0, m_overlayChannel->findData(QStringLiteral("temp"))));
+  }
+  lay->addWidget(m_overlayChannel);
   m_minCheck = new QCheckBox(tr("Minimum"), page);
   m_maxCheck = new QCheckBox(tr("Maximum"), page);
   m_avgCheck = new QCheckBox(tr("Average"), page);
   for (QCheckBox *check : {m_minCheck, m_maxCheck, m_avgCheck}) {
     lay->addWidget(check);
   }
-  lay->addWidget(hint(tr("Dashed lines over the visible channels of the main value axis.")));
+  lay->addSpacing(14 * ssf);
+
+  // time axis
+  lay->addWidget(heading(tr("Time axis")));
+  auto *clockRadio = new QRadioButton(tr("Wall clock time"), page);
+  m_relativeRadio  = new QRadioButton(tr("Time from the start"), page);
+  clockRadio->setChecked(true);
+  lay->addWidget(clockRadio);
+  lay->addWidget(m_relativeRadio);
+  lay->addSpacing(14 * ssf);
+
+  // the experiment shown
+  lay->addWidget(heading(tr("Experiment")));
+  m_detailsBtn = new QPushButton(tr("Edit experiment details…"), page);
+  m_detailsBtn->setMinimumHeight(30 * ssf);
+  m_detailsBtn->setFocusPolicy(Qt::NoFocus);
+  lay->addWidget(m_detailsBtn);
+  connect(m_detailsBtn, &QPushButton::clicked, this, &GraphWidget::editExperimentDetails);
   lay->addStretch();
 
   // smoothing and overlays apply to both charts when the page is split
   auto apply = [this] {
     for (ChartPane *pane : std::as_const(m_panes)) {
-      applyViewOptions(pane->viewer());
+      for (DataViewer *chart : pane->viewers()) {
+        applyViewOptions(chart);
+      }
     }
   };
   connect(m_smoothSpin, &QSpinBox::valueChanged, this, apply);
+  connect(m_relativeRadio, &QRadioButton::toggled, this, apply);
   for (QCheckBox *check : {m_minCheck, m_maxCheck, m_avgCheck}) {
     connect(check, &QCheckBox::toggled, this, apply);
   }
+  connect(m_overlayChannel, &QComboBox::currentIndexChanged, this, apply);
   return page;
 }
 
@@ -592,7 +1093,37 @@ void GraphWidget::applyViewOptions(DataViewer *chart) const {
     return;
   }
   chart->setSmoothingWindow(m_smoothSpin->value());
-  chart->setOverlays(m_minCheck->isChecked(), m_maxCheck->isChecked(), m_avgCheck->isChecked());
+  chart->setRelativeTime(m_relativeRadio->isChecked());
+  chart->setOverlays(m_minCheck->isChecked(), m_maxCheck->isChecked(), m_avgCheck->isChecked(), m_overlayChannel->currentData().toString());
+}
+
+void GraphWidget::updateOptions() {
+  updateRangeFields();
+  Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
+  bool const stored{tab && !tab->storeKey.isEmpty() && !tab->loading};
+  m_detailsBtn->setEnabled(stored && (m_resHolder->users->getCurrentAccessLevel() >= AccessManager::AccessLevel::USER_START_1));
+  m_detailsBtn->setToolTip(stored ? tr("DUT, operator and purpose of %1").arg(tab->name)
+                                  : tr("Only for experiments saved in the experiment database"));
+}
+
+void GraphWidget::editExperimentDetails() {
+  Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
+  if (!tab || tab->storeKey.isEmpty()) {
+    return;
+  }
+  auto const manifest = storage::RunStore::manifest(tab->storeKey);
+  // tags and notes are no longer edited here (kept as they are)
+  RunDetailsDialog dialog(manifest ? manifest->metadata : core::RunMetadata{}, tr("Experiment details: %1").arg(tab->name), this, false);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  if (!storage::RunStore::updateMetadata(tab->storeKey, dialog.metadata())) {
+    (new MessageDialog(tr("Experiment details"), tr("This experiment has no manifest yet; it gets one at the next start of the application.")))->open();
+    return;
+  }
+  if (m_library) {
+    m_library->refresh(); // searchable details in the experiment list
+  }
 }
 
 void GraphWidget::updateRangeFields() {
@@ -631,165 +1162,171 @@ void GraphWidget::onAnnotationDrawn(ChartPane *pane, double x0, double x1) {
   m_notes->addAnnotation(annotation); // the panes refresh through annotationsChanged
 }
 
-void GraphWidget::showRun(ExperimentRun const &run, bool splitRight) {
+void GraphWidget::showRun(ExperimentRun const &run, bool splitRight, double from, double to) {
   if (!m_library) {
     return;
   }
-  for (ChartPane *pane : std::as_const(m_panes)) {
-    for (int i{0}; i < pane->count(); ++i) {
-      if (pane->tab(i)->key == run.key) {
-        openTab(*pane->tab(i), splitRight); // open already
-        return;
-      }
+  Tab tab{run.key, startText(run.start), run.title, run.key, nullptr, run.storeKey};
+  tab.zoomFrom = from;
+  tab.zoomTo   = to;
+  openLoading(tab, splitRight, [run](Samples &out, QString &error) {
+    auto const loaded = ExperimentLibrary::loadDetached(run, &error);
+    if (!loaded) {
+      return false;
     }
-  }
-  QApplication::setOverrideCursor(Qt::WaitCursor);
-  QString    error;
-  auto const loaded = m_library->load(run, &error);
-  QApplication::restoreOverrideCursor();
-  if (!loaded || loaded->times.isEmpty()) {
-    QMessageBox::warning(this, tr("Chart"), error.isEmpty() ? tr("%1 could not be read.").arg(run.title) : error);
-    return;
-  }
-  // the channels of the chart, in the order of the states: recorded days keep that order,
-  // database runs name their channels; channels the run lacks stay empty
-  QStringList const        names = m_resHolder->states->getNames();
-  QVector<QVector<double>> states(names.size());
-  for (int i{0}; i < names.size(); ++i) {
-    qsizetype const column = loaded->channelNames.isEmpty() ? i : loaded->channelNames.indexOf(names[i]);
-    states[i] = ((column >= 0) && (column < loaded->states.size())) ? loaded->states[column]
-                                                                     : QVector<double>(loaded->times.size(), qQNaN());
-  }
-  auto holder = std::make_shared<DataHolder>(static_cast<quint16>(names.size()), m_resHolder->logger,
-                                             utils::calculateKey(loaded->times.first()));
-  holder->setSeries(loaded->times, states);
-  openTab({run.key, startText(run.start), run.title, run.key, holder}, splitRight);
+    out = {loaded->times, loaded->channelNames, loaded->states};
+    return true;
+  });
 }
 
 void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> const &experiments) {
-  // the experiments of the day one after the other, with a gap between them, read in the background
-  m_loading = true;
-  m_dayBtn->setText(tr("Loading…"));
+  // the experiments of the day one after the other, with a gap between them
+  QString const name = (experiments.size() == 1) ? tr("%1 · 1 experiment").arg(day.toString("yyyy-MM-dd"))
+                                                 : tr("%1 · %2 experiments").arg(day.toString("yyyy-MM-dd")).arg(experiments.size());
+  // one experiment: its date and time; several: the day and how many
+  QString const label = (experiments.size() == 1) ? startText(experiments.first().start) : name;
+  QString const key   = QStringLiteral("day:") + day.toString(Qt::ISODate);
+  Tab           tab{key, label, name, QStringLiteral("chart:") + key, nullptr, experiments.size() == 1 ? experiments.first().key : QString{}};
   QStringList const names = m_resHolder->states->getNames();
-  struct Merged {
+  openLoading(tab, false, [names, experiments](Samples &out, QString &error) {
     QVector<double>          times;
-    QVector<QVector<double>> states;
-    int                      loaded{0};
-    double                   firstStart{qQNaN()}; // epoch s of the first experiment read
-  };
-  auto     merged  = std::make_shared<Merged>();
-  QThread *thread  = QThread::create([experiments, names, merged] {
-    merged->states.resize(names.size());
+    QVector<QVector<double>> states(names.size());
     for (storage::ExperimentSpan const &experiment : experiments) {
       storage::RunSamples samples;
       if (!storage::RunStore::loadSamples(experiment.key, samples) || samples.times.isEmpty()) {
         continue;
       }
-      if (!merged->times.isEmpty()) { // gap: no line drawn between two experiments
-        merged->times.push_back((merged->times.last() + samples.times.first()) / 2.0);
-        for (auto &state : merged->states) {
+      if (!times.isEmpty()) { // gap: no line drawn between two experiments
+        times.push_back((times.last() + samples.times.first()) / 2.0);
+        for (auto &state : states) {
           state.push_back(qQNaN());
         }
       }
-      if (0 == merged->loaded) {
-        merged->firstStart = experiment.start;
-      }
-      merged->times += samples.times;
+      times += samples.times;
       for (int i{0}; i < names.size(); ++i) {
         qsizetype const column = samples.columns.indexOf(names[i]);
-        merged->states[i] += (column >= 0) ? samples.values[column] : QVector<double>(samples.times.size(), qQNaN());
+        states[i] += (column >= 0) ? samples.values[column] : QVector<double>(samples.times.size(), qQNaN());
       }
-      ++merged->loaded;
     }
-  });
-  connect(thread, &QThread::finished, this, [this, thread, merged, day, names] {
-    thread->deleteLater();
-    m_loading = false;
-    if (merged->times.isEmpty()) {
-      QMessageBox::warning(this, tr("Chart"), tr("The experiments of %1 could not be read.").arg(day.toString("yyyy-MM-dd")));
-      updateDayButton();
-      return;
+    if (times.isEmpty()) {
+      error = tr("The experiments of this day could not be read.");
+      return false;
     }
-    auto holder = std::make_shared<DataHolder>(static_cast<quint16>(names.size()), m_resHolder->logger,
-                                               utils::calculateKey(merged->times.first()));
-    holder->setSeries(merged->times, merged->states);
-    QString const name = (merged->loaded == 1) ? tr("%1 · 1 experiment").arg(day.toString("yyyy-MM-dd"))
-                                               : tr("%1 · %2 experiments").arg(day.toString("yyyy-MM-dd")).arg(merged->loaded);
-    // one experiment: its date and time; several: the day and how many
-    QString const label = (merged->loaded == 1) ? startText(merged->firstStart) : name;
-    QString const key   = QStringLiteral("day:") + day.toString(Qt::ISODate);
-    openTab({key, label, name, QStringLiteral("chart:") + key, holder});
+    out = {times, QStringList{}, states};
+    return true;
   });
-  thread->start(QThread::LowPriority);
 }
 
 void GraphWidget::showExperiment(storage::ExperimentSpan const &experiment) {
-  // samples from the experiment database, read in the background (long experiments take a moment)
-  m_loading = true;
-  m_dayBtn->setText(tr("Loading…"));
-  auto     samples = std::make_shared<storage::RunSamples>();
-  auto     ok      = std::make_shared<bool>(false);
-  QString  key     = experiment.key;
-  QThread *thread  = QThread::create([key, samples, ok] { *ok = storage::RunStore::loadSamples(key, *samples); });
-  connect(thread, &QThread::finished, this, [this, thread, samples, ok, experiment] {
-    thread->deleteLater();
-    m_loading = false;
-    if (!*ok) {
-      QMessageBox::warning(this, tr("Chart"), tr("The samples of %1 could not be read.").arg(experiment.name));
-      updateDayButton();
-      return;
+  // samples from the experiment database
+  QString const key = QStringLiteral("db:") + experiment.key;
+  Tab           tab{key, startText(experiment.start), experiment.name, QStringLiteral("chart:") + key, nullptr, experiment.key};
+  QString const storeKey = experiment.key;
+  openLoading(tab, false, [storeKey](Samples &out, QString &error) {
+    storage::RunSamples samples;
+    if (!storage::RunStore::loadSamples(storeKey, samples, &error)) {
+      return false;
     }
-    // the channels of the chart, in the order of the states; channels the experiment lacks stay empty
-    QStringList const        names = m_resHolder->states->getNames();
-    QVector<QVector<double>> states(names.size());
-    for (int i{0}; i < names.size(); ++i) {
-      qsizetype const column = samples->columns.indexOf(names[i]);
-      states[i] = (column >= 0) ? samples->values[column] : QVector<double>(samples->times.size(), qQNaN());
-    }
-    auto holder = std::make_shared<DataHolder>(static_cast<quint16>(names.size()), m_resHolder->logger,
-                                               utils::calculateKey(experiment.start));
-    holder->setSeries(samples->times, states);
-    QString const key = QStringLiteral("db:") + experiment.key;
-    openTab({key, startText(experiment.start), experiment.name, QStringLiteral("chart:") + key, holder});
+    out = {samples.times, samples.columns, samples.values};
+    return true;
   });
-  thread->start(QThread::LowPriority);
 }
 
 void GraphWidget::handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel) {
   bool const enablePress{newLevel >= AccessManager::AccessLevel::USER_START_1};
   m_exportToBtn->setEnabled(enablePress);
   m_styleBtn->setEnabled(enablePress);
-  m_annotateBtn->setEnabled(enablePress && m_notes);
+  m_canAnnotate = enablePress && m_notes;
+  updateDayButton(); // annotate: also depends on the tab shown
 }
 
 void GraphWidget::exportData() {
-  auto  interval     = std::make_shared<DataHolder>(m_resHolder->states->size(), m_resHolder->logger, 0);
-  auto *exportDialog = new ExportDialog(m_resHolder, interval, this);
-  connect(exportDialog, &QDialog::accepted, this, [this, interval, exportDialog]() {
-    QString const fileExtension{exportDialog->selectedFileExtension()};
-    QString const fileFullPath{exportDialog->selectedFilePath() + "." + fileExtension};
+  Tab const *tab   = m_focused->currentTab();
+  auto const shown = viewer()->getData();
+  if (!tab || !shown || shown->getTimes().isEmpty()) {
+    (new MessageDialog(tr("Export"), tr("There is no data to export in this chart.")))->open();
+    return;
+  }
+  QVector<double> const shownTimes = shown->getTimes();
+  QDate const           day = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(shownTimes.first())).date();
+  bool const comparison{static_cast<bool>(tab->comparison)};
+  // a comparison is exported as shown (its own lines): no day or custom range from the recorded files
+  auto *dialog = new ExportDialog(m_resHolder, day, m_services != nullptr, !tab->storeKey.isEmpty(), !comparison, this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  Tab const tabCopy = *tab;
+  connect(dialog, &QDialog::accepted, this, [this, dialog, tabCopy, shown, shownTimes]() {
+    QString const format   = dialog->format();
+    QString const filePath = dialog->filePath();
+    auto const    range    = dialog->range();
+    QRectF const  view     = viewer()->getCurrentView();
+    auto done = [this](bool ok, QString const &path, QString const &error = {}) {
+      (new MessageDialog(tr("Export"), ok ? tr("Saved to %1").arg(path) : (error.isEmpty() ? tr("Failed to write %1").arg(path) : error)))->open();
+    };
 
-    auto const viewableRange = viewer()->getCurrentView();
-
-    // update interval if need
-    int const selectedRangeType{exportDialog->selectedType()};
-    if (selectedRangeType < 2) { // current view interval or part of it
-      interval->clean();
-      interval->append(viewer()->getData().get());
-      if (0 == selectedRangeType) { // part of current view interval
-        interval->slice(viewableRange.left(), viewableRange.right());
-      }
+    // the time range chosen
+    double from{shownTimes.first()};
+    double to{shownTimes.last()};
+    if (range == ExportDialog::Range::VIEW) {
+      from = view.left();
+      to   = view.right();
+    } else if ((range == ExportDialog::Range::DAY) || (range == ExportDialog::Range::CUSTOM)) {
+      from = static_cast<double>(dialog->from().toSecsSinceEpoch());
+      to   = static_cast<double>(dialog->to().toSecsSinceEpoch());
     }
 
-    QVariantList const statesVariantList = m_resHolder->settings->settingsMap()["states"].toList();
+    if (format == QLatin1String("json")) { // the saved experiment as a bundle
+      QString           error;
+      QJsonObject const bundle = storage::RunStore::bundle(tabCopy.storeKey, &error);
+      QSaveFile         file(filePath);
+      bool const ok{!bundle.isEmpty() && file.open(QIODevice::WriteOnly) && (file.write(QJsonDocument(bundle).toJson(QJsonDocument::Indented)) > 0)
+                    && file.commit()};
+      done(ok, filePath, error);
+      return;
+    }
+    if ((format == QLatin1String("html")) || (format == QLatin1String("pdf"))) { // experiment report of the range
+      ExperimentRun          run;
+      QVector<ExperimentRun> compared;
+      QStringList            channels;
+      if (tabCopy.comparison) { // the first experiment, compared with the others
+        run = tabCopy.comparison->members.first().run;
+        for (int k{1}; k < tabCopy.comparison->members.size(); ++k) {
+          compared.push_back(tabCopy.comparison->members[k].run);
+        }
+        channels = tabCopy.comparison->channels;
+      } else {
+        run = (range == ExportDialog::Range::EXPERIMENT) ? runOfTab(tabCopy) : m_library->makeRangeRun(from, to);
+      }
+      QApplication::setOverrideCursor(Qt::WaitCursor);
+      QString       written;
+      QString const error = m_services->writeReport(run, compared, format == QLatin1String("pdf"), written, channels);
+      QApplication::restoreOverrideCursor();
+      bool ok{error.isEmpty()};
+      if (ok && (QDir::cleanPath(written) != QDir::cleanPath(filePath))) {
+        QFile::remove(filePath);
+        ok = QFile::rename(written, filePath) || QFile::copy(written, filePath);
+      }
+      done(ok, filePath, error);
+      return;
+    }
 
-    if (("txt" == fileExtension) || ("csv" == fileExtension)) {
+    // chart image or data of the range
+    auto interval = std::make_shared<DataHolder>(m_resHolder->states->size(), m_resHolder->logger, 0);
+    if ((range == ExportDialog::Range::DAY) || (range == ExportDialog::Range::CUSTOM)) {
+      interval = dialog->readInterval();
+    } else {
+      interval->append(shown.get());
+      if (range == ExportDialog::Range::VIEW) {
+        interval->slice(view.left(), view.right());
+      }
+    }
+    // the lines as the chart has them (a comparison: its own)
+    QVariantList const statesVariantList = viewer()->styles();
+
+    if (ExportDialog::isData(format)) {
       QStringList  labelsList;
       QVector<int> enablesList;
-
       quint32 const actualStatesCount{
         std::min(static_cast<quint32>(statesVariantList.size()), static_cast<quint32>(interval->getNumberOfStates()))};
-
       for (quint32 i{0U}; i < actualStatesCount; ++i) {
         QVariantMap const stateVariantMap{statesVariantList[i].toMap()};
         if (stateVariantMap["visible"].toBool()) {
@@ -797,37 +1334,33 @@ void GraphWidget::exportData() {
           enablesList.push_back(i);
         }
       }
-
-      auto              *exporter = new DataExporter(interval.get(), fileExtension, labelsList, enablesList, this);
-      StringPathProvider path(fileFullPath, m_resHolder->logger);
+      auto              *exporter = new DataExporter(interval.get(), format, labelsList, enablesList, this);
+      StringPathProvider path(filePath, m_resHolder->logger);
       exporter->saveToFile(&path, this);
-    } else {
-      auto *exportViewer = new DataViewer(m_resHolder->logger, false, this);
-      exportViewer->setData(interval);
-
-      // same style as the focused chart
-      exportViewer->setStyles(statesVariantList);
-      exportViewer->setLabelsVisible(viewer()->labelsVisible());
-      if (0 == selectedRangeType) {
-        exportViewer->setView(viewableRange);
-      }
-
-      int intType = QStringList({"bmp", "png", "jpeg"}).indexOf(fileExtension);
-      switch (intType) {
-        case 0:
-          exportViewer->getPlot()->saveBmp(fileFullPath, 2000, 1000, 1);
-          break;
-        case 1:
-          exportViewer->getPlot()->savePng(fileFullPath, 2000, 1000, 1);
-          break;
-        case 2:
-          exportViewer->getPlot()->saveJpg(fileFullPath, 2000, 1000, 1, 100);
-          break;
-        default:
-          break;
-      }
+      return;
     }
+
+    // chart image: drawn like the focused chart
+    auto *exportViewer = new DataViewer(m_resHolder->logger, viewer()->hasLogAxis(), this);
+    exportViewer->setIndexesForLogAxis(viewer()->logAxisIndexes());
+    exportViewer->setData(interval);
+    exportViewer->setStyles(statesVariantList);
+    exportViewer->setLabelsVisible(viewer()->labelsVisible());
+    applyViewOptions(exportViewer);
+    if (range == ExportDialog::Range::VIEW) {
+      exportViewer->setView(view);
+    }
+    bool ok{false};
+    if (format == QLatin1String("bmp")) {
+      ok = exportViewer->getPlot()->saveBmp(filePath, 2000, 1000, 1);
+    } else if (format == QLatin1String("png")) {
+      ok = exportViewer->getPlot()->savePng(filePath, 2000, 1000, 1);
+    } else {
+      ok = exportViewer->getPlot()->saveJpg(filePath, 2000, 1000, 1, 100);
+    }
+    exportViewer->deleteLater();
+    done(ok, filePath);
   });
-  exportDialog->open();
+  dialog->open();
 }
 } // namespace deepvaccontrol

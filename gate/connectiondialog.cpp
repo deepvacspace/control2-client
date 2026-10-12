@@ -17,7 +17,7 @@ ConnectionDialog::ConnectionDialog(QString const &serverId, QWidget *parent) : Q
 void ConnectionDialog::initGui() {
   auto *mainLay = new QVBoxLayout(this);
 
-  m_titleLabel = new QLabel(tr("Ошибка соединения"), this);
+  m_titleLabel = new QLabel(tr("Connection error"), this);
   mainLay->addWidget(m_titleLabel);
 
   auto *fr = new QFrame();
@@ -35,7 +35,7 @@ void ConnectionDialog::initGui() {
   auto *btnLayout = new QVBoxLayout();
   mainLay->addLayout(btnLayout);
 
-  m_hideBtn = new QPushButton(tr("Скрыть уведомления\n(продолжить попытки подключения)"), this);
+  m_hideBtn = new QPushButton(tr("Hide notifications\n(continue connection attempts)"), this);
   // m_workOfflineBtn = new QPushButton(tr("Работать офлайн"), this);
   // m_cancelBtn      = new QPushButton(tr("Завершить работу"), this);
   btnLayout->addWidget(m_hideBtn);
@@ -81,9 +81,9 @@ void ConnectionDialog::initGui() {
 void ConnectionDialog::updateContent(int contTryCount, int successCount) {
   QString msg;
   if (0 == successCount) {
-    msg = QString(tr("Не удаётся подключиться к %1.\nПопытка подключения #%2.")).arg(m_serverId).arg(contTryCount);
+    msg = QString(tr("Cannot connect to %1.\nConnection attempt #%2.")).arg(m_serverId).arg(contTryCount);
   } else {
-    msg = QString(tr("Соединение c %1 было потеряно.\nПопытка переподключения #%2.")).arg(m_serverId).arg(contTryCount);
+    msg = QString(tr("Connection to %1 was lost.\nReconnect attempt #%2.")).arg(m_serverId).arg(contTryCount);
   }
 
   m_msgLabel->setText(msg);

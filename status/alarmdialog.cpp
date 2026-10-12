@@ -12,7 +12,7 @@ namespace deepvaccontrol {
 AlarmDialog::AlarmDialog(QWidget *parent) : QDialog{parent} {
   auto *mainLay = new QVBoxLayout(this);
 
-  auto *titleLabel = new QLabel(tr("Аппаратная ошибка"), this);
+  auto *titleLabel = new QLabel(tr("Hardware fault"), this);
   mainLay->addWidget(titleLabel);
 
   auto *fr = new QFrame(this);
@@ -22,14 +22,14 @@ AlarmDialog::AlarmDialog(QWidget *parent) : QDialog{parent} {
   mainLay->addWidget(fr);
   mainLay->addSpacing(15 * utils::ssf());
 
-  m_alarmsListLabel = new QLabel(tr("Список аварий"), this);
+  m_alarmsListLabel = new QLabel(tr("Alarm list"), this);
   mainLay->addWidget(m_alarmsListLabel);
   mainLay->addSpacing(30 * utils::ssf());
   mainLay->addStretch();
 
   auto *btnsLayout = new QHBoxLayout();
 
-  auto *closeBtn = new QPushButton(tr("Закрыть"), this);
+  auto *closeBtn = new QPushButton(tr("Close"), this);
   btnsLayout->addWidget(closeBtn);
 
   mainLay->addLayout(btnsLayout);
@@ -49,7 +49,7 @@ AlarmDialog::AlarmDialog(QWidget *parent) : QDialog{parent} {
 
   closeBtn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
 
-  setWindowTitle(tr("Аппаратная ошибка"));
+  setWindowTitle(tr("Hardware fault"));
   setWindowFlag(Qt::WindowStaysOnTopHint);
 
   //    setFixedWidth(400*utils::ssf());

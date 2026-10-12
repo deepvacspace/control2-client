@@ -97,11 +97,12 @@ void SettingsManager::makeAlarmsMap() {
 }
 
 void SettingsManager::getUiLanguage() {
-  m_language = UiLanguage::Russian;
+  // English unless Russian is chosen (System page): the texts in the code are English, translations in res/
+  m_language = UiLanguage::English;
   if (m_settingsMap["app_settings"].isValid() && m_settingsMap["app_settings"].toMap()["language"].isValid()) {
     auto const lang = m_settingsMap["app_settings"].toMap()["language"].toString();
-    if (lang == "en") {
-      m_language = UiLanguage::English;
+    if (lang == "ru") {
+      m_language = UiLanguage::Russian;
     }
   }
 }

@@ -10,13 +10,13 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
     : QDialog{parent}, m_startTime{startTime} {
   auto *mainLay = new QVBoxLayout(this);
 
-  auto *cancelBtn = new QPushButton(tr("Отмена"), this);
+  auto *cancelBtn = new QPushButton(tr("Cancel"), this);
   cancelBtn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
 
   auto *timeLabelStart = new QLabel(this);
   m_timeLabelCurrent   = new QLabel(this);
   auto *labelDesc      = new QLabel(desription, this);
-  auto *labelTitle     = new QLabel(tr("Отложенный пуск"), this);
+  auto *labelTitle     = new QLabel(tr("Delayed start"), this);
 
   {
     QFont font = timeLabelStart->font();
@@ -34,9 +34,9 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
   fr->setFixedWidth(350 * utils::ssf());
 
   auto *gridLay = new QGridLayout(this);
-  gridLay->addWidget(new QLabel(tr("Текущее время:"), this), 0, 0);
+  gridLay->addWidget(new QLabel(tr("Current time:"), this), 0, 0);
   gridLay->addWidget(m_timeLabelCurrent, 0, 1);
-  gridLay->addWidget(new QLabel(tr("Время пуска:"), this), 1, 0);
+  gridLay->addWidget(new QLabel(tr("Start time:"), this), 1, 0);
   gridLay->addWidget(timeLabelStart, 1, 1);
 
   auto *labelLay = new QHBoxLayout();
@@ -67,7 +67,7 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
 
   connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
-  this->setWindowTitle(tr("Отложенный пуск"));
+  this->setWindowTitle(tr("Delayed start"));
   this->setAttribute(Qt::WA_DeleteOnClose);
   //    this->setModal(true);
   this->adjustSize();

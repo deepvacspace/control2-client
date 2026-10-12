@@ -211,10 +211,10 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   mainLay->addStretch();
 
   connect(exitBtn, &QPushButton::clicked, this, [this, resHolder] {
-    auto *confDialog = new ConfDialog(tr("Подтверждение"),
-                                      tr("Вы действительно хотите выйти в ОС?\nРаботы камеры НЕ будет остановлена."),
-                                      tr("Да"),
-                                      tr("Нет"),
+    auto *confDialog = new ConfDialog(tr("Confirmation"),
+                                      tr("Do you really want to exit to the OS?\nThe chamber operation will NOT be stopped."),
+                                      tr("Yes"),
+                                      tr("No"),
                                       this);
     connect(confDialog, &ConfDialog::finished, this, [&](int result) {
       if (1 == result) { // == accepted()
@@ -259,7 +259,7 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   // 0 - список
   auto *sysListWidget = new SysListWidget(resHolder, this);
   prepareSystemTabPage(sysListWidget);
-  m_tabWidget->addTab(sysListWidget, tr("Состояния"));
+  m_tabWidget->addTab(sysListWidget, tr("States"));
 
   // diagram (empty for now)
   auto *diagramWidget = new QWidget(this);
@@ -276,25 +276,25 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   // 1 - журнал
   auto *actionWidget = new ActionWidget(resHolder->actions, this);
   prepareSystemTabPage(actionWidget);
-  m_tabWidget->addTab(actionWidget, tr("Журнал"));
+  m_tabWidget->addTab(actionWidget, tr("Log"));
 
   // 2 - ос
   auto *osWidget = new SysOsWidget(resHolder, this);
   prepareSystemTabPage(osWidget);
-  m_tabWidget->addTab(osWidget, tr("ОС"));
+  m_tabWidget->addTab(osWidget, tr("OS"));
   m_osTab = osWidget;
 
   // 3 - ручный выходы
   auto *forceOutWidget = new ForceOutListWidget(
     resHolder, resHolder->states->getSysValue("outputs"), resHolder->settings->settingsMap()["monitor"].toList(), this);
   prepareSystemTabPage(forceOutWidget);
-  m_tabWidget->addTab(forceOutWidget, tr("Ручное управление выходами"));
+  m_tabWidget->addTab(forceOutWidget, tr("Manual output control"));
   m_outputsTab = forceOutWidget;
 
   // 4 - ПЛК
   auto *cmdWidget = new SysCmdWidget(resHolder, this);
   prepareSystemTabPage(cmdWidget);
-  m_tabWidget->addTab(cmdWidget, tr("Команды ПЛК"));
+  m_tabWidget->addTab(cmdWidget, tr("PLC commands"));
   m_commandsTab = cmdWidget;
 
   connect(resHolder->users, &AccessManager::userSelected, this, &SystemWidget::handleAccessChange);

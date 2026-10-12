@@ -55,7 +55,7 @@ void ProgramTableDelegate::paint(
   // }
   else if (index.data(Qt::UserRole + 3).isValid()) // "solar"
   {
-    textPaint(painter, rect, tr("вкл."));
+    textPaint(painter, rect, tr("on"));
     return;
   }
 

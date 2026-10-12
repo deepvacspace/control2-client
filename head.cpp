@@ -92,7 +92,7 @@ void Head::setupGuiAndLogic() {
 
   connect(m_stopBtn, &StopButton::confirmPressed, this, [this]() {
     m_resHolder->tcpGate->sendTextCmd("stop");
-    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("Работа камеры остановлена пользователем"));
+    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("Chamber operation stopped by user"));
   });
 
   connect(m_nextIntervalBtn, &QPushButton::clicked, this, [this]() {
@@ -217,7 +217,7 @@ void Head::initBaseGui() {
   m_cycleBox    = makeBox(tr("Cycle"), m_cycleLabel);
   timeLay->addLayout(positionRow);
   timeLay->addSpacing(px(10));
-  m_nextIntervalBtn = new QPushButton(tr("Следующий шаг"), timeCard);
+  m_nextIntervalBtn = new QPushButton(tr("Next step"), timeCard);
   m_nextIntervalBtn->setFixedSize(px(100), px(26));
   timeLay->addWidget(m_nextIntervalBtn);
   timeLay->addStretch();
@@ -289,9 +289,9 @@ void Head::updateGui() {
   // status line: as in the header (status and job type)
   QString status = hardwareStatusList().value(static_cast<int>(hardWorkStatus));
   if (jobType == HardwareStatus::JobType::SETPOINT) {
-    status += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "по уставке");
+    status += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "(setpoint)");
   } else if (jobType == HardwareStatus::JobType::PROGRAM) {
-    status += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "по программе");
+    status += QStringLiteral(" ") + QCoreApplication::translate("deepvaccontrol::StatusLabel", "(program)");
   }
   m_statusText->setText(status);
   QColor const dot = working ? c.active
@@ -323,10 +323,10 @@ void Head::updateGui() {
     qint32 const cycleCur{static_cast<qint32>(sys("cycle_cur")->getValue())};
     qint32 const cycleCount{static_cast<qint32>(sys("cycle_total")->getValue())};
 
-    m_intervalLabel->setText(tr("%1 из %2").arg(intervalCur).arg(intervalCount));
+    m_intervalLabel->setText(tr("%1 of %2").arg(intervalCur).arg(intervalCount));
     m_nextIntervalBtn->setVisible((intervalCur < intervalCount) || (cycleCur < cycleCount));
     m_cycleBox->setVisible(cycleCount > 1);
-    m_cycleLabel->setText(tr("%1 из %2").arg(cycleCur).arg(cycleCount));
+    m_cycleLabel->setText(tr("%1 of %2").arg(cycleCur).arg(cycleCount));
   } else {
     m_cycleBox->setVisible(false);
     m_nextIntervalBtn->setVisible(false);

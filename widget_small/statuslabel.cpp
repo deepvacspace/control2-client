@@ -29,7 +29,7 @@ StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent}
       if ((jobTypeIndex < 0) || (2 < jobTypeIndex)) {
         jobTypeIndex = 0;
       }
-      m_typeStr = QStringList({"", tr("по уставке"), tr("по программе")}).at(jobTypeIndex);
+      m_typeStr = QStringList({"", tr("(setpoint)"), tr("(program)")}).at(jobTypeIndex);
       updateString();
     });
   }

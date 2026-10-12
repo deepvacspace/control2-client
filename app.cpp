@@ -211,7 +211,7 @@ void App::runtimeSetups() {
   m_resHolder.users = m_users;
 
   m_actions.addAction(ActionManager::ActionType::APP,
-                      QString(tr("Запуск приложения. Пользователь '%1'")).arg(m_users->getCurrentUserName()));
+                      QString(tr("Application started. User '%1'")).arg(m_users->getCurrentUserName()));
 
   // Init UI window
   m_mainWindow = new MainWindow(&m_resHolder, m_windowMode);
@@ -238,7 +238,7 @@ void App::runtimeSetups() {
     });
 
   connect(m_gateTcp, &GateTcp::jobFinishedReceived, this, [this]() {
-    m_actions.addAction(ActionManager::ActionType::PLC, tr("Работа камеры завешена"));
+    m_actions.addAction(ActionManager::ActionType::PLC, tr("Chamber operation completed"));
   });
 
   connect(m_gateTcp, &GateTcp::showRedFlag, m_mainWindow, &MainWindow::setConnectionErrorFlash);
@@ -268,7 +268,7 @@ void App::onStateNamesReceive(QStringList states) {
   m_status.setStatesIdentical(true);
   m_lastGoodAddress = m_gateTcp->serverAddress();
   m_mismatchAddress.clear();
-  m_logger.stream(Logger::Level::INFO) << tr("Список переменных состояний на ПЛК и ПК совпадают");
+  m_logger.stream(Logger::Level::INFO) << tr("PLC and PC state variable lists match");
   requestSettingList(); // compared once the values are known to match
 
   checkConfigIdentical();
@@ -386,14 +386,14 @@ void App::onSettingsMapReceived(QMap<QString, float> plcSettings) {
 
   if (plcSettings == localSetting) {
     if (m_status.getSettingsListIdentical()) { // not first time
-      auto *msgDlg = new MessageDialog(tr("Подтверждение"), tr("Настройки совпадают"));
+      auto *msgDlg = new MessageDialog(tr("Confirmation"), tr("Settings match"));
       msgDlg->open();
     }
     m_status.setSettingsListIdentical(true);
-    m_logger.stream(Logger::Level::INFO) << tr("Список настроек на ПЛК и ПК совпадают");
+    m_logger.stream(Logger::Level::INFO) << tr("PLC and PC settings lists match");
   } else {
-    QMessageBox::critical(nullptr, tr("Внимание"), QString(tr("Настройки на ПЛК и ПК отличаются")));
-    m_logger.stream(Logger::Level::WAR) << tr("Настройки на ПЛК и ПК отличаются");
+    QMessageBox::critical(nullptr, tr("Warning"), QString(tr("PLC and PC settings differ")));
+    m_logger.stream(Logger::Level::WAR) << tr("PLC and PC settings differ");
 
     auto *diffDialog = new SettingsDiff(localSetting, plcSettings);
     connect(diffDialog, &QDialog::finished, this, [this, localSetting, plcSettings](int result) {
@@ -430,7 +430,7 @@ void App::onAlarmReceived(quint32 alarmCode) {
     bool const ithAlarm{static_cast<bool>(alarmCode & 0x01)};
     if (ithAlarm) {
       QString const alarmLabel{m_settings.getAlarmsMap().contains(i) ? m_settings.getAlarmsMap()[i]
-                                                                     : tr("Неизвестная ошибка")};
+                                                                     : tr("Unknown error")};
       QString const alarmText{QString("%1. %2").arg(i + 1).arg(alarmLabel)};
       alarmLabelsList.push_back(alarmText);
     }
@@ -440,12 +440,12 @@ void App::onAlarmReceived(quint32 alarmCode) {
 
   m_alarmDialog->showAlarmsList(alarmLabelsList);
 
-  m_actions.addAction(ActionManager::ActionType::ERR, tr("Ошибка") + ": " + alarmLabelsList.join(" "));
+  m_actions.addAction(ActionManager::ActionType::ERR, tr("Error") + ": " + alarmLabelsList.join(" "));
 }
 
 void App::onJobFinishedReceived() {
   if (nullptr == m_finishDialog) {
-    m_finishDialog = new MessageDialog(tr("Окончание работы"), tr("Камера завершила работу"), m_mainWindow);
+    m_finishDialog = new MessageDialog(tr("Operation complete"), tr("Chamber operation completed"), m_mainWindow);
     connect(m_finishDialog, &MessageDialog::finished, this, [this](int) {
       m_gateTcp->sendTextCmd("confrim_finish");
       m_finishDialog->deleteLater();
@@ -461,10 +461,10 @@ void App::onStateValuesReceive(QVector<float> stateValues) {
   }
 
   if (stateValues.size() != m_states.size()) {
-    QString const errMsg{QString(tr("Количество значений (%1) отличается от количества переменных состояний (%2)"))
+    QString const errMsg{QString(tr("Number of values (%1) differs from number of state variables (%2)"))
                            .arg(stateValues.size())
                            .arg(m_states.size())};
-    QMessageBox::critical(nullptr, tr("Критическая ошибка"), errMsg);
+    QMessageBox::critical(nullptr, tr("Critical error"), errMsg);
     m_logger.stream(Logger::Level::ERR) << errMsg;
     return;
   }
