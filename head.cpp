@@ -12,6 +12,7 @@
 
 #include "chamberview.h"
 #include "constants.h"
+#include "experimentrecorder.h"
 #include "theme.h"
 #include "utils.h"
 
@@ -42,6 +43,13 @@ public:
       update();
     }
   }
+  // 0 .. 100 % from the left (pressure control) instead of from the centre
+  void setOneSided(bool oneSided) {
+    if (oneSided != m_oneSided) {
+      m_oneSided = oneSided;
+      update();
+    }
+  }
 
 protected:
   void paintEvent(QPaintEvent *) override {
@@ -56,6 +64,14 @@ protected:
     if (std::isnan(m_value)) {
       return;
     }
+    if (m_oneSided) {
+      double const end = track.left() + std::clamp(m_value, 0.0, 100.0) / 100.0 * track.width();
+      p.setBrush(c.accent);
+      p.drawRoundedRect(QRectF(track.topLeft(), QPointF(end, track.bottom())), h / 2, h / 2);
+      p.setBrush(c.text);
+      p.drawRoundedRect(QRectF(end - px(1), 0, px(2), height()), px(1), px(1));
+      return;
+    }
     double const center = track.center().x();
     double const v      = std::clamp(m_value, -100.0, 100.0) / 100.0;
     double const end    = center + v * track.width() / 2.0;
@@ -67,6 +83,7 @@ protected:
 
 private:
   double m_value{std::numeric_limits<double>::quiet_NaN()};
+  bool   m_oneSided{false};
 };
 
 Head::Head(ResHolder *resHolder, QWidget *parent)
@@ -154,16 +171,30 @@ void Head::initBaseGui() {
   topRow->addWidget(m_stopBtn);
   statusLay->addLayout(topRow);
   statusLay->addSpacing(px(14));
-  statusLay->addWidget(muted(tr("Chamber temperature")));
-  auto *tempRow = new QHBoxLayout();
-  m_tempValue   = new QLabel(statusCard);
-  m_tempUnit    = new QLabel(QStringLiteral("°C"), statusCard);
-  m_tempUnit->setProperty("muted", true);
-  m_tempUnit->setAlignment(Qt::AlignTop);
-  tempRow->addWidget(m_tempValue);
-  tempRow->addWidget(m_tempUnit);
-  tempRow->addStretch();
-  statusLay->addLayout(tempRow);
+  // the readings: temperature, and the pressure beside it when the chamber has a gauge
+  auto *readings = new QGridLayout();
+  readings->setHorizontalSpacing(px(24));
+  readings->setVerticalSpacing(px(2));
+  // a caption in the first row, the number with its unit in the second (sharing the bottom line)
+  auto reading = [&](int column, QString const &title, QLabel *&value, QLabel *&unit, QString const &unitText) {
+    auto *caption = muted(title);
+    auto *box     = new QWidget(statusCard);
+    auto *row     = new QHBoxLayout(box);
+    row->setContentsMargins(0, 0, 0, 0);
+    value = new QLabel(box);
+    unit  = new QLabel(unitText, box);
+    unit->setProperty("muted", true);
+    unit->setAlignment(Qt::AlignTop);
+    row->addWidget(value);
+    row->addWidget(unit);
+    readings->addWidget(caption, 0, column, Qt::AlignLeft | Qt::AlignBottom);
+    readings->addWidget(box, 1, column, Qt::AlignLeft | Qt::AlignBottom);
+    return QVector<QWidget *>{caption, box};
+  };
+  reading(0, tr("Chamber temperature"), m_tempValue, m_tempUnit, QStringLiteral("°C"));
+  m_presWidgets = reading(1, tr("Pressure"), m_presValue, m_presUnit, QString{});
+  readings->setColumnStretch(2, 1);
+  statusLay->addLayout(readings);
   auto *line = new QFrame(statusCard);
   line->setObjectName("homeDivider");
   line->setFixedHeight(px(1));
@@ -183,13 +214,13 @@ void Head::initBaseGui() {
   m_outputBar = new ControlBar(statusCard);
   statusLay->addWidget(m_outputBar);
   auto *barLabels = new QHBoxLayout();
-  auto *cooling   = muted(tr("Cooling"));
-  auto *heating   = muted(tr("Heating"));
-  cooling->setProperty("small", true);
-  heating->setProperty("small", true);
-  barLabels->addWidget(cooling);
+  m_coolingLabel  = muted(tr("Cooling"));
+  m_heatingLabel  = muted(tr("Heating"));
+  m_coolingLabel->setProperty("small", true);
+  m_heatingLabel->setProperty("small", true);
+  barLabels->addWidget(m_coolingLabel);
   barLabels->addStretch();
-  barLabels->addWidget(heating);
+  barLabels->addWidget(m_heatingLabel);
   statusLay->addLayout(barLabels);
   statusLay->addStretch();
   column->addWidget(statusCard, 60);
@@ -254,6 +285,8 @@ QLabel[muted="true"] { color: %6; }
   m_statusText->setFont(sized(1.15, true));
   m_tempValue->setFont(sized(5.4, true));
   m_tempUnit->setFont(sized(1.8, false));
+  m_presValue->setFont(sized(4.0, true));
+  m_presUnit->setFont(sized(1.8, false));
   m_setpointValue->setFont(sized(1.3, true));
   m_outputValue->setFont(sized(1.3, true));
   m_curWorkTimeLabel->setFont(sized(2.6, true));
@@ -300,16 +333,46 @@ void Head::updateGui() {
   m_statusDot->setStyleSheet(QStringLiteral("background: %1; border-radius: %2px;").arg(dot.name()).arg(px(4)));
   m_stopBtn->setEnabled(working && (AccessManager::AccessLevel::SPECTATOR_0 != m_accessLevel));
 
-  // temperature, setpoint, control output
+  // temperature and pressure; setpoint and control output of what the job controls
   SystemValue const *temp = sys("temp");
-  SystemValue const *ref  = sys("temp_ref");
-  SystemValue const *out  = sys("temp_u");
+  SystemValue const *pres = sys("pres");
   m_tempValue->setText(temp ? valueText(temp->getValue(), static_cast<int>(temp->getPrec())) : QStringLiteral("--"));
-  m_setpointValue->setText(ref ? valueText(ref->getValue(), static_cast<int>(ref->getPrec()), QStringLiteral(" °C")) : QStringLiteral("--"));
+  QString presUnit;
+  if (pres) {
+    QString const   label = pres->getLabel();
+    qsizetype const comma = label.lastIndexOf(',');
+    presUnit              = (comma >= 0) ? label.mid(comma + 1).trimmed() : tr("mmHg");
+    float const v{pres->getValue()};
+    bool const  valid{!std::isnan(v) && (v > -10e9) && (v < 10e9)};
+    m_presValue->setText(!valid ? QStringLiteral("--")
+                                : (pres->isSciNotation() ? utils::formatScientific(v, static_cast<int>(pres->getPrec()))
+                                                         : valueText(v, static_cast<int>(pres->getPrec()))));
+    m_presUnit->setText(presUnit);
+  }
+  for (QWidget *widget : std::as_const(m_presWidgets)) {
+    widget->setVisible(pres != nullptr);
+  }
+  bool const vacuum{pres && working && m_resHolder->recorder && m_resHolder->recorder->pressureControlled()};
+  SystemValue const *ref = vacuum ? sys("pres_ref") : sys("temp_ref");
+  SystemValue const *out = vacuum ? sys("pres_u") : sys("temp_u");
+  if (!ref) {
+    m_setpointValue->setText(QStringLiteral("--"));
+  } else if (vacuum) {
+    m_setpointValue->setText((ref->isSciNotation() ? utils::formatScientific(ref->getValue(), static_cast<int>(ref->getPrec()))
+                                                   : valueText(ref->getValue(), static_cast<int>(ref->getPrec())))
+                             + QStringLiteral(" ") + presUnit);
+  } else {
+    m_setpointValue->setText(valueText(ref->getValue(), static_cast<int>(ref->getPrec()), QStringLiteral(" °C")));
+  }
   double const u = out ? out->getValue() : std::numeric_limits<double>::quiet_NaN();
   m_outputValue->setText(out ? valueText(static_cast<float>(u), 0, QStringLiteral(" %")) : QStringLiteral("--"));
-  m_outputValue->setStyleSheet(QStringLiteral("color: %1;").arg((std::isnan(u) || std::fabs(u) < 0.5) ? c.text.name() : (u < 0 ? c.cold.name() : c.heat.name())));
+  m_outputValue->setStyleSheet(QStringLiteral("color: %1;").arg((std::isnan(u) || std::fabs(u) < 0.5) ? c.text.name()
+                                                                : (vacuum ? c.accent.name() : (u < 0 ? c.cold.name() : c.heat.name()))));
+  m_outputBar->setOneSided(vacuum);
   m_outputBar->setValue(std::fabs(u) > 1e9 ? std::numeric_limits<double>::quiet_NaN() : u);
+  // the bar: cooling .. heating, or how hard it pumps
+  m_coolingLabel->setText(vacuum ? tr("Vacuum") : tr("Cooling"));
+  m_heatingLabel->setVisible(!vacuum);
 
   // test time and program position
   SystemValue const *total = sys("t_total");

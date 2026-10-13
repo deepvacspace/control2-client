@@ -23,7 +23,8 @@ public:
   // width in unscaled pixels
   OverlayDrawer(QWidget *host, int width, Side side = Side::LEFT);
 
-  void               setContent(QWidget *content);
+  // scrollable: the content scrolls up and down when it does not fit the height
+  void               setContent(QWidget *content, bool scrollable = false);
   void               open();
   void               close();
   void               toggle();

@@ -9,7 +9,7 @@ namespace deepvaccontrol {
 class LineEditScreen : public QLineEdit {
   Q_OBJECT
 public:
-  explicit LineEditScreen(QWidget *parent = nullptr, VirtualKeyboard::Language lang = VirtualKeyboard::RU);
+  explicit LineEditScreen(QWidget *parent = nullptr, VirtualKeyboard::Language lang = VirtualKeyboard::EN);
 
 private:
   VirtualKeyboard::Language m_lang;

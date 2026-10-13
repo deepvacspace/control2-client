@@ -1,7 +1,7 @@
 #include "exportdialog.h"
 
 #include <QButtonGroup>
-#include <QDateTimeEdit>
+#include "datetimefield.h"
 #include <QDir>
 #include <QFileDialog>
 #include <QFrame>
@@ -54,7 +54,8 @@ struct Format {
 };
 } // namespace
 
-ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, QWidget *parent)
+ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, bool canComparisonCsv,
+                           QWidget *parent)
     : QDialog{parent}, m_resHolder{resHolder}, m_day{day} {
   setWindowTitle(tr("Export"));
   auto *lay = new QVBoxLayout(this);
@@ -125,6 +126,10 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
     row->addStretch();
     formatLay->addLayout(row);
   }
+  if (canComparisonCsv) {
+    formatLay->addSpacing(px(6));
+    addGroup(tr("Comparison"), QString{}, {{"comparison-csv", QT_TR_NOOP("Comparison CSV")}}, true);
+  }
   formatLay->addStretch();
   m_formats->buttons().first()->setChecked(true);
   columns->addWidget(formatCard, 3);
@@ -152,12 +157,10 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   customGrid->setContentsMargins(px(24), 0, 0, 0);
   customGrid->setHorizontalSpacing(px(8));
   QDateTime const dayStart(m_day, QTime(0, 0));
-  m_fromEdit = new QDateTimeEdit(dayStart, rangeCard);
-  m_toEdit   = new QDateTimeEdit(QDateTime(m_day, QTime(23, 59, 59)), rangeCard);
+  m_fromEdit = new DateTimeField(dayStart, rangeCard); // date from a calendar, time from the number pad
+  m_toEdit   = new DateTimeField(QDateTime(m_day, QTime(23, 59, 59)), rangeCard);
   int row{0};
   for (auto const &[label, edit] : {std::pair{tr("From"), m_fromEdit}, std::pair{tr("To"), m_toEdit}}) {
-    edit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-    edit->setMinimumHeight(px(28));
     auto *name = new QLabel(label, rangeCard);
     name->setVisible(canUseFiles);
     customGrid->addWidget(name, row, 0);
@@ -237,7 +240,8 @@ bool ExportDialog::isData(QString const &format) {
 
 void ExportDialog::updateState() {
   QString const fmt = format();
-  bool const    bundle{fmt == QLatin1String("json")};
+  bool const    comparisonCsv{fmt == QLatin1String("comparison-csv")};
+  bool const    bundle{(fmt == QLatin1String("json")) || comparisonCsv};
   // a bundle is the whole saved experiment
   for (QAbstractButton *radio : m_ranges->buttons()) {
     radio->setEnabled(!bundle);
@@ -247,13 +251,14 @@ void ExportDialog::updateState() {
   m_toEdit->setEnabled(custom);
   bool const fromFiles{!bundle && ((range() == Range::DAY) || (range() == Range::CUSTOM))};
   m_previewBtn->setVisible(fromFiles && (isImage(fmt) || isData(fmt)));
-  m_rangeNote->setText(bundle      ? tr("The bundle holds the whole experiment as saved in the database.")
+  m_rangeNote->setText(comparisonCsv ? tr("One row per experiment and channel (min, max, mean, final), on the comparison's time axis.")
+                       : bundle  ? tr("The bundle holds the whole experiment as saved in the database.")
                        : fromFiles ? tr("Read from the recorded data of this computer.")
                                    : QString{});
 }
 
 void ExportDialog::choosePath() {
-  QString const extension = format();
+  QString const extension = (format() == QLatin1String("comparison-csv")) ? QStringLiteral("csv") : format();
   if (extension.isEmpty()) {
     return;
   }

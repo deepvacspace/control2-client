@@ -1,6 +1,10 @@
 #include "comparisondialog.h"
 
 #include <QComboBox>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QStyledItemDelegate>
 #include <QDateTime>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -14,6 +18,7 @@
 #include "experimentbrowser.h"
 #include "resholder.h"
 #include "theme.h"
+#include "touchsupport.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -46,10 +51,77 @@ QFrame *card(QWidget *parent) {
   return frame;
 }
 
+// tick box and text drawn together (style sheet indicators overlap the text); a tap anywhere on the row toggles it
+class CheckDelegate : public QStyledItemDelegate {
+public:
+  using QStyledItemDelegate::QStyledItemDelegate;
+
+  void paint(QPainter *painter, QStyleOptionViewItem const &option, QModelIndex const &index) const override {
+    theme::Colors const &c = theme::colors();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    if (option.state & QStyle::State_Selected) {
+      painter->fillRect(option.rect, QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 30));
+    }
+    bool const   checked{index.data(Qt::CheckStateRole).toInt() == Qt::Checked};
+    double const box{static_cast<double>(px(16))};
+    QRectF const indicator(option.rect.left() + px(4), option.rect.center().y() - box / 2 + 0.5, box, box);
+    painter->setPen(QPen(checked ? c.accent : c.muted, px(1)));
+    painter->setBrush(checked ? c.accent : c.panel);
+    painter->drawRoundedRect(indicator, px(3), px(3));
+    if (checked) {
+      QPen tick(Qt::white, std::max(1.5, box / 8.0), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+      painter->setPen(tick);
+      painter->setBrush(Qt::NoBrush);
+      QPointF const a(indicator.left() + box * 0.24, indicator.top() + box * 0.52);
+      QPointF const b(indicator.left() + box * 0.43, indicator.top() + box * 0.70);
+      QPointF const d(indicator.left() + box * 0.77, indicator.top() + box * 0.32);
+      painter->drawPolyline(QPolygonF{{a, b, d}});
+    }
+    QRect const text = option.rect.adjusted(static_cast<int>(indicator.right()) - option.rect.left() + px(8), 0, -px(4), 0);
+    painter->setPen((index.flags() & Qt::ItemIsEnabled) ? c.text : c.off);
+    painter->setFont(option.font);
+    painter->drawText(text, Qt::AlignLeft | Qt::AlignVCenter,
+                      option.fontMetrics.elidedText(index.data(Qt::DisplayRole).toString(), Qt::ElideRight, text.width()));
+    painter->restore();
+  }
+
+  QSize sizeHint(QStyleOptionViewItem const &option, QModelIndex const &index) const override {
+    int const width{option.fontMetrics.horizontalAdvance(index.data(Qt::DisplayRole).toString()) + px(32)};
+    return {width, std::max(px(28), option.fontMetrics.height() + px(10))};
+  }
+
+  bool editorEvent(QEvent *event, QAbstractItemModel *model, QStyleOptionViewItem const &option, QModelIndex const &index) override {
+    if (!(index.flags() & Qt::ItemIsUserCheckable) || !(index.flags() & Qt::ItemIsEnabled)) {
+      return false;
+    }
+    bool toggle{false};
+    if (event->type() == QEvent::MouseButtonRelease) {
+      auto *mouse = static_cast<QMouseEvent *>(event);
+      toggle      = (mouse->button() == Qt::LeftButton) && option.rect.contains(mouse->position().toPoint());
+    } else if (event->type() == QEvent::KeyPress) {
+      int const key{static_cast<QKeyEvent *>(event)->key()};
+      toggle = (key == Qt::Key_Space) || (key == Qt::Key_Select);
+    } else if (event->type() == QEvent::MouseButtonDblClick) {
+      return true; // not a second toggle
+    }
+    if (!toggle) {
+      return false;
+    }
+    bool const checked{index.data(Qt::CheckStateRole).toInt() == Qt::Checked};
+    return model->setData(index, checked ? Qt::Unchecked : Qt::Checked, Qt::CheckStateRole);
+  }
+};
+
 QListWidget *checkList(QWidget *parent) {
   auto *list = new QListWidget(parent);
   list->setFrameShape(QFrame::NoFrame);
+  // tick boxes: an empty box, or a filled one
+  theme::Colors const &c = theme::colors();
   list->setStyleSheet(QStringLiteral("QListWidget { background: transparent; }"));
+  list->setItemDelegate(new CheckDelegate(list));
+  Q_UNUSED(c)
+  touch::enableScrolling(list);
   return list;
 }
 } // namespace
@@ -60,8 +132,8 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
   bool const editing{!initial.members.isEmpty()};
   setWindowTitle(editing ? tr("Change comparison") : tr("New comparison"));
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(px(20), px(18), px(20), px(16));
-  lay->setSpacing(px(12));
+  lay->setContentsMargins(px(16), px(12), px(16), px(12));
+  lay->setSpacing(px(8));
   auto *title = new QLabel(windowTitle(), this);
   QFont font  = title->font();
   font.setBold(true);
@@ -180,7 +252,10 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
   }
   connect(m_alignCombo, &QComboBox::currentIndexChanged, this, &ComparisonDialog::updateState);
   updateState();
-  resize(px(1000), px(560));
+  // most of the window, never bigger than it
+  QWidget const *window = parent ? parent->window() : nullptr;
+  QSize const    room   = window ? window->size() : QSize(px(1000), px(600));
+  resize(std::min(px(940), static_cast<int>(room.width() * 0.8)), std::min(px(560), static_cast<int>(room.height() * 0.8)));
 }
 
 void ComparisonDialog::addFromList(ExperimentRun const &run) {

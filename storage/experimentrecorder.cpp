@@ -178,6 +178,30 @@ QString ExperimentRecorder::chamberName() const {
   return ref;
 }
 
+bool ExperimentRecorder::pressureControlled() const {
+  if (!jobActive()) {
+    return false;
+  }
+  // a parameter is set in an interval when its bit (its place in control_params) is in the interval's flags
+  QStringList order;
+  for (QVariant const &param : m_resHolder->settings->settingsMap().value("control_params").toList()) {
+    order << param.toMap().value("name").toString();
+  }
+  qsizetype const tempBit{order.indexOf("temp")};
+  qsizetype const presBit{order.indexOf("pres")};
+  if (presBit < 0) {
+    return false;
+  }
+  bool pressure{false};
+  bool temperature{false};
+  for (QVariant const &entry : m_job.info.program.value("intervals").toList()) {
+    quint32 const flags{entry.toMap().value("flags").toUInt()};
+    pressure    = pressure || ((flags >> presBit) & 1U);
+    temperature = temperature || ((tempBit >= 0) && ((flags >> tempBit) & 1U));
+  }
+  return pressure && !temperature;
+}
+
 bool ExperimentRecorder::jobActive() const {
   return !std::isnan(m_job.start);
 }

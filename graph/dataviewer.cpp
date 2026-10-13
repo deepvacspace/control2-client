@@ -165,6 +165,10 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     m_currentView = mouseToCoord(rect);
   });
   m_plot->addLayer("regions", m_plot->layer("main"), QCustomPlot::limBelow);
+  m_setpointCurve = new QCPCurve(m_plot->xAxis, m_plot->yAxis);
+  m_setpointCurve->setPen(QPen(theme::colors().muted, 1.6, Qt::DashLine));
+  m_setpointCurve->setSelectable(QCP::stNone);
+  m_setpointCurve->setVisible(false);
 
   // legend position: a box over the top left of the chart, small labels
   m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignLeft | Qt::AlignTop);
@@ -175,6 +179,7 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     m_plot->legend->setFont(font);
   }
   m_plot->setMouseTracking(true); // the value label follows the mouse without a button pressed
+  m_plot->setAttribute(Qt::WA_AcceptTouchEvents); // fingers: see handleTouch()
   m_plot->installEventFilter(this);
 
   // value label: over the legend box
@@ -204,7 +209,7 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   m_tracer->setSelectable(false);
   m_tracer->setInterpolating(false);
   m_tracer->setStyle(QCPItemTracer::tsCircle);
-  m_tracer->setSize(9 * utils::ssf());
+  m_tracer->setSize(5 * utils::ssf());
   m_tracer->setVisible(false);
 
   m_valueText = new QCPItemText(m_plot);
@@ -482,8 +487,30 @@ void DataViewer::updateValueCursor(QPointF const &pos) {
     return;
   }
 
-  // the visible line closest to the mouse at the time pointed at
+  // an event / anomaly marker under the mouse: its text
   double const x{m_plot->xAxis->pixelToCoord(pos.x())};
+  for (Marker const &marker : std::as_const(m_markers)) {
+    if (std::fabs(m_plot->xAxis->coordToPixel(marker.x) - pos.x()) <= 6.0 * utils::ssf()) {
+      showCursor(marker.x, qQNaN(), -1, -1);
+      theme::Colors const &c = theme::colors();
+      m_valueText->position->setType(QCPItemPosition::ptPlotCoords);
+      m_valueText->position->setAxes(m_plot->xAxis, m_plot->yAxis);
+      m_valueText->position->setCoords(marker.x, m_plot->yAxis->pixelToCoord(pos.y()));
+      m_valueText->setText(QStringLiteral("%1\n%2").arg(marker.text,
+                                                        QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(marker.x))).toString("hh:mm:ss")));
+      m_valueText->setColor(marker.color.darker(120));
+      m_valueText->setPen(QPen(marker.color));
+      m_valueText->setBrush(QBrush(QColor(c.panel.red(), c.panel.green(), c.panel.blue(), 235)));
+      m_valueText->setPositionAlignment(((m_plot->xAxis->coordToPixel(marker.x) > m_plot->axisRect()->rect().center().x()) ? Qt::AlignRight : Qt::AlignLeft)
+                                        | Qt::AlignVCenter);
+      m_valueText->setVisible(true);
+      m_plot->layer("cursor")->replot();
+      emit valueCursorMoved(marker.x, -1);
+      return;
+    }
+  }
+
+  // the visible line closest to the mouse at the time pointed at
   double       bestDist{std::numeric_limits<double>::max()};
   int          bestGraph{-1};
   int          bestIndex{-1};
@@ -593,11 +620,179 @@ void DataViewer::hideValueCursor() {
 }
 
 bool DataViewer::eventFilter(QObject *watched, QEvent *event) {
-  if ((watched == m_plot) && (event->type() == QEvent::Leave)) {
-    hideValueCursor();
-    emit valueCursorHidden();
+  if (watched == m_plot) {
+    switch (event->type()) {
+      case QEvent::Leave:
+        if (!m_fromTouch) {
+          hideValueCursor();
+          emit valueCursorHidden();
+        }
+        break;
+      case QEvent::TouchBegin:
+      case QEvent::TouchUpdate:
+      case QEvent::TouchEnd:
+      case QEvent::TouchCancel:
+        handleTouch(static_cast<QTouchEvent *>(event));
+        return true;
+      default:
+        break;
+    }
   }
   return QWidget::eventFilter(watched, event);
+}
+
+void DataViewer::sendMouse(QEvent::Type type, QPointF const &pos, Qt::MouseButtons buttons) {
+  Qt::MouseButton const button = (type == QEvent::MouseMove) ? Qt::NoButton : Qt::LeftButton;
+  QMouseEvent           mouse(type, pos, m_plot->mapToGlobal(pos), button, buttons, Qt::NoModifier);
+  QCoreApplication::sendEvent(m_plot, &mouse);
+}
+
+void DataViewer::handleTouch(QTouchEvent *event) {
+  event->accept();
+  QList<QEventPoint> active;
+  for (QEventPoint const &point : event->points()) {
+    if (point.state() != QEventPoint::Released) {
+      active.push_back(point);
+    }
+  }
+  auto endSingle = [this] {
+    if (m_touchSingle) {
+      sendMouse(QEvent::MouseButtonRelease, m_touchLast, Qt::NoButton);
+      m_touchSingle = false;
+    }
+  };
+  if (event->type() == QEvent::TouchCancel) {
+    endSingle();
+    m_pinching  = false;
+    m_fromTouch = false;
+    return;
+  }
+
+  // two fingers: pinch to zoom (each axis by how far the fingers spread along it) and move with their middle
+  if (active.size() >= 2) {
+    endSingle();
+    QPointF const a = active[0].position();
+    QPointF const b = active[1].position();
+    if (!m_pinching) {
+      m_pinching = true;
+      m_pinchA   = a;
+      m_pinchB   = b;
+      m_pinchX   = m_plot->xAxis->range();
+      m_pinchY   = m_plot->yAxis->range();
+      setControlMode(ControlMode::ZOOM);
+      return;
+    }
+    QRect const  area = m_plot->axisRect()->rect();
+    double const minSpread{40.0 * utils::ssf()};
+    double const startDx{std::max(std::fabs(m_pinchA.x() - m_pinchB.x()), minSpread)};
+    double const startDy{std::max(std::fabs(m_pinchA.y() - m_pinchB.y()), minSpread)};
+    double const nowDx{std::max(std::fabs(a.x() - b.x()), minSpread)};
+    double const nowDy{std::max(std::fabs(a.y() - b.y()), minSpread)};
+    double const scaleX{startDx / nowDx};
+    // values zoom only when the fingers are spread vertically too
+    double const scaleY{(std::fabs(m_pinchA.y() - m_pinchB.y()) > minSpread) ? startDy / nowDy : 1.0};
+    QPointF const startMid = (m_pinchA + m_pinchB) / 2.0;
+    QPointF const nowMid   = (a + b) / 2.0;
+    // the data under the fingers' middle at the start stays under it
+    double const xAnchor{m_pinchX.lower + (startMid.x() - area.left()) / area.width() * m_pinchX.size()};
+    double const yAnchor{m_pinchY.upper - (startMid.y() - area.top()) / area.height() * m_pinchY.size()};
+    double const xSize{m_pinchX.size() * scaleX};
+    double const ySize{m_pinchY.size() * scaleY};
+    double const xLower{xAnchor - (nowMid.x() - area.left()) / area.width() * xSize};
+    double const yUpper{yAnchor + (nowMid.y() - area.top()) / area.height() * ySize};
+    m_plot->xAxis->setRange(xLower, xLower + xSize);
+    m_plot->yAxis->setRange(yUpper - ySize, yUpper);
+    m_currentView = getRange();
+    m_plot->replot(QCustomPlot::rpQueuedReplot);
+    return;
+  }
+
+  if (m_pinching) { // the last finger of a pinch: nothing until it is lifted
+    if (active.isEmpty()) {
+      m_pinching  = false;
+      m_fromTouch = false;
+    }
+    return;
+  }
+
+  // one finger: as the mouse
+  if (event->type() == QEvent::TouchBegin && !active.isEmpty()) {
+    m_fromTouch   = true;
+    m_touchSingle = true;
+    m_touchStart  = active[0].position();
+    m_touchLast   = m_touchStart;
+    sendMouse(QEvent::MouseButtonPress, m_touchStart, Qt::LeftButton);
+    return;
+  }
+  if (!active.isEmpty()) {
+    if (m_touchSingle) {
+      m_touchLast = active[0].position();
+      sendMouse(QEvent::MouseMove, m_touchLast, Qt::LeftButton);
+    }
+    return;
+  }
+  // lifted: a tap, or the second of a double tap (fits the whole data)
+  bool const tap{m_touchSingle && ((m_touchLast - m_touchStart).manhattanLength() < 12 * utils::ssf())};
+  endSingle();
+  qint64 const now{QDateTime::currentMSecsSinceEpoch()};
+  if (tap) {
+    if ((now - m_lastTapMs < 350) && ((m_touchLast - m_lastTapPos).manhattanLength() < 30 * utils::ssf())) {
+      setControlMode(ControlMode::LEAD_FULL);
+      m_lastTapMs = 0;
+    } else {
+      m_lastTapMs  = now;
+      m_lastTapPos = m_touchLast;
+    }
+  }
+  m_fromTouch = false;
+}
+
+QJsonObject DataViewer::viewState() const {
+  return QJsonObject{{"mode", static_cast<int>(m_controlMode)},
+                     {"x0", m_plot->xAxis->range().lower},
+                     {"x1", m_plot->xAxis->range().upper},
+                     {"y0", m_plot->yAxis->range().lower},
+                     {"y1", m_plot->yAxis->range().upper},
+                     {"l0", m_plot->yAxis2->range().lower},
+                     {"l1", m_plot->yAxis2->range().upper}};
+}
+
+void DataViewer::setViewState(QJsonObject const &state) {
+  if (state.isEmpty()) {
+    return;
+  }
+  auto const mode = static_cast<ControlMode>(state.value("mode").toInt(static_cast<int>(ControlMode::LEAD_FULL)));
+  if (mode != ControlMode::ZOOM) {
+    setControlMode(mode); // follows the data again
+    return;
+  }
+  setControlMode(ControlMode::ZOOM);
+  if (state.value("x1").toDouble() > state.value("x0").toDouble()) {
+    m_plot->xAxis->setRange(state.value("x0").toDouble(), state.value("x1").toDouble());
+  }
+  if (state.value("y1").toDouble() > state.value("y0").toDouble()) {
+    m_plot->yAxis->setRange(state.value("y0").toDouble(), state.value("y1").toDouble());
+  }
+  if ((state.value("l0").toDouble() > 0.0) && (state.value("l1").toDouble() > state.value("l0").toDouble())) {
+    m_plot->yAxis2->setRange(state.value("l0").toDouble(), state.value("l1").toDouble());
+  }
+  m_currentView = getRange();
+  m_plot->replot();
+}
+
+void DataViewer::setScatter(bool scatter) {
+  m_scatter = scatter;
+  for (int i{0}; i < m_plot->graphCount(); ++i) {
+    applyLineStyle(m_plot->graph(i));
+  }
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::applyLineStyle(QCPGraph *graph) const {
+  QColor const color = graph->pen().color();
+  graph->setLineStyle(m_scatter ? QCPGraph::lsNone : QCPGraph::lsLine);
+  graph->setScatterStyle(m_scatter ? QCPScatterStyle(QCPScatterStyle::ssDisc, color, color, 3 * utils::ssf())
+                                   : QCPScatterStyle(QCPScatterStyle::ssNone));
 }
 
 void DataViewer::applyStyles() {
@@ -644,6 +839,7 @@ void DataViewer::applyStyle(int index, QVariantMap const &stateVariantMap, bool 
 
   m_plot->graph(index)->setVisible(visibility);
   m_plot->graph(index)->setPen(pen);
+  applyLineStyle(m_plot->graph(index)); // points take the line's colour
 
   if (!shadow) {
     m_plot->replot();
@@ -667,6 +863,72 @@ void DataViewer::updateData() {
 
   updateRange();
   rebuildDecorations();
+  updateSetpointLine();
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+  emit dataUpdated();
+}
+
+void DataViewer::setExtraSeries(QVector<Series> const &series) {
+  for (QCPCurve *curve : std::as_const(m_extraCurves)) {
+    m_plot->removePlottable(curve);
+  }
+  m_extraCurves.clear();
+  m_extra = series;
+  for (Series const &each : std::as_const(m_extra)) {
+    auto *curve = new QCPCurve(m_plot->xAxis, m_plot->yAxis);
+    curve->setPen(QPen(each.color, 2 * utils::ssf(), Qt::DashDotLine));
+    curve->setSelectable(QCP::stNone);
+    curve->setData(each.times, each.values);
+    m_extraCurves.push_back(curve);
+  }
+  rebuildDecorations(); // their names
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setMarkers(QVector<Marker> const &markers) {
+  m_markers = markers;
+  rebuildDecorations();
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setStages(QVector<Region> const &stages) {
+  m_stages = stages;
+  rebuildDecorations();
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setSetpointLine(bool visible) {
+  m_setpointVisible = visible;
+  updateSetpointLine();
+}
+
+void DataViewer::setSetpointChannel(int index) {
+  m_setpointChannel = index;
+  m_setpointTimes.clear();
+  m_setpointValues.clear();
+  updateSetpointLine();
+}
+
+void DataViewer::setSetpointSeries(QVector<double> const &times, QVector<double> const &values) {
+  m_setpointChannel = -1;
+  m_setpointTimes   = times;
+  m_setpointValues  = values;
+  updateSetpointLine();
+}
+
+void DataViewer::updateSetpointLine() {
+  QVector<double> times  = m_setpointTimes;
+  QVector<double> values = m_setpointValues;
+  if ((m_setpointChannel >= 0) && m_data) {
+    times                                 = m_data->getTimes();
+    QVector<QVector<double>> const states = m_data->getStates();
+    values = (m_setpointChannel < states.size()) ? states[m_setpointChannel] : QVector<double>{};
+  }
+  bool const show{m_setpointVisible && !times.isEmpty() && (times.size() == values.size())};
+  m_setpointCurve->setVisible(show);
+  if (show) {
+    m_setpointCurve->setData(times, values);
+  }
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
@@ -695,7 +957,11 @@ void DataViewer::clear(QString const &text) {
   }
   setRegions({});
   m_bands.clear();
+  m_markers.clear();
+  m_stages.clear();
+  setExtraSeries({});
   rebuildDecorations();
+  updateSetpointLine();
   updateTextItem(text);
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
@@ -794,6 +1060,65 @@ void DataViewer::rebuildDecorations() {
     item->setColor(color);
     m_decorationItems.push_back(item);
   };
+
+  // calculated channels: named at their last value
+  for (Series const &each : std::as_const(m_extra)) {
+    for (qsizetype i{each.values.size() - 1}; i >= 0; --i) {
+      if ((i >= each.times.size()) || std::isnan(each.values[i])) {
+        continue;
+      }
+      auto *text = new QCPItemText(m_plot);
+      text->setLayer("regions");
+      text->setSelectable(false);
+      text->position->setCoords(each.times[i], each.values[i]);
+      text->setPositionAlignment(Qt::AlignRight | Qt::AlignBottom);
+      text->setText(each.label);
+      text->setColor(each.color.darker(120));
+      m_decorationItems.push_back(text);
+      break;
+    }
+  }
+
+  // events and anomalies: dotted vertical lines
+  for (Marker const &marker : std::as_const(m_markers)) {
+    auto *line = new QCPItemStraightLine(m_plot);
+    line->setLayer("regions");
+    line->setSelectable(false);
+    line->point1->setCoords(marker.x, 0);
+    line->point2->setCoords(marker.x, 1);
+    QColor color = marker.color;
+    color.setAlpha(170);
+    line->setPen(QPen(color, 1, Qt::DotLine));
+    m_decorationItems.push_back(line);
+  }
+  // stages: a labelled strip along the top
+  for (Region const &stage : std::as_const(m_stages)) {
+    auto *rect = new QCPItemRect(m_plot);
+    rect->setLayer("regions");
+    rect->setSelectable(false);
+    for (auto *position : {rect->topLeft, rect->bottomRight}) {
+      position->setTypeY(QCPItemPosition::ptAxisRectRatio);
+    }
+    rect->topLeft->setCoords(stage.x0, 0.0);
+    rect->bottomRight->setCoords(stage.x1, 0.035);
+    QColor fill = stage.color;
+    fill.setAlpha(150);
+    rect->setPen(QPen(Qt::white, 1));
+    rect->setBrush(fill);
+    m_decorationItems.push_back(rect);
+    if (!stage.label.isEmpty()) {
+      auto *text = new QCPItemText(m_plot);
+      text->setLayer("regions");
+      text->setSelectable(false);
+      text->position->setTypeY(QCPItemPosition::ptAxisRectRatio);
+      text->position->setCoords((stage.x0 + stage.x1) / 2.0, 0.0175);
+      text->setPositionAlignment(Qt::AlignCenter);
+      text->setText(stage.label);
+      text->setColor(Qt::white);
+      text->setClipToAxisRect(true);
+      m_decorationItems.push_back(text);
+    }
+  }
 
   // variable rules of the visible channels
   for (Band const &band : std::as_const(m_bands)) {
@@ -932,8 +1257,10 @@ void DataViewer::mouseEventHeadler(QMouseEvent *event) {
     // right button: rectangle zoom, left button: drag (or a time range to annotate)
     bool const rectZoom{event->button() == Qt::RightButton};
     bool const annotate{m_annotateMode && (event->button() == Qt::LeftButton)};
+    // a finger with Tooltip on moves the value label (two fingers pan and zoom)
+    bool const scrub{m_fromTouch && m_valuesVisible && !annotate};
     m_plot->setSelectionRectMode(rectZoom ? QCP::srmZoom : (annotate ? QCP::srmCustom : QCP::srmNone));
-    m_plot->setInteraction(QCP::iRangeDrag, !rectZoom && !annotate);
+    m_plot->setInteraction(QCP::iRangeDrag, !rectZoom && !annotate && !scrub);
   }
 
   if ((event->type() == QEvent::MouseMove) && m_valuesVisible) {

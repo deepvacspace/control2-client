@@ -2,6 +2,9 @@
 
 #include <QAbstractButton>
 #include <QApplication>
+#include <QDir>
+#include <QFile>
+#include <QMenu>
 #include <QLabel>
 #include <QHash>
 #include <QMessageBox>
@@ -70,6 +73,99 @@ QPalette palette(bool dark) {
   return p;
 }
 
+namespace {
+// a tick for checked menu entries, drawn once per colour into a file the style sheet can point to
+QString checkImage(QColor const &color) {
+  QString const path = QDir::temp().filePath(QStringLiteral("deepvac_menu_check_%1.png").arg(color.name().mid(1)));
+  if (!QFile::exists(path)) {
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(color, 3.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawPolyline(QPolygonF{{QPointF(7, 17), QPointF(13, 23), QPointF(25, 9)}});
+    p.end();
+    pixmap.save(path);
+  }
+  return QDir::fromNativeSeparators(path);
+}
+
+// the arrow of drop-down fields
+QString chevronImage(QColor const &color) {
+  QString const path = QDir::temp().filePath(QStringLiteral("deepvac_chevron_%1.png").arg(color.name().mid(1)));
+  if (!QFile::exists(path)) {
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(color, 3.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawPolyline(QPolygonF{{QPointF(8, 12), QPointF(16, 20), QPointF(24, 12)}});
+    p.end();
+    pixmap.save(path);
+  }
+  return QDir::fromNativeSeparators(path);
+}
+
+// menus: a rounded card, roomy rows, a soft hover, thin separators, a tick for checked entries;
+// statistics: tables in a rounded box with small upper-case headings
+QString menuAndTableStyleSheet(Colors const &c, bool dark) {
+  QColor const hover = dark ? c.panel.lighter(135) : QColor::fromRgbF(0.945f, 0.957f, 0.973f);
+  QColor const line  = dark ? c.border : c.border.lighter(108);
+  QColor const pick  = QColor(c.accent.red(), c.accent.green(), c.accent.blue(), dark ? 50 : 26);
+  return QStringLiteral(R"(
+QMenu { background: %1; color: %2; border: %3px solid %4; border-radius: %5px; padding: %6px; min-width: %20px; }
+QMenu::item { padding: %7px %8px %7px %9px; border-radius: %10px; background: transparent; margin: %3px 0; }
+QMenu::item:selected { background: %11; color: %2; }
+QMenu::item:disabled { color: %12; }
+QMenu::separator { height: %3px; background: %13; margin: %6px %6px; }
+QMenu::indicator { width: %9px; height: %9px; }
+QMenu::indicator:checked { image: url(%14); }
+QFrame#statsCard { background: %1; border: %3px solid %4; border-radius: %5px; }
+QPushButton#drawerSection, QPushButton#drawerSection:hover, QPushButton#drawerSection:pressed, QPushButton#drawerSection:checked {
+  background: transparent; border: none; padding: 0; }
+QPushButton[softSegment="true"] { background: %1; color: %2; border: %3px solid %4; border-radius: 0; padding: %10px %18px; }
+QPushButton[softSegment="true"]:hover { border-color: %4; background: %11; }
+QPushButton[softSegment="true"]:checked { background: %17; color: %21; font-weight: bold; border-color: %4; }
+QPushButton[softSegment="true"][segmentFirst="true"] { border-top-left-radius: %10px; border-bottom-left-radius: %10px; }
+QPushButton[softSegment="true"][segmentLast="true"] { border-top-right-radius: %10px; border-bottom-right-radius: %10px; }
+QPushButton[link="true"], QPushButton[link="true"]:hover, QPushButton[link="true"]:pressed {
+  background: transparent; border: none; color: %21; font-weight: bold; padding: 0; text-align: left; }
+QPushButton[link="true"]:disabled { color: %12; }
+QComboBox[soft="true"], QDateEdit[soft="true"], QLineEdit[soft="true"] { padding: 0 %6px; border-radius: %10px; }
+QComboBox[soft="true"]::drop-down, QDateEdit[soft="true"]::drop-down { border: none; width: %22px; }
+QComboBox[soft="true"]::down-arrow, QDateEdit[soft="true"]::down-arrow { image: url(%23); width: %7px; height: %7px; }
+QLabel#statsTitle { color: %15; font-weight: bold; }
+QTableView#statsTable, QListWidget#statsList { background: %1; border: %3px solid %13; border-radius: %16px;
+  selection-background-color: %17; selection-color: %2; outline: 0; }
+QTableView#statsTable::item { border: none; padding: 0 %18px; }
+QTableView#statsTable::item:selected, QListWidget#statsList::item:selected { background: %17; color: %2; }
+QListWidget#statsList::item { padding: %7px %18px; }
+QTableView#statsTable QHeaderView { background: transparent; border: none; }
+QTableView#statsTable QHeaderView::section { background: transparent; color: %15; border: none; border-bottom: %3px solid %13;
+  padding: %7px %18px; font-weight: bold; font-size: %19pt; }
+QTableView#statsTable QTableCornerButton::section { background: transparent; border: none; }
+)")
+    .arg(c.panel.name(), c.text.name())
+    .arg(px(1))
+    .arg(c.border.name())
+    .arg(px(10))
+    .arg(px(6))
+    .arg(px(8))
+    .arg(px(36))
+    .arg(px(14))
+    .arg(px(6))
+    .arg(hover.name(), c.off.name(), line.name(), checkImage(c.accent), c.muted.name())
+    .arg(px(8))
+    .arg(pick.name(QColor::HexArgb))
+    .arg(px(12))
+    .arg(QApplication::font().pointSizeF() * 0.82, 0, 'f', 1) // small headings
+    .arg(px(170))
+    .arg(c.accent.name())
+    .arg(px(24))
+    .arg(chevronImage(c.muted));
+}
+} // namespace
+
 QString styleSheet(bool dark) {
   Colors const &c = dark ? NAVY : LIGHT;
   QString       qss = QStringLiteral(R"(
@@ -100,9 +196,6 @@ QTabBar::tab { background: %17; color: %16; border: %4px solid %3; padding: %6px
 QTabBar::tab:selected { background: %1; color: %2; border-bottom: %18px solid %8; }
 QGroupBox { border: %4px solid %3; border-radius: %5px; margin-top: %19px; padding-top: %15px; }
 QGroupBox::title { subcontrol-origin: margin; left: %7px; padding: 0 %15px; color: %16; }
-QMenu { background: %1; color: %2; border: %4px solid %3; }
-QMenu::item:selected { background: %8; color: white; }
-QMenu::item:disabled { color: %10; }
 QToolTip { background: %1; color: %2; border: %4px solid %3; }
 QScrollBar:vertical { background: transparent; width: %20px; margin: 0; }
 QScrollBar:horizontal { background: transparent; height: %20px; margin: 0; }
@@ -154,7 +247,7 @@ QPushButton[segmentFirst="true"] { border-top-left-radius: %15px; border-bottom-
 QPushButton[segmentLast="true"] { border-top-right-radius: %15px; border-bottom-right-radius: %15px; }
 QLabel#rowTitle { font-weight: bold; }
 )");
-  return qss.arg(c.panel.name(), c.text.name(), c.border.name())
+  qss = qss.arg(c.panel.name(), c.text.name(), c.border.name())
     .arg(px(1))
     .arg(px(6))
     .arg(px(4))
@@ -169,7 +262,7 @@ QLabel#rowTitle { font-weight: bold; }
     .arg(px(4.5))
     .arg(c.active.name(), dark ? QStringLiteral("#c084fc") : QStringLiteral("#7e22ce"),
          QColor(c.accent.red(), c.accent.green(), c.accent.blue(), dark ? 45 : 30).name(QColor::HexArgb));
-
+  return qss + menuAndTableStyleSheet(c, dark);
 }
 
 namespace {
@@ -178,6 +271,14 @@ class MessageBoxStyler : public QObject {
 public:
   using QObject::QObject;
   bool eventFilter(QObject *watched, QEvent *event) override {
+    // menus: no square window behind their rounded corners (before the window is created)
+    if (event->type() == QEvent::Polish) {
+      if (auto *menu = qobject_cast<QMenu *>(watched)) {
+        menu->setAttribute(Qt::WA_TranslucentBackground);
+        menu->setWindowFlag(Qt::FramelessWindowHint);
+        menu->setWindowFlag(Qt::NoDropShadowWindowHint);
+      }
+    }
     // before QMessageBox::showEvent() fixes the window size
     if (event->type() == QEvent::Show) {
       if (auto *box = qobject_cast<QMessageBox *>(watched)) {

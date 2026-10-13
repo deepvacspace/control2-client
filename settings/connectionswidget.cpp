@@ -259,9 +259,12 @@ void ConnectionsWidget::refreshChamberStatus() {
       text  = tr("Online — %1").arg(m_connectedAddress);
       break;
     case StatusManager::AppState::CONNECTING:
-    case StatusManager::AppState::CONNECTED:
       color = COLOR_WAIT;
       text  = tr("Connecting to %1…").arg(m_connectedAddress);
+      break;
+    case StatusManager::AppState::CONNECTED:
+      color = COLOR_WAIT;
+      text  = tr("%1 accepted the connection; waiting for the chamber to answer…").arg(m_connectedAddress);
       break;
     case StatusManager::AppState::OFFLINE:
       text = tr("Connected to %1 but not used: its configuration differs from this application's").arg(m_connectedAddress);

@@ -1,5 +1,7 @@
 #include "comparisonpanel.h"
 
+#include <QSignalBlocker>
+
 #include <QComboBox>
 #include <QDateTime>
 #include <QHBoxLayout>
@@ -27,6 +29,16 @@ using namespace analysistext;
 
 QTableWidget *makeTable(QWidget *parent) {
   auto *table = new QTableWidget(parent);
+  table->setObjectName("statsTable");
+  QFont heading = table->horizontalHeader()->font();
+  heading.setPointSizeF(heading.pointSizeF() * 0.82);
+  heading.setBold(true);
+  heading.setLetterSpacing(QFont::PercentageSpacing, 104);
+  table->horizontalHeader()->setFont(heading);
+  table->horizontalHeader()->setHighlightSections(false);
+  table->verticalHeader()->setDefaultSectionSize(static_cast<int>(34 * utils::ssf()));
+  table->setShowGrid(false);
+  table->setWordWrap(false);
   table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
   table->verticalHeader()->setVisible(false);
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -38,7 +50,11 @@ QTableWidget *makeTable(QWidget *parent) {
 void setHeader(QTableWidget *table, QStringList const &headers, int rows) {
   table->clear();
   table->setColumnCount(static_cast<int>(headers.size()));
-  table->setHorizontalHeaderLabels(headers);
+  QStringList upper;
+  for (QString const &header : headers) {
+    upper << header.toUpper();
+  }
+  table->setHorizontalHeaderLabels(upper);
   table->setRowCount(rows);
 }
 
@@ -188,6 +204,23 @@ void ComparisonPanel::setRuns(QVector<ComparedRun> const &runs, QString const &s
 
 QVector<double> ComparisonPanel::offsets() const {
   return m_offsets;
+}
+
+void ComparisonPanel::setAlignment(int mode, int n) {
+  QSignalBlocker const comboBlocker(m_alignCombo);
+  QSignalBlocker const spinBlocker(m_alignSpin);
+  m_alignCombo->setCurrentIndex(std::max(0, m_alignCombo->findData(mode)));
+  m_alignSpin->setValue(n);
+  m_alignSpin->setEnabled(mode != static_cast<int>(core::AlignMode::START));
+  recompute();
+}
+
+int ComparisonPanel::alignMode() const {
+  return m_alignCombo->currentData().toInt();
+}
+
+int ComparisonPanel::alignN() const {
+  return m_alignSpin->value();
 }
 
 QString ComparisonPanel::alignmentText() const {

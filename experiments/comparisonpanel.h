@@ -44,6 +44,10 @@ public:
   // (0 for runs without the anchor)
   [[nodiscard]] QVector<double> offsets() const;
   [[nodiscard]] QString         alignmentText() const;
+  // the alignment (core::AlignMode, n-th): set from outside without alignmentChanged()
+  void                          setAlignment(int mode, int n);
+  [[nodiscard]] int             alignMode() const;
+  [[nodiscard]] int             alignN() const;
   // the comparison as HTML (experiment report)
   [[nodiscard]] QString html() const;
 

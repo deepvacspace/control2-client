@@ -52,6 +52,8 @@ public:
   [[nodiscard]] core::RunMetadata nextRunMetadata() const;
 
   [[nodiscard]] QString chamberName() const;
+  // the running job sets the pressure and not the temperature (from the program it was sent with)
+  [[nodiscard]] bool pressureControlled() const;
   [[nodiscard]] QString chamberRef() const; // "host:port" of the PLC gate, identifies the chamber across computers
 
   // every sample received from the PLC (App); kept while a job runs and journaled to the experiment database

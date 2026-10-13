@@ -53,6 +53,21 @@ QString dateTime(double epoch) {
   return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epoch)).toString("yyyy-MM-dd HH:mm");
 }
 
+// start and end of an experiment, to the second
+QString clockTime(double epoch) {
+  return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epoch)).toString("yyyy-MM-dd HH:mm:ss");
+}
+
+// "started 2026-09-24 14:26:16, ended 15:36:15, lasted 1 h 9 min 59 s (4199 s)"
+QString spanText(double start, double end) {
+  QDateTime const from = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(start));
+  QDateTime const to   = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(end));
+  QString const   endText = (from.date() == to.date()) ? to.toString("HH:mm:ss") : to.toString("yyyy-MM-dd HH:mm:ss");
+  qint64 const    total{std::llround(std::max(0.0, end - start))};
+  QString const   exact = QStringLiteral("%1 h %2 min %3 s").arg(total / 3600).arg((total % 3600) / 60).arg(total % 60);
+  return QStringLiteral("started %1, ended %2, lasted %3 (%4 s)").arg(clockTime(start), endText, exact).arg(total);
+}
+
 QJsonValue percent(double fraction) {
   return std::isfinite(fraction) ? QJsonValue(QStringLiteral("%1 %").arg(std::round(fraction * 1000.0) / 10.0)) : QJsonValue(QJsonValue::Null);
 }
@@ -434,8 +449,10 @@ int AnalysisTools::selectStage(core::ExperimentAnalysis const &analysis, QString
 QJsonObject AnalysisTools::runHeader(Loaded const &loaded) const {
   return QJsonObject{{"run", runId(loaded.run)},
                      {"title", loaded.run.title},
-                     {"start", dateTime(loaded.run.start)},
+                     {"start", clockTime(loaded.run.start)},
+                     {"end", clockTime(loaded.run.end)},
                      {"duration", hms(loaded.run.duration())},
+                     {"duration_s", seconds(loaded.run.duration())},
                      {"samples", static_cast<qint64>(loaded.run.samples)}};
 }
 
@@ -605,7 +622,7 @@ QJsonObject AnalysisTools::runSummary(QJsonObject const &args) {
                                          {"most_important", important}});
 
   QString const id = runId(loaded->run);
-  QStringList   facts{QStringLiteral("Experiment %1 \"%2\" started %3 and lasted %4.").arg(id, loaded->run.title, dateTime(loaded->run.start), hms(loaded->run.duration()))};
+  QStringList   facts{QStringLiteral("Experiment %1 \"%2\" %3.").arg(id, loaded->run.title, spanText(loaded->run.start, loaded->run.end))};
   QStringList   levels;
   for (double const setpoint : a.config.setpoints) {
     levels << fmt(setpoint, DEG);
@@ -1274,18 +1291,20 @@ QJsonObject AnalysisTools::runDetails(QJsonObject const &args) {
   QString const           id       = runId(loaded->run);
   if (!manifest.isValid()) {
     result.insert("card", makeCard(QStringLiteral("Experiment %1 details").arg(id),
-                                   {QStringLiteral("Run %1 has no recorded details: it is not saved in the experiment database "
+                                   {QStringLiteral("Experiment %1 %2.").arg(id, spanText(loaded->run.start, loaded->run.end)),
+                                    QStringLiteral("Run %1 has no recorded details: it is not saved in the experiment database "
                                                    "(or was saved by an older version), so there is no configuration snapshot.").arg(id)}));
     return result;
   }
   auto orDash = [](QString const &value) { return value.isEmpty() ? QStringLiteral("not recorded") : value; };
   QJsonObject const &configuration = manifest.configuration;
   int const integrity{static_cast<int>(storage::RunStore::verify(loaded->run.storeKey))};
-  QStringList facts{QStringLiteral("DUT: %1. Operator: %2. Purpose: %3. Tags: %4.")
+  QStringList facts{QStringLiteral("Experiment %1 %2.").arg(id, spanText(loaded->run.start, loaded->run.end)),
+                    QStringLiteral("DUT: %1. Operator: %2. Purpose: %3. Tags: %4.")
                       .arg(orDash(manifest.metadata.dut), orDash(manifest.metadata.operatorName), orDash(manifest.metadata.purpose),
                            orDash(manifest.metadata.tags.join(QStringLiteral(", ")))),
                     QStringLiteral("Job: %1; configuration %2.").arg(runrecord::jobText(configuration), runrecord::capturedText(configuration)),
-                    QStringLiteral("Program: %1.").arg(runrecord::programSummary(configuration)),
+                    QStringLiteral("Program as sent (planned interval durations, not how long it ran): %1.").arg(runrecord::programSummary(configuration)),
                     QStringLiteral("Calibration: %1.").arg(runrecord::calibrationSummary(configuration)),
                     QStringLiteral("Recorded by %1 %2 at %3 s resolution; %4 events.")
                       .arg(manifest.appName, orDash(manifest.appVersion))

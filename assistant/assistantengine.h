@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
+#include <QSet>
 
 namespace deepvaccontrol::assistant {
 
@@ -62,6 +63,11 @@ private:
   void onAnswer(QString content);
   void finish();
   void trimHistory();
+  // runs a tool and adds its result to the conversation (the model reads DeepVac's card of it)
+  void runTool(QString const &id, QString const &name, QJsonObject const &arguments, QString const &argumentsError = {});
+  // the data a question is about, fetched by DeepVac before the model answers: the model cannot skip it
+  // (llama-server does not enforce tool_choice "required"); experiments already fetched are not fetched again
+  void prefetch(QString const &question, QString const &focusRun);
 
   LlmClient          *m_client;
   ToolRegistry const *m_registry;
@@ -75,6 +81,8 @@ private:
   bool                m_corrected{false}; // the corrective round of this question was used
   bool                m_requireTool{false}; // the next request must call a tool (corrective round)
   QString             m_evidence; // tool results of the current question
+  QSet<QString>       m_fetched;  // what prefetch() put in the conversation still kept
+  int                 m_prefetchCount{0};
   QString             m_question; // its numbers count as known (e.g. "did it reach 100 °C?")
   bool                m_silent{false}; // the corrective round: nothing is streamed
   QString             m_firstAnswer;   // the answer shown before the corrective round

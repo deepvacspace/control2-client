@@ -7,8 +7,10 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPropertyAnimation>
+#include <QScrollArea>
 #include <QVBoxLayout>
 
+#include "touchsupport.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -45,9 +47,20 @@ OverlayDrawer::OverlayDrawer(QWidget *host, int width, Side side)
   hide();
 }
 
-void OverlayDrawer::setContent(QWidget *content) {
-  content->setParent(m_panel);
-  m_panel->layout()->addWidget(content);
+void OverlayDrawer::setContent(QWidget *content, bool scrollable) {
+  if (!scrollable) {
+    content->setParent(m_panel);
+    m_panel->layout()->addWidget(content);
+    return;
+  }
+  auto *area = new QScrollArea(m_panel);
+  area->setFrameShape(QFrame::NoFrame);
+  area->setWidgetResizable(true);
+  area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  area->setStyleSheet(QStringLiteral("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }"));
+  area->setWidget(content);
+  touch::enableScrolling(area); // and with a finger
+  m_panel->layout()->addWidget(area);
 }
 
 void OverlayDrawer::open() {

@@ -4,7 +4,9 @@
 #include <QButtonGroup>
 #include <QComboBox>
 #include <QCoreApplication>
-#include <QDateTimeEdit>
+#include <QGridLayout>
+
+#include "datetimefield.h"
 #include <QDialog>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -13,6 +15,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "lineeditscreen.h"
 #include "theme.h"
 #include "utils.h"
 
@@ -71,7 +74,8 @@ public:
     lay->addSpacing(px(12));
 
     lay->addWidget(caption(tr("Label"), &dialog));
-    labelEdit = new QLineEdit(label, &dialog);
+    labelEdit = new LineEditScreen(&dialog, VirtualKeyboard::EN);
+    labelEdit->setText(label);
     labelEdit->setPlaceholderText(tr("e.g. Steady state"));
     labelEdit->setMinimumHeight(px(32));
     lay->addWidget(labelEdit);
@@ -178,20 +182,19 @@ bool ask(QWidget *parent, QString const &segmentText, QString &label, QColor &co
 
 bool edit(QWidget *parent, QString &label, QColor &color, QDateTime &from, QDateTime &to) {
   AnnotationForm form(parent, tr("Edit annotation"), tr("Save"), label, color);
-  auto timeEdit = [&form](QDateTime const &value) {
-    auto *edit = new QDateTimeEdit(value, &form.dialog);
-    edit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-    edit->setMinimumHeight(px(30));
-    return edit;
-  };
+  // date from a calendar, time from the number pad
   auto *name = new QLabel(tr("Segment:"), &form.dialog);
   name->setProperty("muted", true);
-  auto *fromEdit = timeEdit(from);
-  auto *toEdit   = timeEdit(to);
-  form.segmentLay->addWidget(name);
-  form.segmentLay->addWidget(fromEdit, 1);
-  form.segmentLay->addWidget(new QLabel(QStringLiteral("–"), &form.dialog));
-  form.segmentLay->addWidget(toEdit, 1);
+  auto *fromEdit = new DateTimeField(from, &form.dialog);
+  auto *toEdit   = new DateTimeField(to, &form.dialog);
+  auto *rows     = new QGridLayout();
+  rows->setHorizontalSpacing(px(8));
+  rows->addWidget(new QLabel(tr("From"), &form.dialog), 0, 0);
+  rows->addWidget(fromEdit, 0, 1);
+  rows->addWidget(new QLabel(tr("To"), &form.dialog), 1, 0);
+  rows->addWidget(toEdit, 1, 1);
+  form.segmentLay->addWidget(name, 0, Qt::AlignTop);
+  form.segmentLay->addLayout(rows, 1);
   if (!form.exec(label, color)) {
     return false;
   }

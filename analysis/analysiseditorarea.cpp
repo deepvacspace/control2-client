@@ -10,6 +10,7 @@
 
 #include "analysisrunpage.h"
 #include "crosshairsynchub.h"
+#include "touchsupport.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -72,6 +73,7 @@ QTabWidget *AnalysisEditorArea::makeGroup() {
   }
 
   group->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+  touch::enableLongPress(group->tabBar(), nullptr, true); // press and hold a tab: its menu
   connect(group->tabBar(), &QWidget::customContextMenuRequested, this, [this, group](QPoint const &pos) {
     int const index{group->tabBar()->tabAt(pos)};
     if (index >= 0) {

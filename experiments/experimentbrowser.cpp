@@ -16,7 +16,9 @@
 
 #include "dialogs/messagedialog.h"
 #include "graph/daterangedialog.h"
+#include "lineeditscreen.h"
 #include "theme.h"
+#include "touchsupport.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -107,7 +109,7 @@ ExperimentBrowser::ExperimentBrowser(ExperimentLibrary *library, bool canSplit, 
   lay->setContentsMargins(0, 0, 0, 0);
   lay->setSpacing(8 * utils::ssf());
 
-  m_filterEdit = new QLineEdit(this);
+  m_filterEdit = new LineEditScreen(this, VirtualKeyboard::EN); // the on-screen keyboard on touch panels
   m_filterEdit->setPlaceholderText(tr("Filter: date, name, DUT…"));
   m_filterEdit->setClearButtonEnabled(true);
   m_filterEdit->setMinimumHeight(34 * utils::ssf());
@@ -134,10 +136,13 @@ ExperimentBrowser::ExperimentBrowser(ExperimentLibrary *library, bool canSplit, 
   m_tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
   m_tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
   m_tree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-  m_tree->setStyleSheet(QStringLiteral("QTreeWidget { background: transparent; border: none; }"));
+  m_tree->setStyleSheet(QStringLiteral("QTreeWidget { background: transparent; border: none; }"
+                                       "QTreeWidget::branch:selected, QTreeWidget::branch:hover { background: transparent; }"));
   // touch friendly: one tap opens an experiment or expands / collapses a day
   connect(m_tree, &QTreeWidget::itemClicked, this, &ExperimentBrowser::openItem);
   m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+  touch::enableScrolling(m_tree);
+  touch::enableLongPress(m_tree, m_tree->viewport()); // press and hold: Open / Split right
   connect(m_tree, &QWidget::customContextMenuRequested, this, [this](QPoint const &pos) {
     QTreeWidgetItem *item = m_tree->itemAt(pos);
     QString const    key  = item ? item->data(0, RUN_KEY_ROLE).toString() : QString{};

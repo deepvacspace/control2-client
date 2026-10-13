@@ -2,6 +2,7 @@
 
 #include <QDate>
 #include <QSet>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -43,8 +44,10 @@ QString AssistantEngine::systemPrompt() const {
            "- Get data with tools: get_run_summary (describe a run), compare_runs (any question about two or more "
            "runs), rank_runs (best / worst run, ranking), get_stages / get_kpis (stages), get_anomalies, list_runs, "
            "get_run_details (DUT, purpose, configuration as recorded), get_events (what happened when), "
-           "plot_run (show / plot / open), generate_report. If answering needs data you do not have in a card of "
-           "this conversation, call a tool first.\n"
+           "plot_run (show / plot / open), generate_report. Never answer from memory or guess: every value, date, "
+           "time and duration comes from a tool result of this conversation.\n"
+           "- Start, end and duration of an experiment are in get_run_summary and get_run_details; program interval "
+           "durations are what was planned, not how long the experiment lasted.\n"
            "- Temperatures are always in °C, as in the cards. Never use Kelvin, never convert units, never calculate "
            "numbers yourself.\n"
            "- Experiments: '#N', a title, or 'latest'; 'experiment 105' or 'run 105' is '105'. 'Final stabilization' is stage 'last_hold'.\n"
@@ -53,7 +56,8 @@ QString AssistantEngine::systemPrompt() const {
            "- Answer in at most 4 short sentences (or a short list when several items are asked for): the direct "
            "answer first, then the most important observation. Quote values exactly as written in the facts, with "
            "their units. Never calculate new numbers. For a report, give its file path.\n"
-           "- Write the answer once. No check marks, emojis, self-review or repetition.\n"
+           "- Write the answer once. No check marks, emojis, self-review, notes in parentheses about the answer, "
+           "or remarks about the query.\n"
            "- You are read-only: you cannot start or stop the chamber or change PID gains, settings or limits; "
            "say that the engineer does this in the control pages.")
     .arg(QDate::currentDate().toString(Qt::ISODate));
@@ -98,23 +102,75 @@ QStringList AssistantEngine::mentionedRuns(QString const &question) {
 }
 
 QString AssistantEngine::cleanAnswer(QString const &answer) {
-  QString const text = withoutMarks(answer);
-  // complete sentences; the first one that comes again ends the answer
-  static QRegularExpression const sentence(QStringLiteral("[^.!?\\n]+[.!?]"));
+  static QRegularExpression const selfReview(
+    QStringLiteral("\\s*\\((?=[^()]*\\b(?:final|response|requirements?|constraints?|confirm\\w*|delivered|end of|"
+                   "accurate|complete|respected|verified|answer)\\b)[^()]*\\)"),
+    QRegularExpression::CaseInsensitiveOption);
+  QString text = withoutMarks(answer);
+  text.remove(selfReview);
+  // the answer ends where a small model starts looping: a sentence that comes again, one that only restates numbers
+  // already given, an echo of its instructions, or more than 4 sentences (a list may have up to 10 items)
+  static QRegularExpression const echo(
+    QStringLiteral("quote values|exactly as (?:recorded|written)|no calculated|never calculate|tool results?\b|"
+                   "the user does not see|as instructed"),
+    QRegularExpression::CaseInsensitiveOption);
+  static QRegularExpression const numberPattern(QStringLiteral("\d+(?:[.,]\d+)?"));
+  static QRegularExpression const listItem(QStringLiteral("^(?:[-*•]|\d+[.)])\s"));
   QSet<QString> seen;
-  for (auto it = sentence.globalMatch(text); it.hasNext();) {
-    QRegularExpressionMatch const match = it.next();
-    QString                       key   = match.captured().toLower();
+  QSet<QString> numbersSeen;
+  int           sentences{0};
+  int           items{0};
+  qsizetype     start{0};
+  qsizetype     kept{0}; // text up to here is the answer
+  for (qsizetype i{0}; i <= text.size(); ++i) {
+    bool const atEnd{i == text.size()};
+    QChar const c = atEnd ? QChar() : text.at(i);
+    // a sentence ends at . ! ? followed by a space (not in "1.5") or at a line break
+    bool const stop{!atEnd && (c == QLatin1Char('\n')
+                               || ((c == QLatin1Char('.') || c == QLatin1Char('!') || c == QLatin1Char('?'))
+                                   && ((i + 1 == text.size()) || text.at(i + 1).isSpace())))};
+    if (!stop && !atEnd) {
+      continue;
+    }
+    qsizetype const end{atEnd ? i : i + 1};
+    QString const   piece = text.mid(start, end - start).trimmed();
+    bool const      complete{!atEnd || piece.endsWith(QLatin1Char('.')) || piece.endsWith(QLatin1Char('!')) || piece.endsWith(QLatin1Char('?'))};
+    start = end;
+    if (piece.isEmpty()) {
+      kept = end;
+      continue;
+    }
+    if (echo.match(piece).hasMatch()) {
+      break;
+    }
+    QString key = piece.toLower();
     key.remove(QRegularExpression(QStringLiteral("[^a-z0-9]")));
-    if (key.size() < 6) {
-      continue; // "Done." and the like are cut below only when repeated as part of a loop
+    if ((key.size() >= 6) && seen.contains(key)) {
+      break;
     }
-    if (seen.contains(key)) {
-      return text.left(match.capturedStart()).trimmed();
+    bool const  item{listItem.match(piece).hasMatch()};
+    QStringList numbers;
+    for (auto it = numberPattern.globalMatch(piece); it.hasNext();) {
+      numbers << it.next().captured();
     }
-    seen.insert(key);
+    bool const restates{complete && !item && (sentences > 0) && !numbers.isEmpty()
+                        && std::all_of(numbers.cbegin(), numbers.cend(), [&](QString const &n) { return numbersSeen.contains(n); })};
+    if (restates) {
+      break;
+    }
+    if (complete) {
+      item ? ++items : ++sentences;
+      if ((sentences > 4) || (items > 10)) {
+        break;
+      }
+      seen.insert(key);
+      for (QString const &n : std::as_const(numbers)) {
+        numbersSeen.insert(n);
+      }
+    }
+    kept = end;
   }
-  return text.trimmed();
+  return text.left(kept).trimmed();
 }
 
 bool AssistantEngine::usesKelvin(QString const &answer) {
@@ -201,6 +257,7 @@ void AssistantEngine::reset() {
   cancel();
   m_history = {};
   m_evidence.clear();
+  m_fetched.clear();
 }
 
 void AssistantEngine::cancel() {
@@ -232,13 +289,15 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun) {
   }
   m_history.push_back(QJsonObject{{"role", "user"}, {"content", content}});
   trimHistory();
+  prefetch(question, focusRun);
   m_round     = 0;
   m_cancelled = false;
   m_corrected = false; // evidence is kept: follow-up questions are checked against everything fetched so far
   m_silent    = false;
   m_question  = question;
   m_firstAnswer.clear();
-  m_busy      = true;
+  m_requireTool = true; // the first round of every question fetches data; the answer comes after it
+  m_busy        = true;
   emit busyChanged(true);
   request();
 }
@@ -246,6 +305,7 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun) {
 void AssistantEngine::trimHistory() {
   // drop the oldest messages, but never start with a tool result or an assistant tool call
   while (m_history.size() > HISTORY_MESSAGES) {
+    m_fetched.clear(); // older results may be gone: fetched again when asked about
     m_history.removeFirst();
     while (!m_history.isEmpty() && (m_history.first().toObject().value("role").toString() != QLatin1String("user"))) {
       m_history.removeFirst();
@@ -307,26 +367,64 @@ void AssistantEngine::request() {
 
     ++m_round;
     for (LlmToolCall const &call : reply.toolCalls) {
-      emit toolCalled(call.name, compact(call.arguments));
-      QJsonObject result = call.argumentsError.isEmpty() ? m_registry->call(call.name, call.arguments)
-                                                         : QJsonObject{{"error", call.argumentsError}};
-      bool const ok{!result.contains("error")};
-      // the model reads the card DeepVac wrote (facts with units, table), not the raw data
-      QJsonObject const card = result.value("card").toObject();
-      QString           text = compact(ok && !card.isEmpty() ? card : result);
-      if (text.size() > m_maxResultChars) {
-        text = text.left(m_maxResultChars) + QStringLiteral("…(truncated)");
-      }
-      if (ok && !card.isEmpty()) {
-        emit toolCard(call.name, card);
-      }
-      emit toolFinished(call.name, ok, ok ? tr("%1 characters of results").arg(text.size()) : result.value("error").toString());
-      m_history.push_back(QJsonObject{{"role", "tool"}, {"tool_call_id", call.id}, {"name", call.name}, {"content", text}});
-      m_evidence += compact(result) + QLatin1Char('\n');
+      runTool(call.id, call.name, call.arguments, call.argumentsError);
     }
     request();
     },
     m_silent ? std::function<void(QString const &)>{} : std::function<void(QString const &)>{onText}, 0, std::exchange(m_requireTool, false));
+}
+
+void AssistantEngine::runTool(QString const &id, QString const &name, QJsonObject const &arguments, QString const &argumentsError) {
+  emit toolCalled(name, compact(arguments));
+  QJsonObject result = argumentsError.isEmpty() ? m_registry->call(name, arguments) : QJsonObject{{"error", argumentsError}};
+  bool const  ok{!result.contains("error")};
+  // the model reads the card DeepVac wrote (facts with units, table), not the raw data
+  QJsonObject const card = result.value("card").toObject();
+  QString           text = compact(ok && !card.isEmpty() ? card : result);
+  if (text.size() > m_maxResultChars) {
+    text = text.left(m_maxResultChars) + QStringLiteral("…(truncated)");
+  }
+  if (ok && !card.isEmpty()) {
+    emit toolCard(name, card);
+  }
+  emit toolFinished(name, ok, ok ? tr("%1 characters of results").arg(text.size()) : result.value("error").toString());
+  m_history.push_back(QJsonObject{{"role", "tool"}, {"tool_call_id", id}, {"name", name}, {"content", text}});
+  m_evidence += compact(result) + QLatin1Char('\n');
+}
+
+void AssistantEngine::prefetch(QString const &question, QString const &focusRun) {
+  // questions over many experiments (rankings, lists) are left to the model's own tool calls
+  static QRegularExpression const overMany(
+    QStringLiteral("\\b(?:which|best|worst|lowest|highest|rank\\w*|list|all|every|how many|most|least)\\b"),
+    QRegularExpression::CaseInsensitiveOption);
+  QStringList const runs = mentionedRuns(question);
+  QString     name;
+  QJsonObject arguments;
+  QString     key;
+  if (runs.size() >= 2) {
+    name      = QStringLiteral("compare_runs");
+    arguments = QJsonObject{{"runs", QJsonArray::fromStringList(runs.mid(0, 5))}};
+    key       = name + runs.join(QLatin1Char(','));
+  } else if (!runs.isEmpty() || !overMany.match(question).hasMatch()) {
+    QString const run = !runs.isEmpty() ? runs.first() : (!focusRun.isEmpty() ? focusRun : QStringLiteral("latest"));
+    name              = QStringLiteral("get_run_summary");
+    arguments         = QJsonObject{{"run", run}};
+    key               = name + run;
+  }
+  if (name.isEmpty() || m_fetched.contains(key)) {
+    return;
+  }
+  m_fetched.insert(key);
+  // as if the model had asked for it: an assistant tool call, then its result
+  QString const id = QStringLiteral("deepvac-%1").arg(++m_prefetchCount);
+  m_history.push_back(QJsonObject{
+    {"role", "assistant"},
+    {"content", QString{}},
+    {"tool_calls", QJsonArray{QJsonObject{{"id", id},
+                                          {"type", "function"},
+                                          {"function", QJsonObject{{"name", name},
+                                                                   {"arguments", QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact))}}}}}}});
+  runTool(id, name, arguments);
 }
 
 void AssistantEngine::onAnswer(QString content) {

@@ -1,6 +1,7 @@
 #ifndef DATAVIEWER_H
 #define DATAVIEWER_H
 
+#include <QJsonObject>
 #include <QMetaObject>
 #include <QWidget>
 
@@ -32,6 +33,13 @@ public:
     double  x0{0.0}; // epoch s
     double  x1{0.0};
     QString label;
+    QColor  color;
+  };
+
+  // an event or anomaly: a dotted vertical line; its text shows in the value label (Tooltip)
+  struct Marker {
+    double  x{0.0}; // epoch s
+    QString text;
     QColor  color;
   };
 
@@ -83,6 +91,21 @@ public:
   void setRegions(QVector<Region> const &regions);
   // shown for the visible channels
   void setBands(QVector<Band> const &bands);
+  void setMarkers(QVector<Marker> const &markers);
+  // ramp / setpoint / hold stages as a labelled strip along the top
+  void setStages(QVector<Region> const &stages);
+  // calculated channels: dash-dot lines named at their end (not part of the channel list, labels box or tooltip)
+  struct Series {
+    QString         label;
+    QColor          color;
+    QVector<double> times; // epoch s
+    QVector<double> values;
+  };
+  void setExtraSeries(QVector<Series> const &series);
+  // the setpoint as a dashed line: channel `index` of the data (follows new data), or a fixed series (comparisons)
+  void setSetpointLine(bool visible);
+  void setSetpointChannel(int index);
+  void setSetpointSeries(QVector<double> const &times, QVector<double> const &values);
   // centred moving average over `samples` samples (1: raw data)
   void setSmoothingWindow(int samples);
   int  smoothingWindow() const;
@@ -95,6 +118,12 @@ public:
   bool relativeTime() const;
   // no data (e.g. while it is read); text on the chart
   void clear(QString const &text);
+  // the view: axis ranges and how it follows the data (to keep it per tab and across restarts); empty: nothing set
+  [[nodiscard]] QJsonObject viewState() const;
+  void                      setViewState(QJsonObject const &state);
+  // points instead of lines
+  void setScatter(bool scatter);
+  bool scatter() const;
   // left-drag marks a time range (annotationDrawn) instead of moving the view
   void setAnnotateMode(bool enabled);
 
@@ -105,6 +134,7 @@ public:
 signals:
   void controlModeChanged(ControlMode);
   void annotationDrawn(double x0, double x1); // epoch s
+  void dataUpdated(); // new data drawn (live data, or another data set)
   // the value label follows the mouse (time x, epoch s, on the line `graph`) / was hidden
   void valueCursorMoved(double x, int graph);
   void valueCursorHidden();
@@ -160,8 +190,35 @@ private:
   void                       rebuildDecorations();
   QVector<QCPAbstractItem *> m_decorationItems;
   QVector<Band>              m_bands;
+  QVector<Marker>            m_markers;
+  QVector<Region>            m_stages;
+  QCPCurve                  *m_setpointCurve{nullptr};
+  QVector<Series>            m_extra;
+  QVector<QCPCurve *>        m_extraCurves;
+  bool                       m_setpointVisible{false};
+  int                        m_setpointChannel{-1};
+  QVector<double>            m_setpointTimes;
+  QVector<double>            m_setpointValues;
+  void                       updateSetpointLine();
   int                        m_smoothing{1};
   bool                       m_relativeTime{false};
+  bool                       m_scatter{false};
+  void                       applyLineStyle(QCPGraph *graph) const;
+  // touch: one finger as the mouse (pan, or the value label with Tooltip on, or annotate), two fingers pinch to zoom,
+  // a double tap fits the whole data
+  void                       handleTouch(QTouchEvent *event);
+  void                       sendMouse(QEvent::Type type, QPointF const &pos, Qt::MouseButtons buttons);
+  bool                       m_fromTouch{false};  // the mouse events come from a finger
+  bool                       m_touchSingle{false};
+  bool                       m_pinching{false};
+  QPointF                    m_touchStart;
+  QPointF                    m_touchLast;
+  QPointF                    m_pinchA;
+  QPointF                    m_pinchB;
+  QCPRange                   m_pinchX;
+  QCPRange                   m_pinchY;
+  qint64                     m_lastTapMs{0};
+  QPointF                    m_lastTapPos;
   QSharedPointer<QCPAxisTicker> m_clockTicker;
   QSharedPointer<QCPAxisTicker> m_elapsedTicker;
   void                       updateTimeOrigin();
@@ -197,6 +254,10 @@ inline QCustomPlot *DataViewer::getPlot() {
 
 inline bool DataViewer::labelsVisible() const {
   return m_labelsVisible;
+}
+
+inline bool DataViewer::scatter() const {
+  return m_scatter;
 }
 
 inline bool DataViewer::relativeTime() const {

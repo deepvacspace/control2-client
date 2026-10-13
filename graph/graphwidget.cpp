@@ -1,21 +1,31 @@
 #include "graphwidget.h"
 
 #include <QApplication>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
-#include <QDateTimeEdit>
+#include "datetimefield.h"
+#include "hardwarestatus.h"
+#include "derivedexpression.h"
+#include "derivedvariablesdialog.h"
 #include <QDir>
+#include <QFileInfo>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QRadioButton>
 #include <QSaveFile>
 #include <QFrame>
 #include <QLabel>
+#include <QLocale>
 #include <QSpinBox>
 #include <QGridLayout>
 #include <QMenu>
+#include <QPainter>
 #include <QSplitter>
+#include <QSet>
 #include <QTabBar>
+#include <QTextStream>
 #include <QThread>
 #include <cmath>
 
@@ -23,6 +33,8 @@
 #include "analysisservices.h"
 #include "annotationdialog.h"
 #include "comparison.h"
+#include "runmanifest.h"
+#include "runrecord.h"
 #include "comparisondialog.h"
 #include "experimentinput.h"
 #include "calendardialog.h"
@@ -35,10 +47,62 @@
 #include "rundetailsdialog.h"
 #include "dialogs/messagedialog.h"
 #include "theme.h"
+#include "touchsupport.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
 namespace {
+QString const SESSION_FILE{QStringLiteral("data/chart/session.json")}; // open tabs, split, zoom, options
+
+QJsonObject runToJson(ExperimentRun const &run) {
+  return QJsonObject{{"key", run.key},         {"title", run.title},     {"start", run.start},
+                     {"end", run.end},         {"samples", run.samples}, {"files", QJsonArray::fromStringList(run.files)},
+                     {"custom", run.custom},   {"storeKey", run.storeKey}, {"chamber", run.chamber},
+                     {"details", run.details}};
+}
+
+ExperimentRun runFromJson(QJsonObject const &json) {
+  ExperimentRun run;
+  run.key     = json.value("key").toString();
+  run.title   = json.value("title").toString();
+  run.start   = json.value("start").toDouble();
+  run.end     = json.value("end").toDouble();
+  run.samples = json.value("samples").toInteger();
+  for (QJsonValue const &file : json.value("files").toArray()) {
+    run.files << file.toString();
+  }
+  run.custom   = json.value("custom").toBool();
+  run.storeKey = json.value("storeKey").toString();
+  run.chamber  = json.value("chamber").toString();
+  run.details  = json.value("details").toString();
+  return run;
+}
+
+QJsonObject comparisonToJson(ChartComparison const &comparison) {
+  QJsonArray members;
+  for (ChartComparison::Member const &member : comparison.members) {
+    members.push_back(QJsonObject{{"key", member.key}, {"label", member.label}, {"run", runToJson(member.run)}});
+  }
+  return QJsonObject{{"members", members},
+                     {"channels", QJsonArray::fromStringList(comparison.channels)},
+                     {"alignMode", comparison.alignMode},
+                     {"alignN", comparison.alignN}};
+}
+
+ChartComparison comparisonFromJson(QJsonObject const &json) {
+  ChartComparison comparison;
+  for (QJsonValue const &value : json.value("members").toArray()) {
+    QJsonObject const member = value.toObject();
+    comparison.members.push_back({member.value("key").toString(), member.value("label").toString(), runFromJson(member.value("run").toObject())});
+  }
+  for (QJsonValue const &channel : json.value("channels").toArray()) {
+    comparison.channels << channel.toString();
+  }
+  comparison.alignMode = json.value("alignMode").toInt();
+  comparison.alignN    = json.value("alignN").toInt(1);
+  return comparison;
+}
+
 // "2026-09-24 09:55": the day button text of a single experiment
 QString startText(double epochSec) {
   return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epochSec)).toString("yyyy-MM-dd HH:mm");
@@ -71,6 +135,10 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   });
   m_styleEditor = new GraphStyleEditor(resHolder, this);
   double const ssf{utils::ssf()};
+  m_sessionTimer = new QTimer(this);
+  m_sessionTimer->setSingleShot(true);
+  m_sessionTimer->setInterval(2000);
+  connect(m_sessionTimer, &QTimer::timeout, this, &GraphWidget::saveSession);
 
   // whole page in one card
   mainLay->setContentsMargins(0, 0, 0, 0);
@@ -129,22 +197,38 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_annotateBtn->setMinimumWidth(80 * ssf);
   m_annotateBtn->setToolTip(tr("Drag across the chart to mark and label a time range"));
   m_annotateBtn->setEnabled(false); // until the annotations store is set
-  m_exportToBtn = textButton(tr("Export"));
-  m_exportToBtn->setMinimumWidth(70 * ssf);
   m_styleBtn = textButton(tr("Channels ▾"));
   m_styleBtn->setMinimumWidth(90 * ssf);
   m_styleBtn->setToolTip(tr("Visible channels, colours and line styles"));
 
-  m_labelsBtn = textButton(tr("Labels"));
-  m_labelsBtn->setCheckable(true);
-  m_labelsBtn->setChecked(true);
-  m_labelsBtn->setMinimumWidth(80 * ssf);
-  m_labelsBtn->setToolTip(tr("Show or hide the box with the line labels and colours"));
-  m_valuesBtn = textButton(tr("Tooltip"));
-  m_valuesBtn->setCheckable(true);
-  m_valuesBtn->setMinimumWidth(80 * ssf);
-  m_valuesBtn->setToolTip(tr("Show the value of the line where the mouse points in the chart\n"
-                             "(split: the other chart shows the same line at the same time from its start)"));
+  // Actions ▾: what the chart shows, and export
+  m_actionsBtn = textButton(tr("Actions ▾"));
+  m_actionsBtn->setMinimumWidth(96 * ssf);
+  m_actionsBtn->setToolTip(tr("Labels, tooltip, events, anomalies, stages, setpoint and export"));
+  auto *actionsMenu = new QMenu(m_actionsBtn);
+  auto  toggle      = [actionsMenu](QString const &text, QString const &tip, bool on) {
+    QAction *action = actionsMenu->addAction(text);
+    action->setCheckable(true);
+    action->setChecked(on);
+    action->setToolTip(tip);
+    return action;
+  };
+  m_labelsBtn = toggle(tr("Labels"), tr("The box with the line labels and colours"), true);
+  m_valuesBtn = toggle(tr("Tooltip"), tr("The value of the line where the mouse points (split: the other chart follows)"), false);
+  actionsMenu->addSeparator();
+  m_eventsAct    = toggle(tr("Events"), tr("Program, PLC and operator events as dotted lines"), false);
+  m_anomaliesAct = toggle(tr("Anomalies"), tr("The detected anomalies as coloured lines"), false);
+  m_stagesAct    = toggle(tr("Stages"), tr("Ramp / setpoint / hold stages as a strip along the top"), false);
+  m_setpointAct  = toggle(tr("Setpoint"), tr("The setpoint as a dashed line (a comparison: its first experiment's)"), false);
+  actionsMenu->addSeparator();
+  m_exportToBtn = actionsMenu->addAction(tr("Export…"));
+  actionsMenu->setToolTipsVisible(true);
+  m_actionsBtn->setMenu(actionsMenu);
+
+  // Info: the experiment shown
+  m_infoBtn = textButton(tr("Info"));
+  m_infoBtn->setMinimumWidth(64 * ssf);
+  m_infoBtn->setToolTip(tr("Experiment number, DUT, purpose, operator, duration and samples"));
   auto *calendarBtn = textButton(QString());
   m_dayBtn          = calendarBtn;
   theme::setThemedIcon(calendarBtn, "calendar", static_cast<int>(13 * ssf));
@@ -153,7 +237,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
 
   // the charts with their tabs: one pane, or two side by side ("Split right")
   m_split = new QSplitter(Qt::Horizontal, card);
-  m_split->setHandleWidth(8 * ssf);
+  m_split->setHandleWidth(12 * ssf); // wide enough for a finger
   m_split->setChildrenCollapsible(false);
   m_split->setStyleSheet(QStringLiteral("QSplitter::handle { background: transparent; }"));
   ChartPane *first = addPane();
@@ -181,14 +265,30 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   toolBar->addWidget(fitBtn);
   toolBar->addStretch();
   for (QPushButton *button :
-       {m_compareBtn, m_statisticsBtn, m_annotateBtn, m_exportToBtn, m_styleBtn, m_labelsBtn, m_valuesBtn, calendarBtn, m_optionsBtn}) {
+       {m_compareBtn, m_statisticsBtn, m_annotateBtn, m_styleBtn, m_infoBtn, m_actionsBtn, calendarBtn, m_optionsBtn}) {
     toolBar->addWidget(button);
   }
   cardLay->addLayout(toolBar, 2, 1);
 
   connect(fitBtn, &QPushButton::clicked, this, [this] { viewer()->setControlMode(DataViewer::ControlMode::LEAD_FULL); });
-  connect(m_labelsBtn, &QPushButton::toggled, this, &GraphWidget::updateLegendMode);
-  connect(m_valuesBtn, &QPushButton::toggled, this, &GraphWidget::updateLegendMode);
+  connect(m_labelsBtn, &QAction::toggled, this, &GraphWidget::updateLegendMode);
+  connect(m_valuesBtn, &QAction::toggled, this, &GraphWidget::updateLegendMode);
+  for (QAction *marker : {m_eventsAct, m_anomaliesAct, m_stagesAct}) {
+    connect(marker, &QAction::toggled, this, [this] {
+      requestInsights();
+      scheduleSessionSave();
+    });
+  }
+  connect(m_setpointAct, &QAction::toggled, this, [this] {
+    applySetpointLine();
+    scheduleSessionSave();
+  });
+  connect(m_infoBtn, &QPushButton::clicked, this, &GraphWidget::showInfo);
+  // the live tab's analysis is brought up to date now and then
+  m_insightTimer = new QTimer(this);
+  m_insightTimer->setInterval(60'000);
+  connect(m_insightTimer, &QTimer::timeout, this, &GraphWidget::requestInsights);
+  m_insightTimer->start();
 
   connect(zoomXBtn, &QPushButton::clicked, this, [this] {
     viewer()->zoomView(0.8, 1);
@@ -236,13 +336,13 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     }
   });
 
-  connect(m_exportToBtn, &QPushButton::clicked, this, &GraphWidget::exportData);
+  connect(m_exportToBtn, &QAction::triggered, this, &GraphWidget::exportData);
 
   connect(calendarBtn, &QPushButton::clicked, this, &GraphWidget::openCalendar);
 
   // options: a drawer over the right of the page
   m_optionsDrawer = new OverlayDrawer(this, 320, OverlayDrawer::Side::RIGHT);
-  m_optionsDrawer->setContent(buildOptions());
+  m_optionsDrawer->setContent(buildOptions(), true); // scrolls when it does not fit
   connect(m_optionsBtn, &QPushButton::clicked, this, [this] {
     updateOptions();
     m_optionsDrawer->toggle();
@@ -262,7 +362,10 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     }
   });
 
+  connect(m_resHolder->status, &StatusManager::appStateChanged, this, &GraphWidget::updateLiveActivity);
+
   // the live data of today, always the first tab of the first pane
+  updateLiveActivity();
   first->addTab({ChartPane::LIVE_KEY, tr("Live"), tr("Live data of today"), QStringLiteral("chart:live"), nullptr});
 
   updateDayButton();
@@ -270,6 +373,16 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   handleAccessChange("", m_resHolder->users->getCurrentAccessLevel());
   connect(m_resHolder->users, &AccessManager::userSelected, this, &GraphWidget::handleAccessChange);
   initAnalysis();
+  connect(m_split, &QSplitter::splitterMoved, this, &GraphWidget::scheduleSessionSave);
+  for (QAction *action : {m_labelsBtn, m_valuesBtn}) {
+    connect(action, &QAction::toggled, this, &GraphWidget::scheduleSessionSave);
+  }
+  // the tabs of the last time, once the page is built
+  QTimer::singleShot(0, this, &GraphWidget::restoreSession);
+}
+
+GraphWidget::~GraphWidget() {
+  saveSession();
 }
 
 DataViewer *GraphWidget::makeViewer() {
@@ -282,7 +395,9 @@ DataViewer *GraphWidget::makeViewer() {
   if (period.isValid() && (period.toString().toInt() > 0)) {
     chart->setRefreshPeriodMs(1000 * period.toString().toInt());
   }
+  chart->setSetpointChannel(static_cast<int>(m_resHolder->states->getNames().indexOf("temp_ref")));
   if (m_labelsBtn) {
+    chart->setSetpointLine(m_setpointAct->isChecked());
     chart->setLabelsVisible(m_labelsBtn->isChecked());
     chart->setValuesVisible(m_valuesBtn->isChecked());
     chart->setAnnotateMode(m_annotateBtn->isChecked());
@@ -298,6 +413,7 @@ DataViewer *GraphWidget::viewer() const {
 ChartPane *GraphWidget::addPane() {
   auto *pane = new ChartPane(makeViewer(), m_resHolder->dataManager, m_resHolder->states->getNames(), m_split);
   m_split->addWidget(pane);
+  pane->setLiveActive(m_liveActive, m_liveIdleText);
   m_panes.push_back(pane);
   if (m_notes) {
     pane->setNotes(m_notes);
@@ -312,6 +428,14 @@ ChartPane *GraphWidget::addPane() {
       updateStatisticsSource();
     }
   });
+  connect(pane, &ChartPane::tabsChanged, this, &GraphWidget::scheduleSessionSave);
+  connect(pane, &ChartPane::tabsChanged, this, [this, pane] { requestInsight(pane); });
+  connect(pane, &ChartPane::currentTabChanged, this, [this, pane] { requestInsight(pane); });
+  connect(pane, &ChartPane::currentTabChanged, this, &GraphWidget::scheduleSessionSave);
+  connect(pane->mainViewer(), &DataViewer::dataUpdated, this, [this, pane] { refreshDerived(pane); });
+  connect(pane, &ChartPane::currentTabChanged, this, [this, pane] { refreshDerived(pane); });
+  connect(pane->mainViewer()->getPlot()->xAxis, qOverload<QCPRange const &>(&QCPAxis::rangeChanged), this,
+          &GraphWidget::scheduleSessionSave);
   connect(pane, &ChartPane::tabMenuRequested, this, [this, pane](int index, QPoint const &globalPos) {
     showTabMenu(pane, index, globalPos);
   });
@@ -384,6 +508,7 @@ void GraphWidget::setFocusedPane(ChartPane *pane) {
   }
   updateDayButton();
   updateStatisticsSource();
+  scheduleSessionSave();
 }
 
 void GraphWidget::openTab(Tab const &tab, bool splitRight) {
@@ -402,8 +527,12 @@ void GraphWidget::openTab(Tab const &tab, bool splitRight) {
       return;
     }
   }
-  ChartPane *target = splitRight ? rightPane() : m_focused;
-  target->addTab(tab);
+  ChartPane *target = m_restoreTarget ? m_restoreTarget : (splitRight ? rightPane() : m_focused);
+  Tab        opened = tab;
+  if (m_restoreView) {
+    opened.view = *m_restoreView;
+  }
+  target->addTab(opened);
   setFocusedPane(target);
 }
 
@@ -509,6 +638,20 @@ void GraphWidget::showTabMenu(ChartPane *pane, int index, QPoint const &globalPo
         pane->closeTab(index);
       })
     ->setEnabled(!live);
+  // all the others of this pane (the live tab stays)
+  bool others{false};
+  for (int i{0}; i < pane->count(); ++i) {
+    others = others || ((i != index) && (pane->tab(i)->key != ChartPane::LIVE_KEY));
+  }
+  QString const keep = tab->key;
+  menu.addAction(tr("Close others"), this, [pane, keep] {
+        for (int i{pane->count() - 1}; i >= 0; --i) {
+          if ((pane->tab(i)->key != keep) && (pane->tab(i)->key != ChartPane::LIVE_KEY)) {
+            pane->closeTab(i);
+          }
+        }
+      })
+    ->setEnabled(others);
   menu.exec(globalPos);
 }
 
@@ -605,9 +748,26 @@ void GraphWidget::initAnalysis() {
     viewer()->setTimeRange(from, to);
   });
   connect(m_statisticsBtn, &QPushButton::clicked, this, [this] {
-    updateStatisticsSource();
     m_statistics->show();
     m_statistics->raise();
+    updateStatisticsSource(); // shown: its analysis is wanted now
+  });
+  // the alignment changed in the comparison tab of the statistics: the comparison tab follows
+  connect(m_statistics->comparisonPanel(), &ComparisonPanel::alignmentChanged, this, [this] {
+    Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
+    if (!tab || !tab->comparison) {
+      return;
+    }
+    ChartComparison changed = *tab->comparison;
+    changed.alignMode       = m_statistics->comparisonPanel()->alignMode();
+    changed.alignN          = m_statistics->comparisonPanel()->alignN();
+    if ((changed.alignMode == tab->comparison->alignMode) && (changed.alignN == tab->comparison->alignN)) {
+      return;
+    }
+    QString const key        = tab->key;
+    auto const [label, name] = comparisonTitles(changed);
+    m_focused->updateTab(key, tab->label, name, std::make_shared<ChartComparison const>(changed));
+    computeComparison(key, changed);
   });
   m_statisticsBtn->setEnabled(true);
 
@@ -615,6 +775,520 @@ void GraphWidget::initAnalysis() {
   m_services->setShowHandler([this](ExperimentRun const &run, QStringList const &channels, double from, double to,
                                     QVector<ExperimentRun> const &compare) { return showFromServices(run, channels, from, to, compare); });
   handleAccessChange(QString{}, m_resHolder->users->getCurrentAccessLevel());
+}
+
+bool GraphWidget::needInsight() const {
+  return (m_statistics && m_statistics->isVisible()) || m_eventsAct->isChecked() || m_anomaliesAct->isChecked() || m_stagesAct->isChecked();
+}
+
+void GraphWidget::requestInsights() {
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    requestInsight(pane);
+  }
+}
+
+void GraphWidget::requestInsight(ChartPane *pane) {
+  if (!m_panes.contains(pane)) {
+    return;
+  }
+  Tab const *tab = pane->currentTab();
+  auto const data = pane->viewer()->getData();
+  if (!tab || tab->comparison || tab->loading || !data || data->getTimes().isEmpty()) {
+    applyInsight(pane);
+    return;
+  }
+  QString const key = tab->key;
+  qint64 const  samples{data->getTimes().size()};
+  qint64 const  now{QDateTime::currentMSecsSinceEpoch()};
+  bool const    live{key == ChartPane::LIVE_KEY};
+  auto const    cached = m_insights.constFind(key);
+  bool const    fresh{(cached != m_insights.cend())
+                   && ((cached->samples == samples) || (live && (now - m_insightTimes.value(key) < 60'000)))};
+  applyInsight(pane);
+  if (fresh || !needInsight() || m_insightPending.contains(key)) {
+    return;
+  }
+  // in the background: the analysis core and the events
+  m_insightPending.insert(key);
+  applyInsight(pane); // "Analysing…"
+  auto                             result = std::make_shared<RunInsight>();
+  ExperimentRun const              run    = runOfTab(*tab);
+  QVector<double> const            times  = data->getTimes();
+  QVector<QVector<double>> const   states = data->getStates();
+  QStringList const                names  = m_resHolder->states->getNames();
+  QVector<AnalysisNotesStore::Rule> const rules = m_notes ? m_notes->rules(tab->runKey) : QVector<AnalysisNotesStore::Rule>{};
+  QVariantList const               alarms = m_resHolder->settings->settingsMap().value("alarms").toList();
+  QThread *thread = QThread::create([result, run, times, states, names, rules, alarms] {
+    *result = runinsight::compute(run, times, states, names, rules, alarms);
+  });
+  connect(thread, &QThread::finished, this, [this, thread, key, result] {
+    thread->deleteLater();
+    m_insightPending.remove(key);
+    m_insights.insert(key, *result);
+    m_insightTimes.insert(key, QDateTime::currentMSecsSinceEpoch());
+    for (ChartPane *each : std::as_const(m_panes)) {
+      if (each->currentTab() && (each->currentTab()->key == key)) {
+        applyInsight(each);
+      }
+    }
+  });
+  thread->start(QThread::LowPriority);
+}
+
+void GraphWidget::applyInsight(ChartPane *pane) {
+  Tab const       *tab     = pane->currentTab();
+  RunInsight const insight = (tab && !tab->comparison) ? m_insights.value(tab->key) : RunInsight{};
+  DataViewer      *chart   = pane->viewer();
+
+  // events and anomalies as dotted lines, stages as a strip
+  QVector<DataViewer::Marker> markers;
+  if (m_eventsAct->isChecked()) {
+    for (core::RunEvent const &event : insight.events) {
+      markers.push_back({event.time, event.message, runrecord::eventColor(event.type)});
+    }
+  }
+  if (m_anomaliesAct->isChecked() && insight.analysis) {
+    for (core::Anomaly const &anomaly : insight.analysis->anomalies) {
+      markers.push_back({insight.start + anomaly.start, QStringLiteral("⚠ %1: %2").arg(analysistext::anomalyName(anomaly.kind), anomaly.detail),
+                         analysistext::severityColor(anomaly.severity)});
+    }
+  }
+  chart->setMarkers(markers);
+  QVector<DataViewer::Region> stages;
+  if (m_stagesAct->isChecked() && insight.analysis) {
+    for (core::StageAnalysis const &stage : insight.analysis->run.stages) {
+      core::Segment const &s     = stage.segment;
+      QString              label = analysistext::stageName(s.kind);
+      if (s.interval >= 0) {
+        label += QStringLiteral(" %1").arg(s.interval);
+      }
+      stages.push_back({insight.start + s.start, insight.start + std::max(s.end, s.start + 1.0), label, analysistext::stageColor(s.kind)});
+    }
+  }
+  chart->setStages(stages);
+
+  if ((pane == m_focused) && m_statistics && !(tab && tab->comparison)) {
+    m_statistics->setInsight(insight, tab && m_insightPending.contains(tab->key));
+  }
+}
+
+void GraphWidget::applySetpointLine() {
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    for (DataViewer *chart : pane->viewers()) {
+      chart->setSetpointLine(m_setpointAct->isChecked());
+    }
+  }
+}
+
+void GraphWidget::refreshComparisonStatistics() {
+  Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
+  if (!m_statistics || !tab || !tab->comparison) {
+    return;
+  }
+  ComparisonData const data = m_comparisonData.value(tab->key);
+  m_statistics->comparisonPanel()->setRuns(data.runs, data.signalLabel);
+  m_statistics->comparisonPanel()->setAlignment(tab->comparison->alignMode, tab->comparison->alignN);
+}
+
+void GraphWidget::showInfo() {
+  Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
+  if (!tab) {
+    return;
+  }
+  auto const data  = viewer()->getData();
+  QVector<double> const times = data ? data->getTimes() : QVector<double>{};
+  auto clock = [](double t) { return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(t))).toString("yyyy-MM-dd HH:mm:ss"); };
+  auto row   = [](QString const &name, QString const &value) {
+    return value.trimmed().isEmpty() ? QString{}
+                                     : QStringLiteral("<tr><td style='color:#64748b; padding-right:12px'>%1</td><td>%2</td></tr>")
+                                         .arg(name.toHtmlEscaped(), value.toHtmlEscaped());
+  };
+  QString rows;
+  if (tab->comparison) {
+    for (int k{0}; k < tab->comparison->members.size(); ++k) {
+      ChartComparison::Member const &member = tab->comparison->members[k];
+      rows += row(k == 0 ? tr("Reference") : tr("Compared"), QStringLiteral("%1 · %2").arg(member.label, member.run.title));
+    }
+  } else {
+    ExperimentRun const run = runOfTab(*tab);
+    // the number the experiment list and the assistant use (#1 is the oldest)
+    if (m_library && (tab->key != ChartPane::LIVE_KEY)) {
+      QVector<ExperimentRun> const all = m_library->chronological();
+      for (int i{0}; i < all.size(); ++i) {
+        if ((all[i].key == run.key) || (!run.storeKey.isEmpty() && (all[i].storeKey == run.storeKey))) {
+          rows += row(tr("Experiment"), QStringLiteral("#%1").arg(i + 1));
+          break;
+        }
+      }
+    }
+    if (!run.storeKey.isEmpty()) {
+      if (auto const manifest = storage::RunStore::manifest(run.storeKey)) {
+        rows += row(tr("DUT"), manifest->metadata.dut);
+        rows += row(tr("Purpose"), manifest->metadata.purpose);
+        rows += row(tr("Operator"), manifest->metadata.operatorName);
+      }
+    }
+    rows += row(tr("Chamber"), run.chamber);
+  }
+  if (!times.isEmpty()) {
+    rows += row(tr("Start"), clock(times.first()));
+    rows += row(tr("End"), clock(times.last()));
+    rows += row(tr("Duration"), ExperimentLibrary::formatDuration(times.last() - times.first()));
+    rows += row(tr("Samples"), QLocale().toString(times.size()));
+  }
+
+  // a small card above the button, closed by a tap elsewhere
+  auto *popup = new QFrame(this, Qt::Popup);
+  popup->setAttribute(Qt::WA_DeleteOnClose);
+  popup->setObjectName("infoCard");
+  theme::Colors const &c = theme::colors();
+  popup->setStyleSheet(QStringLiteral("QFrame#infoCard { background: %1; border: 1px solid %2; border-radius: 8px; }")
+                         .arg(c.panel.name(), c.border.name()));
+  auto *lay   = new QVBoxLayout(popup);
+  double const ssf{utils::ssf()};
+  lay->setContentsMargins(14 * ssf, 12 * ssf, 14 * ssf, 12 * ssf);
+  auto *label = new QLabel(QStringLiteral("<b>%1</b><table style='margin-top:6px'>%2</table>").arg(tab->name.toHtmlEscaped(), rows), popup);
+  label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  label->setMaximumWidth(static_cast<int>(520 * ssf));
+  label->setWordWrap(true);
+  lay->addWidget(label);
+  popup->adjustSize();
+  QPoint const anchor = m_infoBtn->mapToGlobal(QPoint(0, 0));
+  popup->move(anchor.x(), anchor.y() - popup->height() - static_cast<int>(6 * ssf));
+  popup->show();
+}
+
+void GraphWidget::updateLiveActivity() {
+  // every sample of a connected chamber is drawn (and recorded), with or without a job
+  StatusManager::AppState const state = m_resHolder->status->getAppState();
+  bool const                    active{StatusManager::AppState::ONLINE == state};
+  QString const idle = (StatusManager::AppState::OFFLINE == state)
+                         ? tr("Connected, but the chamber's configuration differs from this application's.")
+                         : ((StatusManager::AppState::CONNECTING == state) || (StatusManager::AppState::CONNECTED == state))
+                             ? tr("Connecting to the chamber…")
+                             : tr("Not connected to the chamber.");
+  if (active == m_liveActive && idle == m_liveIdleText) {
+    return;
+  }
+  m_liveActive   = active;
+  m_liveIdleText = idle;
+  m_insights.remove(ChartPane::LIVE_KEY); // the stages and events of the data shown before
+  m_insightTimes.remove(ChartPane::LIVE_KEY);
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    pane->setLiveActive(m_liveActive, m_liveIdleText);
+  }
+  if (!m_panes.isEmpty()) {
+    requestInsights();
+  }
+}
+
+void GraphWidget::refreshDerivedList() {
+  if (!m_derivedBox) {
+    return;
+  }
+  m_derived = storage::DerivedVariablesStore::list();
+  QLayout *lay = m_derivedBox->layout();
+  while (QLayoutItem *item = lay->takeAt(0)) {
+    delete item->widget();
+    delete item;
+  }
+  if (m_derived.isEmpty()) {
+    auto *none = new QLabel(tr("None yet."), m_derivedBox);
+    none->setProperty("muted", true);
+    lay->addWidget(none);
+  }
+  for (storage::DerivedVariable const &definition : std::as_const(m_derived)) {
+    auto *check = new QCheckBox(definition.name, m_derivedBox);
+    check->setChecked(m_derivedShown.contains(definition.name));
+    check->setToolTip(definition.type == storage::DerivedVariable::Type::Custom ? definition.expression
+                                                                                 : storage::DerivedVariable::typeKey(definition.type));
+    connect(check, &QCheckBox::toggled, this, [this, name = definition.name](bool on) {
+      m_derivedShown.removeAll(name);
+      if (on) {
+        m_derivedShown << name;
+      }
+      for (ChartPane *pane : std::as_const(m_panes)) {
+        refreshDerived(pane);
+      }
+      scheduleSessionSave();
+    });
+    lay->addWidget(check);
+  }
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    refreshDerived(pane);
+  }
+}
+
+void GraphWidget::refreshDerived(ChartPane *pane) {
+  if (!m_panes.contains(pane)) {
+    return;
+  }
+  Tab const  *tab   = pane->currentTab();
+  DataViewer *chart = pane->mainViewer();
+  auto const  data  = chart->getData();
+  if (!tab || tab->comparison || m_derivedShown.isEmpty() || !data || data->getTimes().isEmpty()) {
+    chart->setExtraSeries({});
+    return;
+  }
+  // the formulas over the channels shown, by state name
+  QVector<double> const          times  = data->getTimes();
+  QVector<QVector<double>> const states = data->getStates();
+  QStringList const              names  = m_resHolder->states->getNames();
+  QHash<QString, QVector<double> const *> columns;
+  for (int i{0}; (i < names.size()) && (i < states.size()); ++i) {
+    columns.insert(names[i], &states[i]);
+  }
+  QVector<double> elapsed;
+  elapsed.reserve(times.size());
+  for (double const time : times) {
+    elapsed.push_back(time - times.first());
+  }
+  QVector<DataViewer::Series> series;
+  for (storage::DerivedVariable const &definition : std::as_const(m_derived)) {
+    QVector<double> values;
+    if (!m_derivedShown.contains(definition.name) || !derived::compute(definition, columns, elapsed, values)) {
+      continue; // not shown, or needs channels this data does not have
+    }
+    series.push_back({definition.name, definition.color.isValid() ? definition.color : QColor("#9333ea"), times, values});
+  }
+  chart->setExtraSeries(series);
+}
+
+void GraphWidget::manageDerived() {
+  // the channels the formulas can use
+  QVector<ChannelInfo> channels;
+  QStringList const    names  = m_resHolder->states->getNames();
+  QVariantList const   styles = m_resHolder->settings->settingsMap()["states"].toList();
+  for (int i{0}; i < names.size(); ++i) {
+    ChannelInfo info;
+    info.name  = names[i];
+    info.label = (i < styles.size()) ? styles[i].toMap()["label"].toString() : names[i];
+    info.color = (i < styles.size()) ? QColor(styles[i].toMap()["color"].toString()) : QColor();
+    channels.push_back(info);
+  }
+  DerivedVariablesDialog dialog(channels, m_resHolder->users->getCurrentUserName(), this);
+  dialog.exec();
+  refreshDerivedList();
+}
+
+bool GraphWidget::writeComparisonCsv(Tab const &tab, QString const &path) const {
+  auto const data = tab.ownViewer ? tab.ownViewer->getData() : nullptr;
+  if (!tab.comparison || !data) {
+    return false;
+  }
+  QSaveFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    return false;
+  }
+  auto quote = [](QString text) {
+    return (text.contains(',') || text.contains('"')) ? QStringLiteral("\"%1\"").arg(text.replace('"', QStringLiteral("\"\""))) : text;
+  };
+  auto number = [](double value) { return std::isnan(value) ? QString{} : QString::number(value, 'g', 10); };
+  auto clock  = [](double t) { return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(t)).toString("yyyy-MM-dd HH:mm:ss"); };
+  QTextStream out(&file);
+  out.setGenerateByteOrderMark(true);
+  out << QStringList{tr("Experiment"), tr("Start"), tr("End"), tr("Duration, s"), tr("Channel"), tr("Min"), tr("Max"), tr("Mean"), tr("Final")}
+           .join(',')
+      << '\n';
+  // the columns of the comparison: experiment by experiment, channel by channel (as aligned on its time axis)
+  QVector<QVector<double>> const columns = data->getStates();
+  QStringList const              names   = m_resHolder->states->getNames();
+  QVariantList const             styles  = m_resHolder->settings->settingsMap()["states"].toList();
+  ChartComparison const         &spec    = *tab.comparison;
+  for (int k{0}; k < spec.members.size(); ++k) {
+    for (int c{0}; c < spec.channels.size(); ++c) {
+      QVector<double> const values = columns.value(k * spec.channels.size() + c);
+      double minValue{qQNaN()};
+      double maxValue{qQNaN()};
+      double finalValue{qQNaN()};
+      double sum{0.0};
+      qint64 count{0};
+      for (double const value : values) {
+        if (std::isnan(value)) {
+          continue;
+        }
+        minValue   = std::isnan(minValue) ? value : std::min(minValue, value);
+        maxValue   = std::isnan(maxValue) ? value : std::max(maxValue, value);
+        finalValue = value;
+        sum += value;
+        ++count;
+      }
+      qsizetype const    index{names.indexOf(spec.channels[c])};
+      QString const      channel = ((index >= 0) && (index < styles.size())) ? styles[index].toMap()["label"].toString() : spec.channels[c];
+      ExperimentRun const &run   = spec.members[k].run;
+      out << QStringList{quote(run.title.isEmpty() ? spec.members[k].label : run.title), clock(run.start), clock(run.end), number(run.duration()),
+                         quote(channel), number(minValue), number(maxValue), number(count > 0 ? sum / static_cast<double>(count) : qQNaN()),
+                         number(finalValue)}
+               .join(',')
+          << '\n';
+    }
+  }
+  out.flush();
+  return file.commit();
+}
+
+void GraphWidget::scheduleSessionSave() {
+  if (!m_restoring && m_sessionTimer) {
+    m_sessionTimer->start();
+  }
+}
+
+QJsonObject GraphWidget::tabJson(ChartPane *pane, int index) const {
+  Tab const  *tab = pane->tab(index);
+  QJsonObject json{{"key", tab->key},       {"label", tab->label},     {"name", tab->name},
+                   {"storeKey", tab->storeKey}, {"view", pane->viewOf(index)}};
+  if (tab->comparison) {
+    json.insert("comparison", comparisonToJson(*tab->comparison));
+  } else if (!tab->run.key.isEmpty()) {
+    json.insert("run", runToJson(tab->run));
+  }
+  return json;
+}
+
+void GraphWidget::saveSession() const {
+  if (m_restoring || m_panes.isEmpty()) {
+    return;
+  }
+  QJsonArray panes;
+  for (ChartPane *pane : m_panes) {
+    QJsonArray tabs;
+    for (int i{0}; i < pane->count(); ++i) {
+      tabs.push_back(tabJson(pane, i));
+    }
+    Tab const *current = pane->currentTab();
+    panes.push_back(QJsonObject{{"tabs", tabs}, {"current", current ? current->key : QString{}}});
+  }
+  QJsonArray sizes;
+  for (int const size : m_split->sizes()) {
+    sizes.push_back(size);
+  }
+  QJsonObject const options{{"smoothing", smoothing()},
+                            {"min", m_minCheck && m_minCheck->isChecked()},
+                            {"max", m_maxCheck && m_maxCheck->isChecked()},
+                            {"avg", m_avgCheck && m_avgCheck->isChecked()},
+                            {"overlayChannel", m_overlayChannel ? m_overlayChannel->currentData().toString() : QString{}},
+                            {"relativeTime", m_relativeRadio && m_relativeRadio->isChecked()},
+                            {"scatter", m_scatterRadio && m_scatterRadio->isChecked()},
+                            {"labels", m_labelsBtn->isChecked()},
+                            {"tooltip", m_valuesBtn->isChecked()},
+                            {"events", m_eventsAct->isChecked()},
+                            {"anomalies", m_anomaliesAct->isChecked()},
+                            {"stages", m_stagesAct->isChecked()},
+                            {"setpoint", m_setpointAct->isChecked()},
+                            {"derived", QJsonArray::fromStringList(m_derivedShown)}};
+  QJsonObject const session{{"version", 1},
+                            {"options", options},
+                            {"panes", panes},
+                            {"split", sizes},
+                            {"focused", static_cast<int>(m_panes.indexOf(m_focused))}};
+  QDir().mkpath(QFileInfo(SESSION_FILE).absolutePath());
+  QSaveFile file(SESSION_FILE);
+  if (file.open(QIODevice::WriteOnly)) {
+    file.write(QJsonDocument(session).toJson(QJsonDocument::Indented));
+    file.commit();
+  }
+}
+
+void GraphWidget::restoreSession() {
+  QFile file(SESSION_FILE);
+  if (!file.open(QIODevice::ReadOnly)) {
+    return; // first start
+  }
+  QJsonObject const session = QJsonDocument::fromJson(file.readAll()).object();
+  if (session.value("version").toInt() != 1) {
+    return;
+  }
+  m_restoring = true;
+
+  // options first: the charts of the restored tabs get them
+  QJsonObject const options = session.value("options").toObject();
+  if (m_smoothCombo) {
+    setSmoothing(options.value("smoothing").toInt(1));
+    m_minCheck->setChecked(options.value("min").toBool());
+    m_maxCheck->setChecked(options.value("max").toBool());
+    m_avgCheck->setChecked(options.value("avg").toBool());
+    if (int const channel{m_overlayChannel->findData(options.value("overlayChannel").toString())}; channel >= 0) {
+      m_overlayChannel->setCurrentIndex(channel);
+    }
+    m_relativeRadio->setChecked(options.value("relativeTime").toBool());
+    m_scatterRadio->setChecked(options.value("scatter").toBool());
+  }
+  m_labelsBtn->setChecked(options.value("labels").toBool(true));
+  m_valuesBtn->setChecked(options.value("tooltip").toBool(false));
+  m_eventsAct->setChecked(options.value("events").toBool(false));
+  m_anomaliesAct->setChecked(options.value("anomalies").toBool(false));
+  m_stagesAct->setChecked(options.value("stages").toBool(false));
+  m_setpointAct->setChecked(options.value("setpoint").toBool(false));
+  m_derivedShown.clear();
+  for (QJsonValue const &name : options.value("derived").toArray()) {
+    m_derivedShown << name.toString();
+  }
+  refreshDerivedList();
+
+  // the tabs, in their panes, with their zoom (they are read again in the background)
+  QJsonArray const panes = session.value("panes").toArray();
+  QHash<QString, QString> renamed; // comparisons get new keys
+  QVector<storage::ExperimentSpan> spans;
+  bool                             spansRead{false};
+  for (int p{0}; p < std::min<int>(static_cast<int>(panes.size()), 2); ++p) {
+    QJsonObject const paneJson = panes[p].toObject();
+    QJsonArray const  tabs     = paneJson.value("tabs").toArray();
+    bool              any{false};
+    for (QJsonValue const &value : tabs) {
+      any = any || (value.toObject().value("key").toString() != ChartPane::LIVE_KEY);
+    }
+    if ((p > 0) && !any) {
+      continue;
+    }
+    ChartPane *pane = (p == 0) ? m_panes.first() : rightPane();
+    for (QJsonValue const &value : tabs) {
+      QJsonObject const tab  = value.toObject();
+      QString const     key  = tab.value("key").toString();
+      QJsonObject       view = tab.value("view").toObject();
+      if (key == ChartPane::LIVE_KEY) {
+        pane->setTabView(key, view);
+        continue;
+      }
+      m_restoreTarget = pane;
+      m_restoreView   = &view;
+      if (tab.contains("comparison")) {
+        renamed.insert(key, createComparison(comparisonFromJson(tab.value("comparison").toObject())));
+      } else if (key.startsWith(QLatin1String("db:"))) {
+        openStored(tab.value("storeKey").toString(), tab.value("label").toString(), tab.value("name").toString());
+      } else if (key.startsWith(QLatin1String("day:"))) {
+        if (!spansRead) {
+          spans     = storage::RunStore::spans();
+          spansRead = true;
+        }
+        QDate const                      day = QDate::fromString(key.mid(4), Qt::ISODate);
+        QVector<storage::ExperimentSpan> ofDay;
+        for (storage::ExperimentSpan const &span : std::as_const(spans)) {
+          if (QDateTime::fromSecsSinceEpoch(static_cast<qint64>(span.start)).date() == day) {
+            ofDay.push_back(span);
+          }
+        }
+        if (!ofDay.isEmpty()) {
+          showDay(day, ofDay);
+        }
+      } else if (tab.contains("run")) {
+        showRun(runFromJson(tab.value("run").toObject()), false);
+      }
+      m_restoreTarget = nullptr;
+      m_restoreView   = nullptr;
+    }
+    QString const current = paneJson.value("current").toString();
+    pane->selectTab(renamed.value(current, current));
+  }
+
+  QVector<int> sizes;
+  for (QJsonValue const &size : session.value("split").toArray()) {
+    sizes.push_back(size.toInt());
+  }
+  if ((sizes.size() == m_split->count()) && (sizes.size() > 1)) {
+    m_split->setSizes(QList<int>(sizes.cbegin(), sizes.cend()));
+  }
+  m_restoring = false;
+  setFocusedPane(m_panes.value(session.value("focused").toInt(), m_panes.first()));
 }
 
 QString GraphWidget::showFromServices(ExperimentRun const &run, QStringList const &channels, double from, double to,
@@ -683,6 +1357,24 @@ QPair<QString, QString> GraphWidget::comparisonTitles(ChartComparison const &com
           tr("Comparison of %1: %2").arg(channelLabels.join(QStringLiteral(", ")), members.join(QStringLiteral(" · ")))};
 }
 
+QString GraphWidget::nextComparisonLabel() const {
+  QSet<int> used;
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    for (int i{0}; i < pane->count(); ++i) {
+      Tab const *tab = pane->tab(i);
+      if (tab && tab->comparison) {
+        QString const number = tab->label.section(QLatin1Char(' '), -1);
+        used.insert(number == tab->label ? 1 : number.toInt());
+      }
+    }
+  }
+  int n{1};
+  while (used.contains(n)) {
+    ++n;
+  }
+  return (n == 1) ? tr("Comparison") : tr("Comparison %1").arg(n);
+}
+
 void GraphWidget::styleComparison(DataViewer *chart, ChartComparison const &comparison) const {
   static QVector<QColor> const palette{QColor("#2563eb"), QColor("#dc2626"), QColor("#16a34a"), QColor("#9333ea"),
                                        QColor("#d97706"), QColor("#0d9488"), QColor("#db2777"), QColor("#475569")};
@@ -720,6 +1412,7 @@ DataViewer *GraphWidget::makeComparisonViewer() {
   }
   chart->setLabelsVisible(m_labelsBtn->isChecked());
   chart->setValuesVisible(m_valuesBtn->isChecked());
+  chart->setSetpointLine(m_setpointAct->isChecked()); // its series comes with the comparison
   applyViewOptions(chart);
   return chart;
 }
@@ -733,7 +1426,10 @@ void GraphWidget::openCompareDialog(QString const &editKey) {
   for (ChartPane *pane : std::as_const(m_panes)) {
     for (int i{0}; i < pane->count(); ++i) {
       Tab const *tab = pane->tab(i);
-      if (!tab->comparison && !tab->loading) {
+      std::shared_ptr<DataHolder const> const data =
+        (tab->key == ChartPane::LIVE_KEY) ? std::shared_ptr<DataHolder const>(m_resHolder->dataManager->getIntervalToDisplay()) : tab->data;
+      bool const hasData{data && !data->getTimes().isEmpty()};
+      if (!tab->comparison && !tab->loading && hasData) { // nothing to compare in an empty tab (e.g. no live data yet)
         openTabs.push_back({tab->key, tab->label, tab->name, runOfTab(*tab)});
       }
     }
@@ -754,22 +1450,25 @@ void GraphWidget::openCompareDialog(QString const &editKey) {
   // the same tab, new settings
   auto const [label, name] = comparisonTitles(comparison);
   styleComparison(edited->ownViewer, comparison);
-  editPane->updateTab(editKey, label, name, std::make_shared<ChartComparison const>(comparison));
+  editPane->updateTab(editKey, edited->label, name, std::make_shared<ChartComparison const>(comparison));
   computeComparison(editKey, comparison);
 }
 
-void GraphWidget::createComparison(ChartComparison const &comparison, bool splitRight) {
+QString GraphWidget::createComparison(ChartComparison const &comparison, bool splitRight) {
   auto const [label, name] = comparisonTitles(comparison);
   Tab tab;
   tab.key        = QStringLiteral("cmp:%1").arg(++m_comparisons);
-  tab.label      = label;
+  tab.label      = nextComparisonLabel();
   tab.name       = name;
   tab.loading    = true;
   tab.comparison = std::make_shared<ChartComparison const>(comparison);
   tab.ownViewer  = makeComparisonViewer();
   styleComparison(tab.ownViewer, comparison);
+  connect(tab.ownViewer->getPlot()->xAxis, qOverload<QCPRange const &>(&QCPAxis::rangeChanged), this,
+          &GraphWidget::scheduleSessionSave);
   openTab(tab, splitRight);
   computeComparison(tab.key, comparison);
+  return tab.key;
 }
 
 namespace {
@@ -821,6 +1520,10 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
     QVector<double>          times;
     QVector<QVector<double>> values;
     QString                  error;
+    QStringList              skipped; // experiments that could not be read
+    QVector<double>          setpoint; // the first experiment's setpoint on the grid
+    QVector<std::shared_ptr<core::ExperimentAnalysis const>> analyses; // of the experiments read
+    QVector<ComparedRun>     runs;
   };
   auto     result = std::make_shared<Result>();
   QThread *thread = QThread::create([inputs, names, comparison, result]() mutable {
@@ -829,14 +1532,21 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
     QVector<double>          offsets;
     QVector<double>          periods;
     double                   referenceAnchor{qQNaN()};
+    QVector<bool>            readable(inputs.size(), true);
+    int                      reference{-1}; // the first experiment that could be read
     for (int k{0}; k < inputs.size(); ++k) {
       ComparedInput &input = inputs[k];
       if (!input.haveData) {
         QString    error;
         auto const loaded = ExperimentLibrary::loadDetached(input.run, &error);
         if (!loaded || loaded->times.isEmpty()) {
-          result->error = error.isEmpty() ? QObject::tr("%1 could not be read.").arg(input.run.title) : error;
-          return;
+          readable[k] = false;
+          result->skipped << QStringLiteral("%1 (%2)").arg(input.run.title.isEmpty() ? QObject::tr("experiment %1").arg(k + 1) : input.run.title,
+                                                           error.isEmpty() ? QObject::tr("no data") : error);
+          elapsed.push_back({});
+          offsets.push_back(0.0);
+          periods.push_back(1.0);
+          continue;
         }
         input.times = loaded->times;
         input.states.resize(names.size());
@@ -851,83 +1561,119 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
       for (double const time : std::as_const(input.times)) {
         times.push_back(time - input.times.first());
       }
-      // the anchor the experiments are aligned on
-      double offset{0.0};
+      // its analysis: the comparison tables, and the anchor it is aligned on
+      ExperimentData data;
+      data.run          = input.run;
+      data.times        = input.times;
+      data.states       = input.states;
+      data.channelNames = names;
+      auto const analysis = std::make_shared<core::ExperimentAnalysis const>(core::analyseExperiment(experimentInput(data, names)));
+      qsizetype const       tempColumn{names.indexOf("temp")};
+      qsizetype const       setpointColumn{names.indexOf("temp_ref")};
+      QVector<double> const temp      = (tempColumn >= 0) ? input.states[tempColumn] : QVector<double>{};
+      QVector<double> const setpoints = (setpointColumn >= 0) ? input.states[setpointColumn] : QVector<double>{};
+      double                offset{0.0};
       if (mode != core::AlignMode::START) {
-        ExperimentData data;
-        data.run          = input.run;
-        data.times        = input.times;
-        data.states       = input.states;
-        data.channelNames = names;
-        core::ExperimentAnalysis const analysis = core::analyseExperiment(experimentInput(data, names));
-        qsizetype const temp{names.indexOf("temp")};
-        qsizetype const reference{names.indexOf("temp_ref")};
-        double const    anchor = core::alignmentAnchor(analysis, times, (temp >= 0) ? input.states[temp] : QVector<double>{},
-                                                       (reference >= 0) ? input.states[reference] : QVector<double>{}, mode, comparison.alignN);
-        if (k == 0) {
+        double const anchor = core::alignmentAnchor(*analysis, times, temp, setpoints, mode, comparison.alignN);
+        if (reference < 0) {
           referenceAnchor = anchor;
         } else if (std::isfinite(anchor) && std::isfinite(referenceAnchor)) {
           offset = referenceAnchor - anchor;
         }
       }
+      ComparedRun compared;
+      compared.title     = input.run.title;
+      compared.run       = input.run;
+      compared.analysis  = analysis.get();
+      compared.times     = times; // elapsed, not aligned: the comparison tables align on their own
+      compared.temp      = temp;
+      compared.reference = setpoints;
+      qsizetype const signalColumn{names.indexOf(comparison.channels.value(0))};
+      compared.signal = (signalColumn >= 0) ? input.states[signalColumn] : QVector<double>{};
+      if (!input.run.storeKey.isEmpty()) {
+        if (auto const manifest = storage::RunStore::manifest(input.run.storeKey)) {
+          compared.manifest = manifest->toJson();
+        }
+      }
+      result->analyses.push_back(analysis);
+      result->runs.push_back(compared);
       for (double &time : times) {
         time += offset;
+      }
+      if (reference < 0) {
+        reference = k;
       }
       elapsed.push_back(times);
       offsets.push_back(offset);
       periods.push_back(typicalPeriod(times));
     }
+    if (reference < 0) {
+      result->error = QObject::tr("None of the experiments could be read:\n%1").arg(result->skipped.join(QLatin1Char('\n')));
+      return;
+    }
 
     // a common time grid over all of them (at most 200 000 points)
     double tMin{std::numeric_limits<double>::max()};
     double tMax{std::numeric_limits<double>::lowest()};
-    for (QVector<double> const &times : std::as_const(elapsed)) {
-      tMin = std::min(tMin, times.first());
-      tMax = std::max(tMax, times.last());
+    double       finest{std::numeric_limits<double>::max()};
+    for (int k{0}; k < elapsed.size(); ++k) {
+      if (readable[k]) {
+        tMin   = std::min(tMin, elapsed[k].first());
+        tMax   = std::max(tMax, elapsed[k].last());
+        finest = std::min(finest, periods[k]);
+      }
     }
-    double const finest{*std::min_element(periods.cbegin(), periods.cend())};
     double const step{std::max(finest, (tMax - tMin) / 200000.0)};
     if (!(tMax > tMin) || !(step > 0.0)) {
       result->error = QObject::tr("The experiments have no time span to compare.");
       return;
     }
     qsizetype const count{static_cast<qsizetype>(std::floor((tMax - tMin) / step)) + 1};
-    double const    base{inputs.first().times.first()}; // the reference experiment's clock
+    double const    base{inputs[reference].times.first()}; // the reference experiment's clock
     result->times.resize(count);
     for (qsizetype i{0}; i < count; ++i) {
       result->times[i] = base + tMin + static_cast<double>(i) * step;
     }
     // each channel of each experiment, interpolated on the grid; no line across gaps
-    for (int k{0}; k < inputs.size(); ++k) {
-      QVector<double> const &times = elapsed[k];
-      for (QString const &channel : comparison.channels) {
-        qsizetype const       index{names.indexOf(channel)};
-        QVector<double> const values = (index >= 0) ? inputs[k].states[index] : QVector<double>{};
-        QVector<double>       column(count, qQNaN());
-        qsizetype             j{0};
-        for (qsizetype i{0}; (i < count) && !values.isEmpty(); ++i) {
-          double const t{tMin + static_cast<double>(i) * step};
-          if ((t < times.first()) || (t > times.last())) {
-            continue;
-          }
-          while ((j + 1 < times.size()) && (times[j + 1] < t)) {
-            ++j;
-          }
-          if (j + 1 >= times.size()) {
-            column[i] = values.value(j, qQNaN());
-            continue;
-          }
-          double const gap{times[j + 1] - times[j]};
-          double const y0{values.value(j, qQNaN())};
-          double const y1{values.value(j + 1, qQNaN())};
-          if ((gap > 5.0 * periods[k]) || std::isnan(y0) || std::isnan(y1) || (gap <= 0.0)) {
-            column[i] = (std::fabs(t - times[j]) <= periods[k]) ? y0 : qQNaN();
-          } else {
-            column[i] = y0 + (y1 - y0) * (t - times[j]) / gap;
-          }
-        }
-        result->values.push_back(column);
+    auto interpolate = [&](int k, QVector<double> const &values) {
+      QVector<double> column(count, qQNaN());
+      if (!readable[k] || values.isEmpty()) {
+        return column;
       }
+      QVector<double> const &times = elapsed[k];
+      qsizetype              j{0};
+      for (qsizetype i{0}; i < count; ++i) {
+        double const t{tMin + static_cast<double>(i) * step};
+        if ((t < times.first()) || (t > times.last())) {
+          continue;
+        }
+        while ((j + 1 < times.size()) && (times[j + 1] < t)) {
+          ++j;
+        }
+        if (j + 1 >= times.size()) {
+          column[i] = values.value(j, qQNaN());
+          continue;
+        }
+        double const gap{times[j + 1] - times[j]};
+        double const y0{values.value(j, qQNaN())};
+        double const y1{values.value(j + 1, qQNaN())};
+        if ((gap > 5.0 * periods[k]) || std::isnan(y0) || std::isnan(y1) || (gap <= 0.0)) {
+          column[i] = (std::fabs(t - times[j]) <= periods[k]) ? y0 : qQNaN();
+        } else {
+          column[i] = y0 + (y1 - y0) * (t - times[j]) / gap;
+        }
+      }
+      return column;
+    };
+    for (int k{0}; k < inputs.size(); ++k) {
+      for (QString const &channel : comparison.channels) {
+        qsizetype const index{names.indexOf(channel)};
+        result->values.push_back(interpolate(k, (readable[k] && (index >= 0)) ? inputs[k].states[index] : QVector<double>{}));
+      }
+    }
+    // the setpoint line: the first experiment's, aligned like it
+    if (qsizetype const setpointColumn{names.indexOf("temp_ref")}; setpointColumn >= 0) {
+      result->setpoint = interpolate(reference, inputs[reference].states[setpointColumn]);
     }
   });
   connect(thread, &QThread::finished, this, [this, thread, key, result] {
@@ -945,7 +1691,25 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
     auto holder = std::make_shared<DataHolder>(static_cast<quint16>(result->values.size()), m_resHolder->logger,
                                                utils::calculateKey(result->times.first()));
     holder->setSeries(result->times, result->values);
+    // the comparison tables and the setpoint line
+    QStringList const  names  = m_resHolder->states->getNames();
+    QVariantList const styles = m_resHolder->settings->settingsMap()["states"].toList();
+    Tab const         *tab    = pane->tab(pane->indexOf(key));
+    QString const      signal = (tab && tab->comparison) ? tab->comparison->channels.value(0) : QString{};
+    qsizetype const    signalIndex{names.indexOf(signal)};
+    m_comparisonData.insert(key, {result->analyses, result->runs,
+                                  ((signalIndex >= 0) && (signalIndex < styles.size())) ? styles[signalIndex].toMap()["label"].toString() : signal});
+    if (tab && tab->ownViewer) {
+      tab->ownViewer->setSetpointSeries(result->times, result->setpoint);
+      tab->ownViewer->setSetpointLine(m_setpointAct->isChecked());
+    }
     pane->setTabData(key, holder);
+    if (pane == m_focused) {
+      updateStatisticsSource();
+    }
+    if (!result->skipped.isEmpty()) {
+      (new MessageDialog(tr("Comparison"), tr("Left out, they could not be read:\n%1").arg(result->skipped.join(QLatin1Char('\n')))))->open();
+    }
   });
   thread->start(QThread::LowPriority);
 }
@@ -961,56 +1725,149 @@ void GraphWidget::updateStatisticsSource() {
   bool const comparison{tab && tab->comparison};
   m_statistics->setSource(viewer(), (tab && !comparison) ? tab->runKey : QString{}, tab ? tab->name : QString{},
                           comparison ? QStringList{} : m_resHolder->states->getNames());
+  m_statistics->setComparisonMode(comparison);
+  if (comparison) {
+    refreshComparisonStatistics();
+  } else {
+    requestInsight(m_focused);
+  }
 }
 
 QWidget *GraphWidget::buildOptions() {
   double const ssf{utils::ssf()};
   auto        *page = new QWidget();
   auto        *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(4 * ssf, 4 * ssf, 4 * ssf, 4 * ssf);
-  lay->setSpacing(6 * ssf);
-  auto heading = [page](QString const &text) {
-    auto *label = new QLabel(text, page);
-    QFont font  = label->font();
-    font.setBold(true);
-    label->setFont(font);
-    return label;
+  lay->setContentsMargins(14 * ssf, 8 * ssf, 14 * ssf, 8 * ssf);
+  lay->setSpacing(4 * ssf);
+
+  // a chevron: down when the section is open, right when folded
+  auto chevron = [ssf](bool down) {
+    int const size{static_cast<int>(14 * ssf)};
+    qreal const dpr{qApp->devicePixelRatio()};
+    QPixmap     pixmap(QSize(size, size) * dpr);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(theme::colors().muted, 1.6 * ssf, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    double const s{static_cast<double>(size)};
+    if (down) {
+      p.drawPolyline(QPolygonF{{QPointF(s * 0.25, s * 0.38), QPointF(s * 0.5, s * 0.63), QPointF(s * 0.75, s * 0.38)}});
+    } else {
+      p.drawPolyline(QPolygonF{{QPointF(s * 0.38, s * 0.25), QPointF(s * 0.63, s * 0.5), QPointF(s * 0.38, s * 0.75)}});
+    }
+    return pixmap;
   };
-  auto *title = new QLabel(tr("Options"), page);
-  {
-    QFont font = title->font();
+  // a section: its bold title with a chevron (tap to fold), its content, a line under it
+  bool first{true};
+  auto section = [&](QString const &title, bool open) {
+    if (!first) {
+      auto *line = new QFrame(page);
+      line->setObjectName("cardDivider");
+      line->setFixedHeight(1);
+      lay->addSpacing(8 * ssf);
+      lay->addWidget(line);
+      lay->addSpacing(4 * ssf);
+    }
+    first        = false;
+    auto *header = new QPushButton(page);
+    header->setObjectName("drawerSection");
+    header->setCheckable(true);
+    header->setChecked(open);
+    header->setFocusPolicy(Qt::NoFocus);
+    header->setMinimumHeight(30 * ssf);
+    auto *headerLay = new QHBoxLayout(header);
+    headerLay->setContentsMargins(0, 0, 0, 0);
+    auto *name = new QLabel(title, header);
+    QFont font = name->font();
     font.setBold(true);
-    font.setPointSizeF(font.pointSizeF() * 1.25);
-    title->setFont(font);
-  }
-  lay->addWidget(title);
-  lay->addSpacing(8 * ssf);
+    name->setFont(font);
+    auto *arrow = new QLabel(header);
+    for (QLabel *label : {name, arrow}) {
+      label->setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+    headerLay->addWidget(name);
+    headerLay->addStretch();
+    headerLay->addWidget(arrow);
+    auto *body    = new QWidget(page);
+    auto *bodyLay = new QVBoxLayout(body);
+    bodyLay->setContentsMargins(0, 0, 0, 0);
+    bodyLay->setSpacing(4 * ssf);
+    auto fold = [arrow, body, chevron](bool on) {
+      arrow->setPixmap(chevron(on));
+      body->setVisible(on);
+    };
+    fold(open);
+    connect(header, &QPushButton::toggled, header, fold);
+    lay->addWidget(header);
+    lay->addWidget(body);
+    return bodyLay;
+  };
+  // a small grey caption over a field
+  auto caption = [page, ssf](QVBoxLayout *into, QString const &text, bool spaced = true) {
+    if (spaced) {
+      into->addSpacing(4 * ssf);
+    }
+    auto *label = new QLabel(text, page);
+    label->setProperty("fieldLabel", true);
+    QFont font = label->font();
+    font.setPointSizeF(font.pointSizeF() * 0.9);
+    label->setFont(font);
+    into->addWidget(label);
+  };
+  // joined toggle buttons (one of them, or any of them)
+  auto segments = [page, ssf](QVBoxLayout *into, QStringList const &labels, bool exclusive) {
+    auto                 *row   = new QHBoxLayout();
+    auto                 *group = exclusive ? new QButtonGroup(page) : nullptr;
+    QVector<QPushButton *> buttons;
+    row->setSpacing(0);
+    for (int i{0}; i < labels.size(); ++i) {
+      auto *button = new QPushButton(labels[i], page);
+      button->setCheckable(true);
+      button->setFocusPolicy(Qt::NoFocus);
+      button->setMinimumHeight(30 * ssf);
+      button->setProperty("softSegment", true);
+      button->setProperty("segmentFirst", i == 0);
+      button->setProperty("segmentLast", i == labels.size() - 1);
+      if (group) {
+        group->addButton(button);
+      }
+      row->addWidget(button);
+      buttons << button;
+    }
+    row->addStretch();
+    into->addLayout(row);
+    return buttons;
+  };
+  auto link = [page, ssf](QString const &text) {
+    auto *button = new QPushButton(text, page);
+    button->setProperty("link", true);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setMinimumHeight(30 * ssf);
+    return button;
+  };
 
   // time range of the focused chart
-  lay->addWidget(heading(tr("Time range")));
-  m_fromEdit = new QDateTimeEdit(page);
-  m_toEdit   = new QDateTimeEdit(page);
-  auto *rangeGrid = new QGridLayout();
-  rangeGrid->setHorizontalSpacing(8 * ssf);
-  int row{0};
-  for (auto const &[label, edit] : {std::pair{tr("From"), m_fromEdit}, std::pair{tr("To"), m_toEdit}}) {
-    edit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-    edit->setMinimumHeight(30 * ssf);
-    rangeGrid->addWidget(new QLabel(label, page), row, 0);
-    rangeGrid->addWidget(edit, row, 1);
-    ++row;
-  }
-  lay->addLayout(rangeGrid);
+  QVBoxLayout *range = section(tr("Time range"), true);
+  m_fromEdit         = new DateTimeField({}, page); // date from a calendar, time from the number pad
+  m_toEdit           = new DateTimeField({}, page);
+  caption(range, tr("From"), false);
+  range->addWidget(m_fromEdit);
+  caption(range, tr("To"));
+  range->addWidget(m_toEdit);
+  range->addSpacing(6 * ssf);
   auto *rangeButtons = new QHBoxLayout();
-  auto *applyBtn     = new QPushButton(tr("Apply"), page);
-  auto *wholeBtn     = new QPushButton(tr("Whole range"), page);
+  rangeButtons->setSpacing(12 * ssf);
+  auto *applyBtn = new QPushButton(tr("Apply"), page);
   applyBtn->setObjectName("primaryButton");
-  for (QPushButton *button : {applyBtn, wholeBtn}) {
-    button->setMinimumHeight(30 * ssf);
-    button->setFocusPolicy(Qt::NoFocus);
-    rangeButtons->addWidget(button, 1);
-  }
-  lay->addLayout(rangeButtons);
+  applyBtn->setMinimumSize(70 * ssf, 30 * ssf);
+  applyBtn->setFocusPolicy(Qt::NoFocus);
+  auto *wholeBtn = link(tr("Reset to whole range"));
+  rangeButtons->addWidget(applyBtn);
+  rangeButtons->addWidget(wholeBtn);
+  rangeButtons->addStretch();
+  range->addLayout(rangeButtons);
   connect(applyBtn, &QPushButton::clicked, this, [this] {
     viewer()->setTimeRange(static_cast<double>(m_fromEdit->dateTime().toSecsSinceEpoch()),
                            static_cast<double>(m_toEdit->dateTime().toSecsSinceEpoch()));
@@ -1019,22 +1876,32 @@ QWidget *GraphWidget::buildOptions() {
     viewer()->setControlMode(DataViewer::ControlMode::LEAD_FULL);
     updateRangeFields();
   });
-  lay->addSpacing(14 * ssf);
 
-  // smoothing
-  lay->addWidget(heading(tr("Smoothing")));
-  m_smoothSpin = new QSpinBox(page);
-  m_smoothSpin->setRange(1, 999);
-  m_smoothSpin->setSuffix(tr(" samples"));
-  m_smoothSpin->setMinimumHeight(30 * ssf);
-  lay->addWidget(m_smoothSpin);
-  lay->addSpacing(14 * ssf);
+  // display: smoothing, lines or points, time axis
+  QVBoxLayout *display = section(tr("Display"), true);
+  caption(display, tr("Smoothing"), false);
+  m_smoothCombo = new QComboBox(page);
+  m_smoothCombo->setMinimumHeight(30 * ssf);
+  m_smoothCombo->setProperty("soft", true);
+  m_smoothCombo->addItem(tr("Off"), 1);
+  for (int const samples : {3, 5, 10, 20, 50, 100, 200}) {
+    m_smoothCombo->addItem(tr("%1 samples").arg(samples), samples);
+  }
+  display->addWidget(m_smoothCombo);
+  caption(display, tr("Draw as"));
+  QVector<QPushButton *> const drawing = segments(display, {tr("Lines"), tr("Points")}, true);
+  drawing[0]->setChecked(true);
+  m_scatterRadio = drawing[1];
+  caption(display, tr("Time axis"));
+  QVector<QPushButton *> const axis = segments(display, {tr("Wall clock"), tr("From start")}, true);
+  axis[0]->setChecked(true);
+  m_relativeRadio = axis[1];
 
-  // overlays
-  lay->addWidget(heading(tr("Overlays")));
-  // of one channel, chamber temperature unless chosen otherwise
-  m_overlayChannel = new QComboBox(page);
+  // reference lines of one channel, chamber temperature unless chosen otherwise
+  QVBoxLayout *overlays = section(tr("Reference lines"), true);
+  m_overlayChannel      = new QComboBox(page);
   m_overlayChannel->setMinimumHeight(30 * ssf);
+  m_overlayChannel->setProperty("soft", true);
   {
     QStringList const  names  = m_resHolder->states->getNames();
     QVariantList const styles = m_resHolder->settings->settingsMap()["states"].toList();
@@ -1044,30 +1911,31 @@ QWidget *GraphWidget::buildOptions() {
     }
     m_overlayChannel->setCurrentIndex(std::max(0, m_overlayChannel->findData(QStringLiteral("temp"))));
   }
-  lay->addWidget(m_overlayChannel);
-  m_minCheck = new QCheckBox(tr("Minimum"), page);
-  m_maxCheck = new QCheckBox(tr("Maximum"), page);
-  m_avgCheck = new QCheckBox(tr("Average"), page);
-  for (QCheckBox *check : {m_minCheck, m_maxCheck, m_avgCheck}) {
-    lay->addWidget(check);
-  }
-  lay->addSpacing(14 * ssf);
+  overlays->addWidget(m_overlayChannel);
+  caption(overlays, tr("Lines at"));
+  QVector<QPushButton *> const lines = segments(overlays, {tr("Min"), tr("Max"), tr("Average")}, false);
+  m_minCheck                         = lines[0];
+  m_maxCheck                         = lines[1];
+  m_avgCheck                         = lines[2];
 
-  // time axis
-  lay->addWidget(heading(tr("Time axis")));
-  auto *clockRadio = new QRadioButton(tr("Wall clock time"), page);
-  m_relativeRadio  = new QRadioButton(tr("Time from the start"), page);
-  clockRadio->setChecked(true);
-  lay->addWidget(clockRadio);
-  lay->addWidget(m_relativeRadio);
-  lay->addSpacing(14 * ssf);
+  // calculated channels: tick to draw them; their formulas in the dialog
+  QVBoxLayout *derived = section(tr("Calculated channels"), true);
+  m_derivedBox         = new QWidget(page);
+  m_derivedBox->setLayout(new QVBoxLayout());
+  m_derivedBox->layout()->setContentsMargins(0, 0, 0, 0);
+  derived->addWidget(m_derivedBox);
+  auto *manageBtn = link(tr("+ New calculated channel"));
+  manageBtn->setToolTip(tr("Define, change or remove calculated channels"));
+  connect(manageBtn, &QPushButton::clicked, this, &GraphWidget::manageDerived);
+  derived->addWidget(manageBtn);
+  refreshDerivedList();
 
   // the experiment shown
-  lay->addWidget(heading(tr("Experiment")));
-  m_detailsBtn = new QPushButton(tr("Edit experiment details…"), page);
+  QVBoxLayout *experiment = section(tr("Experiment"), false);
+  m_detailsBtn            = new QPushButton(tr("Edit experiment details…"), page);
   m_detailsBtn->setMinimumHeight(30 * ssf);
   m_detailsBtn->setFocusPolicy(Qt::NoFocus);
-  lay->addWidget(m_detailsBtn);
+  experiment->addWidget(m_detailsBtn);
   connect(m_detailsBtn, &QPushButton::clicked, this, &GraphWidget::editExperimentDetails);
   lay->addStretch();
 
@@ -1078,22 +1946,39 @@ QWidget *GraphWidget::buildOptions() {
         applyViewOptions(chart);
       }
     }
+    scheduleSessionSave();
   };
-  connect(m_smoothSpin, &QSpinBox::valueChanged, this, apply);
-  connect(m_relativeRadio, &QRadioButton::toggled, this, apply);
-  for (QCheckBox *check : {m_minCheck, m_maxCheck, m_avgCheck}) {
-    connect(check, &QCheckBox::toggled, this, apply);
+  connect(m_smoothCombo, &QComboBox::currentIndexChanged, this, apply);
+  for (QAbstractButton *button : {m_relativeRadio, m_scatterRadio, m_minCheck, m_maxCheck, m_avgCheck}) {
+    connect(button, &QAbstractButton::toggled, this, apply);
   }
   connect(m_overlayChannel, &QComboBox::currentIndexChanged, this, apply);
   return page;
 }
 
-void GraphWidget::applyViewOptions(DataViewer *chart) const {
-  if (!m_smoothSpin) {
+int GraphWidget::smoothing() const {
+  return m_smoothCombo ? std::max(1, m_smoothCombo->currentData().toInt()) : 1;
+}
+
+void GraphWidget::setSmoothing(int samples) {
+  if (!m_smoothCombo) {
     return;
   }
-  chart->setSmoothingWindow(m_smoothSpin->value());
+  int index{m_smoothCombo->findData(std::max(1, samples))};
+  if (index < 0) { // a value from an older session
+    m_smoothCombo->addItem(tr("%1 samples").arg(samples), samples);
+    index = m_smoothCombo->count() - 1;
+  }
+  m_smoothCombo->setCurrentIndex(index);
+}
+
+void GraphWidget::applyViewOptions(DataViewer *chart) const {
+  if (!m_smoothCombo) {
+    return;
+  }
+  chart->setSmoothingWindow(smoothing());
   chart->setRelativeTime(m_relativeRadio->isChecked());
+  chart->setScatter(m_scatterRadio->isChecked());
   chart->setOverlays(m_minCheck->isChecked(), m_maxCheck->isChecked(), m_avgCheck->isChecked(), m_overlayChannel->currentData().toString());
 }
 
@@ -1167,6 +2052,7 @@ void GraphWidget::showRun(ExperimentRun const &run, bool splitRight, double from
     return;
   }
   Tab tab{run.key, startText(run.start), run.title, run.key, nullptr, run.storeKey};
+  tab.run      = run;
   tab.zoomFrom = from;
   tab.zoomTo   = to;
   openLoading(tab, splitRight, [run](Samples &out, QString &error) {
@@ -1218,10 +2104,13 @@ void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> con
 }
 
 void GraphWidget::showExperiment(storage::ExperimentSpan const &experiment) {
+  openStored(experiment.key, startText(experiment.start), experiment.name);
+}
+
+void GraphWidget::openStored(QString const &storeKey, QString const &label, QString const &name) {
   // samples from the experiment database
-  QString const key = QStringLiteral("db:") + experiment.key;
-  Tab           tab{key, startText(experiment.start), experiment.name, QStringLiteral("chart:") + key, nullptr, experiment.key};
-  QString const storeKey = experiment.key;
+  QString const key = QStringLiteral("db:") + storeKey;
+  Tab           tab{key, label, name, QStringLiteral("chart:") + key, nullptr, storeKey};
   openLoading(tab, false, [storeKey](Samples &out, QString &error) {
     storage::RunSamples samples;
     if (!storage::RunStore::loadSamples(storeKey, samples, &error)) {
@@ -1251,7 +2140,7 @@ void GraphWidget::exportData() {
   QDate const           day = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(shownTimes.first())).date();
   bool const comparison{static_cast<bool>(tab->comparison)};
   // a comparison is exported as shown (its own lines): no day or custom range from the recorded files
-  auto *dialog = new ExportDialog(m_resHolder, day, m_services != nullptr, !tab->storeKey.isEmpty(), !comparison, this);
+  auto *dialog = new ExportDialog(m_resHolder, day, m_services != nullptr, !tab->storeKey.isEmpty(), !comparison, comparison, this);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
   Tab const tabCopy = *tab;
   connect(dialog, &QDialog::accepted, this, [this, dialog, tabCopy, shown, shownTimes]() {
@@ -1274,6 +2163,10 @@ void GraphWidget::exportData() {
       to   = static_cast<double>(dialog->to().toSecsSinceEpoch());
     }
 
+    if (format == QLatin1String("comparison-csv")) {
+      done(writeComparisonCsv(tabCopy, filePath), filePath);
+      return;
+    }
     if (format == QLatin1String("json")) { // the saved experiment as a bundle
       QString           error;
       QJsonObject const bundle = storage::RunStore::bundle(tabCopy.storeKey, &error);

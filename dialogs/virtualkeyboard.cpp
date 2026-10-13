@@ -27,7 +27,7 @@ VirtualKeyboard::VirtualKeyboard(QString const &title, Language lang, QWidget *p
   mainLay->addWidget(m_textLine);
   mainLay->addLayout(m_numLayout);
   mainLay->addLayout(m_enLayout);
-  mainLay->addLayout(m_ruLayout);
+  mainLay->addLayout(m_deLayout);
   mainLay->addLayout(m_ctrlLayout);
 
   QLineEdit *parentLine{qobject_cast<QLineEdit *>(this->parent())};
@@ -39,21 +39,21 @@ VirtualKeyboard::VirtualKeyboard(QString const &title, Language lang, QWidget *p
 
 void VirtualKeyboard::initLangLayouts() {
   m_enLayout  = new QVBoxLayout();
-  m_ruLayout  = new QVBoxLayout();
+  m_deLayout  = new QVBoxLayout();
   m_numLayout = new QVBoxLayout();
 
   QStringList enLetters = {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "-", "a", "s", "d", "f",
                            "g", "h", "j", "k", "l", "_", "z", "x", "c", "v", "b", "n", "m", "(", ")"};
-  QStringList ruLetters = {"й", "ц", "у", "к", "е", "н", "г", "ш", "щ", "з", "х", "ъ", "ф", "ы", "в", "а", "п",
-                           "р", "о", "л", "д", "ж", "э", "я", "ч", "с", "м", "и", "т", "ь", "б", "ю", "."};
+  QStringList deLetters = {"q", "w", "e", "r", "t", "z", "u", "i", "o", "p", "ü", "-", "a", "s", "d", "f", "g",
+                           "h", "j", "k", "l", "ö", "ä", "y", "x", "c", "v", "b", "n", "m", "ß", "_", "."};
   QStringList numLetters = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "del"};
 
   QList<int> enLetterPerLine  = {11, 10, 9};
-  QList<int> ruLetterPerLine  = {12, 11, 10};
+  QList<int> deLetterPerLine  = {12, 11, 10};
   QList<int> numLetterPerLine = {11};
 
   populateLayout(m_enLayout, &m_enButtonList, enLetters, enLetterPerLine);
-  populateLayout(m_ruLayout, &m_ruButtonList, ruLetters, ruLetterPerLine);
+  populateLayout(m_deLayout, &m_deButtonList, deLetters, deLetterPerLine);
   populateLayout(m_numLayout, &m_numButtonList, numLetters, numLetterPerLine);
 }
 
@@ -68,6 +68,8 @@ void VirtualKeyboard::populateLayout(
       auto upperText = letter.toUpper();
       if ('.' == letter) {
         upperText = ",";
+      } else if (QStringLiteral("ß") == letter) {
+        upperText = letter; // no capital in use
       }
       if ("del" == letter) {
         auto *btn = new QPushButton(this);
@@ -121,7 +123,7 @@ void VirtualKeyboard::initCtrlLayout() {
     this->setUpper(!m_isUpper);
   });
   connect(m_langBtn, &QPushButton::clicked, this, [this] {
-    this->setLangLayout((m_currLang == RU) ? EN : RU);
+    this->setLangLayout((m_currLang == DE) ? EN : DE);
   });
   connect(spaceBtn, &QPushButton::clicked, this, &VirtualKeyboard::letterBtnPressHandle);
 
@@ -138,12 +140,12 @@ void VirtualKeyboard::setLangLayout(Language lang) {
   m_currLang = lang;
 
   switch (m_currLang) {
-    case RU:
+    case DE:
       setButtonsVisible(&m_enButtonList, false);
-      setButtonsVisible(&m_ruButtonList, true);
+      setButtonsVisible(&m_deButtonList, true);
       break;
     case EN:
-      setButtonsVisible(&m_ruButtonList, false);
+      setButtonsVisible(&m_deButtonList, false);
       setButtonsVisible(&m_enButtonList, true);
       break;
     case NONE:
@@ -152,15 +154,11 @@ void VirtualKeyboard::setLangLayout(Language lang) {
 }
 
 void VirtualKeyboard::setUpper(bool isUpper) {
-  if (isUpper == isUpper) {
-    return;
-  }
-
-  isUpper = isUpper;
+  m_isUpper = isUpper;
 
   m_shiftBtn->setIcon(QIcon((isUpper ? ":/imgs/shift_on.png" : ":/imgs/shift.png")));
 
-  for (auto list : {&m_enButtonList, &m_ruButtonList, &m_numButtonList}) {
+  for (auto list : {&m_enButtonList, &m_deButtonList, &m_numButtonList}) {
     for (auto btn : *list) {
       btn->enableAltText(isUpper);
     }

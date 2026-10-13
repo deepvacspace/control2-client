@@ -2,6 +2,7 @@
 #define CHARTPANE_H
 
 #include <QFrame>
+#include <QJsonObject>
 #include <memory>
 
 #include "chartcomparison.h"
@@ -35,6 +36,8 @@ public:
     DataViewer                       *ownViewer{nullptr}; // comparison tabs have their own chart (in the pane holding them)
     double                            zoomFrom{qQNaN()}; // elapsed s: shown once the data is there
     double                            zoomTo{qQNaN()};
+    QJsonObject                       view; // its zoom while another tab is shown (DataViewer::viewState)
+    ExperimentRun                     run;  // an experiment of the experiment list: how to read it again
   };
   static QString const LIVE_KEY;
 
@@ -51,6 +54,9 @@ public:
   [[nodiscard]] Tab const  *tab(int index) const;
   [[nodiscard]] Tab const  *currentTab() const;
   [[nodiscard]] int         indexOf(QString const &key) const;
+  // the zoom of a tab (the chart's own while it is shown)
+  [[nodiscard]] QJsonObject viewOf(int index) const;
+  void                      setTabView(QString const &key, QJsonObject const &view);
   [[nodiscard]] bool        liveShown() const;
   // epoch s of the first sample shown (NaN: none)
   [[nodiscard]] double      dataStart() const;
@@ -73,6 +79,8 @@ public:
   void refreshRegions();
   // live tab: the data manager started a new interval
   void reloadLive(double key);
+  // live tab: drawn only while the chamber runs a job (else blank, with `idleText`)
+  void setLiveActive(bool active, QString const &idleText);
   // highlighted as the pane the buttons act on (only while the page is split)
   void setHighlighted(bool highlighted);
   // the left pane: a tab dropped on the right half of its own chart splits the page
@@ -85,6 +93,7 @@ signals:
   void cursorMoved(double x, int graph);
   void cursorHidden();
   void currentTabChanged();
+  void tabsChanged(); // opened, closed, moved or filled
   void tabMenuRequested(int index, QPoint const &globalPos);
   void emptied();
   // a tab of `source` dropped here: at `at` in the tab row (-1: at the end); rightHalf: on the right half of the chart
@@ -118,7 +127,10 @@ private:
   QVector<Tab>        m_tabs;
   AnalysisNotesStore *m_notes{nullptr};
   bool                m_primary{false};
+  bool                m_liveActive{false};
+  QString             m_liveIdleText;
   // tab pressed in the row (drag out of it)
+  QString             m_shownKey; // the tab the pane's chart shows now (its zoom is kept when another is shown)
   QString             m_pressKey;
   QPoint              m_pressPos;
 };

@@ -47,4 +47,4 @@ PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{QS
     }
   });
 }
-} // namespace deepvaccontrol
+}

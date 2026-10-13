@@ -338,7 +338,7 @@ void ChamberView::drawChamber(QPainter &p) {
     p.drawEllipse(QPointF(x, VESSEL.top() - 7), 10, 10);
     p.drawEllipse(QPointF(x, VESSEL.top() - 7), 4.5, 4.5);
   }
-  p.drawRoundedRect(QRectF(418, VESSEL.top() - 9, 36, 12), 2, 2);
+  drawGauge(p);
   for (double const y : {244.0, 538.0}) {
     p.drawRoundedRect(QRectF(VESSEL.left() - 8, y, 12, 42), 2.5, 2.5);
   }
@@ -488,21 +488,130 @@ void ChamberView::drawChamber(QPainter &p) {
   addTip(plateArea, fitted("heater") ? tr("Plate: heater and coolant channel") : tr("Plate: coolant channel (no heater fitted)"));
   drawTag(p, QPointF(PLATE.center().x(), PLATE.bottom() + 6), Qt::AlignHCenter | Qt::AlignTop, "heater", tr("Thermal Plate"), true);
 
-  // sensor T1, on the plate
-  double const  probeR{22};
-  // in the middle of the plate's top face
-  QPointF const probe{PLATE.center().x(), (PLATE_BACK_LEFT.y() + PLATE.top()) / 2.0};
-  bool const    sensorFitted{fitted("sensor")};
-  p.setPen(QPen(sensorFitted ? c.muted : c.off, 2));
-  p.setBrush(c.panel);
-  p.drawEllipse(probe, probeR, probeR);
-  p.setFont(canvasFont(12, true));
+  // sensor T1: its reading in a box in the middle of the plate's top face
+  {
+    QPointF const probe{PLATE.center().x(), PLATE_BACK_LEFT.y() - 24}; // floating just above the plate's back edge
+    bool const    sensorFitted{fitted("sensor")};
+    Tag const     t     = tag("sensor");
+    QFont const   font  = canvasFont(17, true);
+    double const  width = std::max(64.0, QFontMetricsF(font).horizontalAdvance(t.status) + 22);
+    QRectF const  box(probe.x() - width / 2, probe.y() - 15, width, 30);
+    bool const    reading{t.state == State::ACTIVE};
+    QColor const  tint = heating ? c.heat : (chilled ? c.cold : c.muted);
+    p.setPen(QPen(!sensorFitted ? c.off : (reading ? tint : c.muted), 1.8, sensorFitted ? Qt::SolidLine : Qt::DotLine));
+    p.setBrush(c.panel);
+    p.drawRoundedRect(box, 7, 7);
+    p.setFont(font);
+    p.setPen(!sensorFitted ? c.off : (reading ? c.text : c.muted));
+    p.drawText(box, Qt::AlignCenter, t.status);
+    addTip(box, sensorFitted ? tr("Temperature sensor T1") : tr("Temperature sensor: not fitted on this chamber"));
+  }
+
+  drawPressure(p);
+}
+
+double ChamberView::pressureTorr() const {
+  double const v{value("pres")};
+  if (std::isnan(v)) {
+    return v;
+  }
+  // the unit configured in the channel label ("Pressure, mbar"); mmHg when it has none (1 mmHg = 1 Torr)
+  QString const   label = m_resHolder->states->getSysValue("pres")->getLabel();
+  qsizetype const comma = label.lastIndexOf(',');
+  QString const   unit  = (comma >= 0) ? label.mid(comma + 1).trimmed().toLower() : QString{};
+  if ((unit == QLatin1String("mbar")) || (unit == QLatin1String("hpa"))) {
+    return v * 0.750062;
+  }
+  if (unit == QLatin1String("pa")) {
+    return v * 0.00750062;
+  }
+  if (unit == QLatin1String("kpa")) {
+    return v * 7.50062;
+  }
+  if (unit == QLatin1String("bar")) {
+    return v * 750.062;
+  }
+  if (unit == QLatin1String("atm")) {
+    return v * 760.0;
+  }
+  return v; // Torr, mmHg
+}
+
+void ChamberView::drawPressure(QPainter &p) {
+  double const torr{pressureTorr()};
+  if (std::isnan(torr) || (torr < 0.0)) {
+    return; // no vacuum reading
+  }
+  theme::Colors const &c = theme::colors();
+  // 6.2×10⁻⁶ below 1 Torr; plain above
+  QString mantissa;
+  QString exponent;
+  if ((torr > 0.0) && (torr < 1.0)) {
+    int    power{static_cast<int>(std::floor(std::log10(torr)))};
+    double m{torr / std::pow(10.0, power)};
+    if (std::lround(m * 10.0) >= 100) { // 9.96 -> 10.0
+      m /= 10.0;
+      ++power;
+    }
+    mantissa = QStringLiteral("%1×10").arg(QString::number(m, 'f', 1));
+    exponent = QString::number(power).replace('-', QChar(0x2212));
+  } else {
+    mantissa = QString::number(torr, 'f', torr >= 10.0 ? 0 : 1);
+  }
+  QFont const  big   = canvasFont(40, false);
+  QFont const  small = canvasFont(24, false);
+  QFont const  unit  = canvasFont(14, true);
+  double const wM{QFontMetricsF(big).horizontalAdvance(mantissa)};
+  double const wE{exponent.isEmpty() ? 0.0 : QFontMetricsF(small).horizontalAdvance(exponent) + 2};
+  double const width{std::max(wM + wE, QFontMetricsF(unit).horizontalAdvance(QStringLiteral("Torr"))) + 28};
+  QPointF const centre{BACK.center().x(), BACK.center().y() - 30};
+  QRectF const  box(centre.x() - width / 2, centre.y() - 38, width, 76);
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(c.panel.red(), c.panel.green(), c.panel.blue(), 225));
+  p.drawRoundedRect(box, 9, 9);
+  double const left{centre.x() - (wM + wE) / 2};
+  double const baseline{centre.y() + 10};
   p.setPen(c.text);
-  p.drawText(QRectF(probe.x() - probeR, probe.y() - probeR, 2 * probeR, 2 * probeR), Qt::AlignCenter, QStringLiteral("T1"));
-  addTip(QRectF(probe.x() - probeR, probe.y() - probeR, 2 * probeR, 2 * probeR), tr("Temperature sensor T1"));
-  // the reading is in its tag
-  // centred above it, just over the back edge of the plate
-  drawTag(p, QPointF(probe.x(), probe.y() - probeR - 4), Qt::AlignHCenter | Qt::AlignBottom, "sensor", tr("Temperature sensor"), true);
+  p.setFont(big);
+  p.drawText(QPointF(left, baseline), mantissa);
+  if (!exponent.isEmpty()) {
+    p.setFont(small);
+    p.drawText(QPointF(left + wM + 2, baseline - 18), exponent);
+  }
+  p.setFont(unit);
+  p.setPen(c.muted);
+  p.drawText(QRectF(box.left(), baseline + 4, box.width(), 20), Qt::AlignHCenter | Qt::AlignTop, QStringLiteral("Torr"));
+  addTip(box, tr("Chamber pressure"));
+}
+
+void ChamberView::drawGauge(QPainter &p) {
+  // a vacuum gauge on a KF port: tube, clamp, neck, body and its connector on top
+  theme::Colors const &c = theme::colors();
+  bool const           reading{!std::isnan(pressureTorr())};
+  bool const           gaugeFitted{m_resHolder->states->contains("pres")};
+  QColor const         line  = gaugeFitted ? c.muted : c.off;
+  Qt::PenStyle const   style = gaugeFitted ? Qt::SolidLine : Qt::DotLine;
+  double const         x{436};
+  double const         top{VESSEL.top()};
+  p.setPen(QPen(line, 2, style, Qt::RoundCap, Qt::RoundJoin));
+  p.setBrush(c.panel);
+  p.drawRect(QRectF(x - 5, top - 16, 10, 20));             // tube from the cabinet
+  p.drawRoundedRect(QRectF(x - 12, top - 22, 24, 6), 2, 2); // clamp
+  p.drawRect(QRectF(x - 7, top - 32, 14, 10));              // neck
+  p.setBrush(reading ? QColor(214, 69, 99) : mix(c.panel, c.muted, 0.2));
+  p.drawRoundedRect(QRectF(x - 13, top - 70, 26, 38), 4, 4); // body
+  p.setBrush(line);
+  p.drawRect(QRectF(x - 13, top - 36, 26, 4));               // its bottom band
+  p.drawRect(QRectF(x - 13, top - 70, 26, 3));               // its top band
+  p.setBrush(c.panel);
+  p.drawRoundedRect(QRectF(x - 9, top - 82, 18, 12), 2, 2);  // connector
+  p.setPen(QPen(line, 2, style, Qt::RoundCap));
+  p.setBrush(Qt::NoBrush);
+  QPainterPath cable; // down the right of the body
+  cable.moveTo(x + 6, top - 82);
+  cable.cubicTo(x + 14, top - 90, x + 24, top - 80, x + 22, top - 40);
+  p.drawPath(cable);
+  addTip(QRectF(x - 13, top - 82, 26, 82), gaugeFitted ? tr("Pressure gauge") : tr("Pressure gauge: not fitted on this chamber"));
 }
 
 void ChamberView::drawVacuum(QPainter &p) {

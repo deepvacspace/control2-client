@@ -56,6 +56,11 @@ private:
 
   // drawing (canvas 740 x 620)
   void drawChamber(QPainter &p);
+  // the chamber pressure in Torr (NaN: no reading), big in the middle of the inner space
+  [[nodiscard]] double pressureTorr() const;
+  void                 drawPressure(QPainter &p);
+  // the pressure gauge standing on the top right of the cabinet
+  void                 drawGauge(QPainter &p);
   void drawVacuum(QPainter &p);
   void drawSupply(QPainter &p);
   void drawPlc(QPainter &p);

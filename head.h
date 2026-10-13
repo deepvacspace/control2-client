@@ -1,6 +1,7 @@
 #ifndef HEAD_H
 #define HEAD_H
 
+#include <QVector>
 #include <QLabel>
 #include <QPushButton>
 #include <QWidget>
@@ -36,6 +37,11 @@ private:
   QLabel      *m_statusText{nullptr};
   QLabel      *m_tempValue{nullptr};
   QLabel      *m_tempUnit{nullptr};
+  QVector<QWidget *> m_presWidgets; // caption and reading, shown when the chamber has a pressure gauge
+  QLabel      *m_presValue{nullptr};
+  QLabel      *m_presUnit{nullptr};
+  QLabel      *m_coolingLabel{nullptr};
+  QLabel      *m_heatingLabel{nullptr};
   QLabel      *m_setpointValue{nullptr};
   QLabel      *m_outputValue{nullptr};
   ControlBar  *m_outputBar{nullptr};

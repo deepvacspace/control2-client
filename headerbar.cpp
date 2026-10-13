@@ -82,7 +82,7 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   m_toggle = new QToolButton(this);
   m_toggle->setObjectName("barToggle");
   m_toggle->setFocusPolicy(Qt::NoFocus);
-  m_toggle->setFixedSize(px(30), px(14));
+  m_toggle->setFixedSize(px(34), px(11));
   connect(m_toggle, &QToolButton::clicked, this, [this] { setCollapsed(!m_collapsed); });
 
   m_brand = new QLabel(QStringLiteral("Deepvac Control"), m_content);
@@ -184,7 +184,8 @@ void HeaderBar::restyle() {
   QFont clockFont = font();
   clockFont.setPointSizeF(font().pointSizeF() * 1.15);
   m_clock->setFont(clockFont);
-  m_toggle->setStyleSheet(QStringLiteral("QToolButton#barToggle { color: %1; background: %2; border: %3px solid %4; border-radius: %5px; "
+  m_toggle->setStyleSheet(QStringLiteral("QToolButton#barToggle { color: %1; background: %2; border: %3px solid %4; border-top: none; "
+                                  "border-bottom-left-radius: %5px; border-bottom-right-radius: %5px; font-size: 8pt; "
                                   "font-weight: bold; padding: 0; } QToolButton#barToggle:hover { color: %6; border-color: %7; }")
                      .arg(c.muted.name(), c.panel.name())
                      .arg(px(1))
@@ -251,7 +252,8 @@ void HeaderBar::updateBadges() {
                            .arg(QColor(color.red(), color.green(), color.blue(), 28).name(QColor::HexArgb)));
   };
   auto const appState = m_resHolder->status->getAppState();
-  QString    stateText = APP_STATE_LIST.value(static_cast<int>(appState));
+  QString    stateText = APP_STATE_LIST.value(static_cast<int>(
+    appState == StatusManager::AppState::CONNECTED ? StatusManager::AppState::CONNECTING : appState)); // until the chamber answers
   badge(m_appState, stateText, appState == StatusManager::AppState::ONLINE ? c.active : (appState == StatusManager::AppState::OFFLINE ? c.danger : c.warning));
   m_usb->setVisible(false); // removed from the design; drives are still offered as export locations
   QString const opcText = (m_opcState == 0) ? QStringLiteral("OPC OK") : (m_opcState == -1 ? QStringLiteral("OPC ERR") : QStringLiteral("OPC OFF"));
@@ -268,7 +270,7 @@ void HeaderBar::setCollapsed(bool collapsed) {
 }
 
 void HeaderBar::placeToggle() {
-  m_toggle->move((width() - m_toggle->width()) / 2, (height() - m_toggle->height()) / 2);
+  m_toggle->move((width() - m_toggle->width()) / 2, 0); // hangs from the top edge, clear of the readings
   m_toggle->raise();
 }
 

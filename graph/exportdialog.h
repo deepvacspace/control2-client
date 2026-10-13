@@ -8,11 +8,12 @@
 #include "resholder.h"
 
 class QButtonGroup;
-class QDateTimeEdit;
+class QGridLayout;
 class QLabel;
 class QPushButton;
 
 namespace deepvaccontrol {
+class DateTimeField;
 
 /**
  * @brief Chart export: what (chart image, data, experiment report or bundle), of which range (the visible view, the
@@ -30,9 +31,11 @@ public:
 
   // day: of the data shown; canReport / canBundle: what the shown data offers; canUseFiles: the day and custom ranges
   // (read from the recorded files) make sense for it
-  ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, QWidget *parent = nullptr);
+  // canComparisonCsv: a comparison tab is shown (one row per experiment and channel)
+  ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, bool canComparisonCsv = false,
+               QWidget *parent = nullptr);
 
-  // "png", "bmp", "jpeg", "csv", "txt", "html", "pdf" or "json"
+  // "png", "bmp", "jpeg", "csv", "txt", "html", "pdf", "json" or "comparison-csv"
   [[nodiscard]] QString   format() const;
   [[nodiscard]] Range     range() const;
   // DAY and CUSTOM
@@ -54,8 +57,8 @@ private:
   QDate          m_day;
   QButtonGroup  *m_formats{nullptr};
   QButtonGroup  *m_ranges{nullptr};
-  QDateTimeEdit *m_fromEdit{nullptr};
-  QDateTimeEdit *m_toEdit{nullptr};
+  DateTimeField *m_fromEdit{nullptr};
+  DateTimeField *m_toEdit{nullptr};
   QLabel        *m_rangeNote{nullptr};
   QPushButton   *m_previewBtn{nullptr};
   QString        m_filePath;

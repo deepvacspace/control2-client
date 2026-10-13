@@ -12,6 +12,7 @@
 #include <QSaveFile>
 #include <QMessageBox>
 #include <QThread>
+#include <QTimer>
 
 #include "confdialog.h"
 #include "connectiondialog.h"
@@ -253,6 +254,18 @@ void App::connectToServer() {
 
 void App::onConnectToServer() {
   m_status.setAppState(StatusManager::AppState::CONNECTED);
+  // a device that accepts the connection but never answers as a chamber: say so instead of waiting silently
+  QString const address = m_gateTcp->serverAddress();
+  QTimer::singleShot(20'000, this, [this, address] {
+    if ((StatusManager::AppState::CONNECTED != m_status.getAppState()) || (m_gateTcp->serverAddress() != address)) {
+      return;
+    }
+    m_logger.stream(Logger::Level::WAR) << address << "accepted the connection but sent no value list";
+    auto *notice = new MessageDialog(tr("Connection"), tr("%1 accepts the connection but does not answer as a chamber.\n"
+                                                          "Check the address and the port (Settings → TCP).")
+                                                         .arg(address));
+    notice->open(8000);
+  });
 }
 
 void App::onDisconnectFromServer() {

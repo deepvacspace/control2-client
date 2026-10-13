@@ -61,6 +61,7 @@ bool SettingsManager::readData(QFile &file) {
   makeAlarmsMap();
   pullSystemValues();
   getUiLanguage();
+  standardChannelNames();
 
   return true;
 }
@@ -105,6 +106,47 @@ void SettingsManager::getUiLanguage() {
       m_language = UiLanguage::Russian;
     }
   }
+}
+
+void SettingsManager::standardChannelNames() {
+  // name -> {English, Russian}; the unit after the comma of the configured label is kept
+  struct Name {
+    char const *en;
+    char const *ru;
+  };
+  static QHash<QString, Name> const names{
+    {"temp", {"Temperature", "Температура"}},
+    {"temp_raw", {"Temperature (uncalibrated)", "Температура (без корректировки)"}},
+    {"temp_ref", {"Temperature setpoint", "Уставка температуры"}},
+    {"temp_u", {"Temperature control output", "Управление по температуре"}},
+    {"temp_u_p", {"Temperature control output (P)", "Управление по температуре (П)"}},
+    {"temp_u_i", {"Temperature control output (I)", "Управление по температуре (И)"}},
+    {"temp_u_d", {"Temperature control output (D)", "Управление по температуре (Д)"}},
+    {"pres", {"Pressure", "Давление"}},
+    {"pres_raw", {"Pressure (uncalibrated)", "Давление (без корректировки)"}},
+    {"pres_volt", {"Pressure gauge signal", "Сигнал датчика давления"}},
+    {"pres_volt_raw", {"Pressure gauge signal (uncalibrated)", "Сигнал датчика давления (без корректировки)"}},
+    {"pres_ref", {"Pressure setpoint", "Уставка давления"}},
+    {"pres_u", {"Pressure control output", "Управление по давлению"}},
+    {"pres_u_p", {"Pressure control output (P)", "Управление по давлению (П)"}},
+    {"pres_u_i", {"Pressure control output (I)", "Управление по давлению (И)"}},
+    {"pres_u_d", {"Pressure control output (D)", "Управление по давлению (Д)"}},
+  };
+  bool const   russian{m_language == UiLanguage::Russian};
+  QVariantList states = m_settingsMap["states"].toList();
+  for (QVariant &entry : states) {
+    QVariantMap state = entry.toMap();
+    auto const  name  = names.constFind(state.value("name").toString());
+    if (name == names.cend()) {
+      continue;
+    }
+    QString const   label = state.value("label").toString();
+    qsizetype const comma = label.lastIndexOf(',');
+    QString const   unit  = (comma >= 0) ? label.mid(comma) : QString{}; // ", °C"
+    state["label"]        = QString::fromUtf8(russian ? name->ru : name->en) + unit;
+    entry                 = state;
+  }
+  m_settingsMap["states"] = states;
 }
 
 QVariantList SettingsManager::commitSystemValues() {

@@ -17,6 +17,7 @@
 #include "datamanager.h"
 #include "dataviewer.h"
 #include "theme.h"
+#include "touchsupport.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -81,7 +82,8 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   m_tabBar->setElideMode(Qt::ElideRight);
   m_tabBar->setFocusPolicy(Qt::NoFocus);
   m_tabBar->setContextMenuPolicy(Qt::CustomContextMenu);
-  m_tabBar->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss").arg(24 * ssf).arg(70 * ssf).arg(28 * ssf));
+  // tall enough for a finger
+  m_tabBar->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss").arg(30 * ssf).arg(80 * ssf).arg(32 * ssf));
   {
     QFont font = m_tabBar->font();
     font.setPointSizeF(font.pointSizeF() * 0.85);
@@ -109,6 +111,7 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   connect(m_tabBar, &QTabBar::tabCloseRequested, this, &ChartPane::closeTab);
   connect(m_tabBar, &QTabBar::tabMoved, this, [this](int from, int to) {
     m_tabs.move(from, to);
+    emit tabsChanged();
     // the live tab stays first
     if (int const live{indexOf(LIVE_KEY)}; live > 0) {
       m_tabBar->moveTab(live, 0);
@@ -124,6 +127,7 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
 
   // a click in the pane makes it the one the buttons act on
   m_tabBar->installEventFilter(this);
+  touch::enableLongPress(m_tabBar, nullptr, true); // press and hold a tab: its menu
   setHighlighted(false);
 }
 
@@ -163,6 +167,28 @@ ChartPane::Tab const *ChartPane::tab(int index) const {
 
 ChartPane::Tab const *ChartPane::currentTab() const {
   return tab(m_tabBar->currentIndex());
+}
+
+QJsonObject ChartPane::viewOf(int index) const {
+  Tab const *each = tab(index);
+  if (!each) {
+    return {};
+  }
+  if (each->ownViewer) {
+    return each->ownViewer->getData() ? each->ownViewer->viewState() : each->view;
+  }
+  return (each->key == m_shownKey) ? m_viewer->viewState() : each->view;
+}
+
+void ChartPane::setTabView(QString const &key, QJsonObject const &view) {
+  int const index{indexOf(key)};
+  if (index < 0) {
+    return;
+  }
+  m_tabs[index].view = view;
+  if (key == m_shownKey) {
+    m_viewer->setViewState(view);
+  }
 }
 
 int ChartPane::indexOf(QString const &key) const {
@@ -219,17 +245,23 @@ void ChartPane::addTab(Tab const &tab, int at) {
     m_tabBar->setTabButton(index, QTabBar::LeftSide, new TabSpinner(m_tabBar));
   }
   m_tabBar->setCurrentIndex(index);
+  emit tabsChanged();
 }
 
 ChartPane::Tab ChartPane::takeTab(int index) {
   if ((index < 0) || (index >= m_tabs.size()) || (m_tabs[index].key == LIVE_KEY)) {
     return {};
   }
-  Tab const taken = m_tabs.takeAt(index); // before the tab bar selects another tab
+  Tab taken = m_tabs.takeAt(index); // before the tab bar selects another tab
+  if (taken.key == m_shownKey) { // its zoom goes with it
+    taken.view = m_viewer->viewState();
+    m_shownKey.clear();
+  }
   m_tabBar->removeTab(index);
   if (taken.ownViewer) {
     detachViewer(taken.ownViewer);
   }
+  emit tabsChanged();
   if (m_tabs.isEmpty()) {
     emit emptied();
   }
@@ -278,7 +310,8 @@ void ChartPane::setTabData(QString const &key, std::shared_ptr<DataHolder const>
   }
   if (loaded.ownViewer) {
     loaded.ownViewer->setData(data);
-    loaded.ownViewer->updateTextItem(loaded.name);
+    loaded.ownViewer->updateTextItem(QString{}); // what is compared is in the tab's tooltip and the legend
+    loaded.ownViewer->setViewState(loaded.view); // as it was (restarts)
   }
   bool const zoom{!std::isnan(loaded.zoomFrom) && !std::isnan(loaded.zoomTo)};
   double const from{loaded.zoomFrom};
@@ -308,25 +341,49 @@ void ChartPane::showTab(int index) {
     return;
   }
   m_stack->setCurrentWidget(m_viewer);
-  if (shown->key == LIVE_KEY) {
+  // the zoom of the tab shown so far stays with it
+  if (int const previous{indexOf(m_shownKey)}; (previous >= 0) && (previous != index)) {
+    m_tabs[previous].view = m_viewer->viewState();
+  }
+  QString const key  = shown->key;
+  QJsonObject const view = shown->view;
+  if ((key == LIVE_KEY) && !m_liveActive) {
+    m_viewer->clear(m_liveIdleText); // no chamber activity: nothing to show
+    m_shownKey.clear();
+  } else if (key == LIVE_KEY) {
     double const todayKey = utils::calculateKey(QDateTime::currentSecsSinceEpoch());
     if (m_dataManager->prepareIntervalToDisplay(todayKey)) {
       m_viewer->setData(m_dataManager->getIntervalToDisplay());
     }
+    m_shownKey = key;
   } else if (shown->loading || !shown->data) {
     m_viewer->clear(tr("Loading %1…").arg(shown->name));
+    m_shownKey.clear();
   } else {
     m_viewer->setData(shown->data);
     m_viewer->updateTextItem(shown->name);
+    m_shownKey = key;
+  }
+  if (m_shownKey == key) {
+    m_viewer->setViewState(view); // its own zoom again
   }
   refreshRegions();
   emit currentTabChanged();
 }
 
 void ChartPane::reloadLive(double key) {
-  if (liveShown() && m_dataManager->prepareIntervalToDisplay(key)) {
+  if (m_liveActive && liveShown() && m_dataManager->prepareIntervalToDisplay(key)) {
     m_viewer->setData(m_dataManager->getIntervalToDisplay());
     refreshRegions();
+  }
+}
+
+void ChartPane::setLiveActive(bool active, QString const &idleText) {
+  bool const changed{(m_liveActive != active) || (!active && (m_liveIdleText != idleText))};
+  m_liveActive   = active;
+  m_liveIdleText = idleText;
+  if (changed && liveShown()) {
+    showTab(m_tabBar->currentIndex());
   }
 }
 

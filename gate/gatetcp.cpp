@@ -109,6 +109,11 @@ void GateTcp::setServer(QHostAddress const &serverIp4Address, quint16 port) {
     << QString("Switching the chamber connection from %1 to %2:%3").arg(serverAddress(), serverIp4Address.toString()).arg(port);
   m_serverIp4Address = serverIp4Address;
   m_port             = port;
+  // the notices name the new chamber, and start over for it
+  m_connectionDialog->setServerId(serverAddress());
+  m_connectionDialog->reset();
+  m_notifyTimeout = true;
+  emit showRedFlag(false);
   emit serverChanged();
   // a fresh start: no "connection lost / restored" notices for the switch itself
   m_contConnectingTryCount = 0;

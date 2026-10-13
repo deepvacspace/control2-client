@@ -60,6 +60,8 @@ private:
   void                   pullSystemValues();
   void                   makeAlarmsMap();
   void                   getUiLanguage();
+  // temperature, pressure, their setpoints and control outputs get the same short names on every chamber
+  void                   standardChannelNames();
   Logger                *m_logger;
   QString                m_filePath;
   QVariantMap            m_settingsMap;      // static settings
