@@ -21,6 +21,8 @@ class QAbstractButton;
 class QCheckBox;
 class QAbstractButton;
 class QComboBox;
+class QLabel;
+class QTextBrowser;
 class QRadioButton;
 class QJsonObject;
 class QGridLayout;
@@ -30,7 +32,11 @@ class QSplitter;
 namespace deepvaccontrol {
 class AnalysisNotesStore;
 class AnalysisServices;
+class CalendarPanel;
+class ChartSideBar;
 class ChartStatisticsDialog;
+class ChartStatsPanel;
+class ExportDialog;
 class DateTimeField;
 class OverlayDrawer;
 
@@ -47,15 +53,42 @@ public:
 
   void handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
 
+signals:
+  // the AI panel: the assistant about this experiment ("#N"; empty: the latest), with this question (may be empty)
+  void assistantRequested(QString const &run, QString const &question);
+  // a question in the AI panel, with the view it is about (AssistantEngine::ask)
+  void chartQuestionAsked(QString const &question, QJsonObject const &view);
+
+public slots:
+  // the assistant's progress (status) and answer to the question asked in the AI panel
+  void showAssistantExchange(QString const &status, QString const &answer, bool done);
+
 private:
   using Tab = ChartPane::Tab;
 
-  void exportData();
+  // the export form of the side panel, for the chart and tab shown now
+  void refreshExportPanel();
+  // what depends on the tab shown: annotate, and the open side panel
   void updateDayButton();
   // labels box over the chart and value label at the mouse, independent of each other
   void updateLegendMode();
-  // the calendar: experiments of the experiment database, or the live data of today
-  void openCalendar();
+  // the calendar panel: experiments of the experiment database, or the live data of today
+  void refreshCalendar();
+  // ---- the side bar (right): Channels, Options, Statistics, Actions, Info | Calendar, Export
+  QWidget *buildChannelsPage();
+  QWidget *buildActionsPage();
+  QWidget *buildInfoPage();
+  QWidget *buildAiPage();
+  // "#N" of the experiment the selected pane shows (as in the experiment list); empty: none (live, a day, a comparison)
+  [[nodiscard]] QString runReference() const;
+  // the panel open now follows the focused pane and its tab
+  void refreshSide();
+  // the + after a pane's tabs: an experiment from the list, or a new comparison
+  void showAddMenu(ChartPane *pane, QPoint const &globalPos);
+  // every pane's tools pinned beside its chart or floating; remember: for the user logged in
+  void setToolbarsPinned(bool pinned, bool remember = true);
+  // the tool of the left pane's toolbar, on every pane
+  void applyTool();
   void showExperiment(storage::ExperimentSpan const &experiment);
   void showDay(QDate const &day, QVector<storage::ExperimentSpan> const &experiments);
   // the experiment list (drawer), notes and reports of the shared analysis services
@@ -128,14 +161,15 @@ private:
   void                      applyInsight(ChartPane *pane);
   // the setpoint line of every chart (Actions ▸ Setpoint)
   void                      applySetpointLine();
-  // the experiment shown: number, DUT, purpose, operator, duration, samples
-  void                      showInfo();
+  // the experiment shown: number, DUT, purpose, operator, duration, samples (Info panel)
+  void                      refreshInfo();
   // the comparison tab of the statistics window
   void                      refreshComparisonStatistics();
   // ---- calculated channels (Options): which ones are drawn, computed from the data shown
   void                      refreshDerivedList();
   // the live tab follows the chamber: drawn while a job runs, blank otherwise
   void                      updateLiveActivity();
+  void                      fitView(); // the Fit tool: the whole tab, again on the live day: its last experiment
   // smoothing of the Options drawer, in samples (1: off)
   [[nodiscard]] int         smoothing() const;
   void                      setSmoothing(int samples);
@@ -151,8 +185,6 @@ private:
   QSplitter           *m_split{nullptr};
   QVector<ChartPane *> m_panes; // one, or two side by side
   ChartPane           *m_focused{nullptr};
-  QPushButton         *m_actionsBtn{nullptr}; // labels, tooltip, markers, setpoint, export
-  QPushButton         *m_infoBtn{nullptr};
   QAction             *m_labelsBtn{nullptr};
   QAction             *m_valuesBtn{nullptr};
   QAction             *m_eventsAct{nullptr};
@@ -175,13 +207,24 @@ private:
   QWidget                          *m_derivedBox{nullptr};
   bool                              m_liveActive{false};
   QString                           m_liveIdleText;
-  QPushButton         *m_annotateBtn{nullptr};
-  QPushButton         *m_listBtn{nullptr};
-  QPushButton         *m_dayBtn{nullptr};
   OverlayDrawer       *m_drawer{nullptr};
-  OverlayDrawer       *m_optionsDrawer{nullptr};
-  QPushButton         *m_statisticsBtn{nullptr};
-  QPushButton         *m_optionsBtn{nullptr};
+  ChartSideBar        *m_sideBar{nullptr};
+  ChartStatsPanel     *m_statsPanel{nullptr};
+  CalendarPanel       *m_calendarPanel{nullptr};
+  QLabel              *m_infoLabel{nullptr};
+  QWidget             *m_exportHost{nullptr};
+  QLabel              *m_exportEmpty{nullptr};
+  ExportDialog        *m_exportForm{nullptr};
+  QWidget             *m_channelsNote{nullptr};
+  QLabel              *m_aiContext{nullptr};
+  QTextBrowser        *m_aiTranscript{nullptr};
+  QStringList          m_aiBlocks;      // the panel's questions and answers (markdown)
+  int                  m_aiLive{-1};    // the block of the answer coming in
+  QPushButton         *m_aiAskBtn{nullptr};
+  QPushButton         *m_aiExplainBtn{nullptr};
+  // what the chart shows now, for the assistant: {run, from_s, to_s, from, to, channels}
+  [[nodiscard]] QJsonObject chartView() const;
+  void                      askAssistant(QString const &question);
   ChartStatisticsDialog *m_statistics{nullptr};
   DateTimeField       *m_fromEdit{nullptr};
   DateTimeField       *m_toEdit{nullptr};
@@ -193,9 +236,10 @@ private:
   QAbstractButton     *m_relativeRadio{nullptr};
   QPushButton         *m_detailsBtn{nullptr};
   AnalysisServices    *m_services{nullptr};
-  QPushButton         *m_compareBtn{nullptr};
   int                  m_comparisons{0}; // comparison tabs made (their keys)
   bool                 m_canAnnotate{false};
+  bool                 m_toolbarPinned{false};
+  ChartToolbar::Tool   m_tool{ChartToolbar::Tool::INSPECT};
   int                  m_dragDepth{0}; // tabs being dragged: panes stay until it ends
   QAbstractButton     *m_scatterRadio{nullptr};
   QTimer              *m_sessionTimer{nullptr};
@@ -206,8 +250,6 @@ private:
   ExperimentLibrary   *m_library{nullptr};
   AnalysisNotesStore  *m_notes{nullptr};
   GraphStyleEditor    *m_styleEditor;
-  QAction             *m_exportToBtn;
-  QPushButton         *m_styleBtn;
 };
 } // namespace deepvaccontrol
 

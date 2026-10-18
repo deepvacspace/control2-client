@@ -23,7 +23,9 @@ class AssistantEngine : public QObject {
 public:
   AssistantEngine(LlmClient *client, ToolRegistry const *registry, QObject *parent = nullptr);
 
-  void ask(QString const &question, QString const &focusRun = {});
+  // view: the chart the question was asked from ({run "#N", from_s, to_s (s after the run start), from, to (clock),
+  // channels [names]}); "this view" questions get the KPIs and statistics of that range fetched first
+  void ask(QString const &question, QString const &focusRun = {}, QJsonObject const &view = {});
   // lets the server process the fixed part of every request (system prompt, tools) ahead of the first question
   void warmUp();
   void cancel();
@@ -38,6 +40,9 @@ public:
   static QStringList ungroundedNumbers(QString const &answer, QString const &evidence);
   // runs a question names ("run 105 and 108", "#3 vs #4") as "#N"
   static QStringList mentionedRuns(QString const &question);
+  // a chart command about the view shown ("zoom to the second hold", "show the last 2 h", "fit", "zoom in"):
+  // plot_run's arguments, or empty when the question is no such command
+  static QJsonObject chartCommand(QString const &question, QJsonObject const &view);
   // temperatures in Kelvin ("298.15 K", "kelvin"): never produced by DeepVac
   static bool usesKelvin(QString const &answer);
   // the answer up to the first sentence it repeats (small models can loop), without check-mark / pin emojis
@@ -67,7 +72,7 @@ private:
   void runTool(QString const &id, QString const &name, QJsonObject const &arguments, QString const &argumentsError = {});
   // the data a question is about, fetched by DeepVac before the model answers: the model cannot skip it
   // (llama-server does not enforce tool_choice "required"); experiments already fetched are not fetched again
-  void prefetch(QString const &question, QString const &focusRun);
+  void prefetch(QString const &question, QString const &focusRun, QJsonObject const &view);
 
   LlmClient          *m_client;
   ToolRegistry const *m_registry;

@@ -12,6 +12,10 @@ class GraphStyleEditor : public QDialog {
 public:
   explicit GraphStyleEditor(ResHolder *resHolder, QWidget *parent = nullptr);
   QVariantList getStateStylesList(); // to call on hide/select all/unselect all
+  // inside the chart page's side panel: no title or Done, narrower line style boxes, not a window
+  void setCompact();
+  // exactly these channels shown (state names, or labels without their unit), the others hidden
+  void showOnly(QStringList const &channels);
 
 signals:
   void styleChanged(int index, QVariantMap stateMap);

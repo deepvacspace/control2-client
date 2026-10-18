@@ -2,6 +2,7 @@
 
 #include <QEvent>
 #include <QHelpEvent>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRegularExpression>
@@ -13,6 +14,7 @@
 #include <functional>
 
 #include "constants.h"
+#include "gatetcp.h"
 #include "theme.h"
 #include "utils.h"
 
@@ -78,12 +80,31 @@ ChamberView::ChamberView(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   });
   connect(m_resHolder->states, &SystemValueList::ValuesUpdated, this, [this] {
     refreshAnimation();
+    if (!m_chipKeys.isEmpty()) {
+      updateGeometry(); // a row of chips: as wide as their texts now
+    }
     update();
   });
   connect(m_resHolder->status, &StatusManager::appStateChanged, this, [this] {
     refreshAnimation();
     update();
   });
+  if (m_resHolder->tcpGate) {
+    // a chamber that lists its components overrides what the output labels suggest; until it does (or after it
+    // is gone) they are judged by the outputs
+    connect(m_resHolder->tcpGate, &GateTcp::componentsReceived, this, [this](QStringList const &components) {
+      m_reported  = QSet<QString>(components.cbegin(), components.cend());
+      m_hasReport = true; // an empty list too: nothing fitted
+      update();
+    });
+    for (auto signal : {&GateTcp::disconnected, &GateTcp::serverChanged}) {
+      connect(m_resHolder->tcpGate, signal, this, [this] {
+        m_reported.clear();
+        m_hasReport = false;
+        update();
+      });
+    }
+  }
 }
 
 // ---------------------------------------------------------------- detection and state
@@ -105,6 +126,8 @@ void ChamberView::detect() {
     {"comp23", [&](QString const &l) { return has(l, "compressor") && has(l, "r23"); }},
     {"evap404", [&](QString const &l) { return has(l, "evaporator") && has(l, "r404"); }},
     {"evap23", [&](QString const &l) { return has(l, "evaporator") && has(l, "r23"); }},
+    // chamber - TMP (gate) valve before the TMP - main line valve, whose label also names the TMP
+    {"vt", [&](QString const &l) { return word(l, "v-t") || has(l, "gate valve") || (has(l, "valve") && has(l, "chamber") && (has(l, "tmp") || has(l, "turbo"))); }},
     {"vtmh", [&](QString const &l) { return has(l, "v-tmh") || (has(l, "valve") && (has(l, "tmp") || has(l, "turbo"))); }},
     {"vk", [&](QString const &l) { return has(l, "v-k") || (has(l, "valve") && has(l, "chamber")); }},
     {"ln2", [&](QString const &l) { return has(l, "ln2") || has(l, "ln₂") || has(l, "nitrogen"); }},
@@ -128,11 +151,18 @@ void ChamberView::detect() {
 }
 
 bool ChamberView::fitted(QString const &key) const {
+  if (key == QLatin1String("bp")) {
+    // the backing pump serves the turbo pump: without a TMP there is no vacuum line to show
+    return fitted("tmp") && (m_hasReport ? m_reported.contains(key) : true);
+  }
+  if (m_hasReport) {
+    return m_reported.contains(key);
+  }
   if (key == QLatin1String("sensor")) {
     return m_resHolder->states->contains("temp");
   }
-  if (key == QLatin1String("bp")) {
-    return true; // the backing pump is part of every chamber (with or without its own PLC output)
+  if (key == QLatin1String("gauge")) {
+    return m_resHolder->states->contains("pres");
   }
   if (key == QLatin1String("fridge")) {
     return m_outputs.contains("comp23") || m_outputs.contains("comp404") || m_outputs.contains("evap23") || m_outputs.contains("evap404");
@@ -146,12 +176,25 @@ bool ChamberView::online() const {
 
 bool ChamberView::on(QString const &key) const {
   if ((key == QLatin1String("bp")) && !m_outputs.contains(key)) {
-    return online(); // no output of its own: it runs while the chamber is on
+    return online() && fitted(key); // no output of its own: it runs while the chamber is on
   }
   if (!online() || !m_outputs.contains(key) || !m_resHolder->states->contains("outputs")) {
     return false;
   }
   return utils::getBitOfFloat(m_resHolder->states->getSysValue("outputs")->getValue(), m_outputs.value(key).bit);
+}
+
+bool ChamberView::heating() const {
+  if (!fitted("heater")) {
+    return false;
+  }
+  if (on("heater")) {
+    return true;
+  }
+  // without (or before) the heater's own output bit: a running job whose control output asks for heat
+  constexpr double WORK{2.0};
+  constexpr double HEAT_THRESHOLD{1.0}; // % of control output
+  return (value("status_condition") == WORK) && (value("temp_u") > HEAT_THRESHOLD);
 }
 
 bool ChamberView::cooling() const {
@@ -202,6 +245,11 @@ ChamberView::Tag ChamberView::tag(QString const &key) const {
     QString const state = APP_STATE_LIST.value(static_cast<int>(m_resHolder->status->getAppState())).section('=', -1).toLower();
     t.status            = state.isEmpty() ? state : state.at(0).toUpper() + state.mid(1);
     t.state  = online() ? State::ACTIVE : State::OFF;
+  } else if (key == QLatin1String("gauge")) {
+    t.fitted        = fitted("gauge");
+    double const v  = pressureTorr();
+    t.status        = std::isnan(v) ? QStringLiteral("—") : QStringLiteral("%1 Torr").arg(QString::number(v, 'g', 3));
+    t.state         = std::isnan(v) ? State::OFF : State::ACTIVE;
   } else if (key == QLatin1String("sensor")) {
     t.fitted        = fitted("sensor");
     double const v  = value("temp");
@@ -212,7 +260,7 @@ ChamberView::Tag ChamberView::tag(QString const &key) const {
     onOff(on("comp23") || on("comp404"), tr("On"), tr("Off"));
   } else if (key == QLatin1String("heater")) {
     t.fitted = fitted("heater");
-    onOff(on("heater"), tr("On"), tr("Off"));
+    onOff(heating(), tr("On"), tr("Off"));
     double const u{value("temp_u")};
     if ((t.state == State::ACTIVE) && !std::isnan(u) && (u > 0.0)) {
       t.status = tr("On · %1").arg(valueText(u, 0, QStringLiteral(" %")));
@@ -228,6 +276,116 @@ ChamberView::Tag ChamberView::tag(QString const &key) const {
 }
 
 // ---------------------------------------------------------------- painting
+void ChamberView::setCompact(bool compact) {
+  m_compact = compact;
+  double const s{utils::ssf()};
+  setMinimumSize(compact ? QSize(static_cast<int>(240 * s), static_cast<int>(120 * s)) : QSize(static_cast<int>(400 * s), static_cast<int>(250 * s)));
+  setCursor(compact ? Qt::PointingHandCursor : Qt::ArrowCursor);
+  setToolTip(QString{});
+  updateGeometry();
+  update();
+}
+
+void ChamberView::setChips(QStringList const &keys) {
+  m_chipKeys = keys;
+  double const s{utils::ssf()};
+  setMinimumSize(static_cast<int>(60 * s), static_cast<int>(38 * s));
+  setFixedHeight(static_cast<int>(38 * s));
+  updateGeometry();
+  update();
+}
+
+QSize ChamberView::sizeHint() const {
+  double const s{utils::ssf()};
+  if (m_compact && !m_chipKeys.isEmpty()) { // the row of chips
+    double width{0.0};
+    for (auto const &[key, title] : chips()) {
+      width += tagWidth(key, title) + 6;
+    }
+    return QSize(static_cast<int>(std::ceil((width + 8) * s)), static_cast<int>(38 * s));
+  }
+  return m_compact ? QSize(static_cast<int>(420 * s), static_cast<int>(150 * s)) : QSize(static_cast<int>(740 * s), static_cast<int>(620 * s));
+}
+
+void ChamberView::mouseReleaseEvent(QMouseEvent *event) {
+  if (m_compact) {
+    emit diagramRequested();
+  }
+  QWidget::mouseReleaseEvent(event);
+}
+
+QVector<QPair<QString, QString>> ChamberView::chips() const {
+  QVector<QPair<QString, QString>> const all{{"plc", tr("PLC")},
+                                             {"heater", tr("Thermal Plate")},
+                                             {"fridge", tr("Cooling unit")},
+                                             {"ln2", tr("LN₂")},
+                                             {"tmp", tr("TMP")},
+                                             {"bp", tr("Backing pump")},
+                                             {"vt", tr("V-T")},
+                                             {"vtmh", tr("V-TMH")},
+                                             {"vk", tr("V-K")},
+                                             {"gauge", tr("Pressure")},
+                                             {"light", tr("Light")}};
+  QVector<QPair<QString, QString>> shown;
+  for (auto const &chip : all) {
+    if (!m_chipKeys.isEmpty()) {
+      if (m_chipKeys.contains(chip.first)) {
+        shown.push_back(chip);
+      }
+    } else if ((chip.first == QLatin1String("plc")) || fitted(chip.first)) {
+      shown.push_back(chip);
+    }
+  }
+  return shown;
+}
+
+double ChamberView::tagWidth(QString const &key, QString const &title) const {
+  Tag const    t = tag(key);
+  double const statusW{2 * 3.5 + 5 + QFontMetricsF(canvasFont(11, t.state == State::ACTIVE)).horizontalAdvance(t.status)};
+  return std::max(QFontMetricsF(canvasFont(12, true)).horizontalAdvance(title), statusW) + 2 * 7;
+}
+
+// the Home page's strip: a title, then a chip per component (as the diagram's tags), wrapped to the width
+void ChamberView::paintCompact(QPainter &p) {
+  theme::Colors const &c = theme::colors();
+  double const         s{utils::ssf()};
+  bool const   bare{!m_chipKeys.isEmpty()};
+  double const zoom{bare ? 1.0 : 1.3}; // the strip's chips a little larger than the diagram's tags: read at a glance
+  m_transform = QTransform::fromScale(s * zoom, s * zoom);
+  p.setTransform(m_transform);
+  m_tips.clear();
+  double const width{rect().width() / (s * zoom)};
+  double const pad{bare ? 1.0 : 12.0};
+  if (!bare) {
+    p.setFont(canvasFont(13, true));
+    p.setPen(c.text);
+    p.drawText(QRectF(pad, 8, width - 2 * pad, 20), Qt::AlignLeft | Qt::AlignVCenter, tr("Chamber"));
+    p.setFont(canvasFont(11));
+    p.setPen(c.accent);
+    p.drawText(QRectF(pad, 8, width - 2 * pad, 20), Qt::AlignRight | Qt::AlignVCenter, tr("Diagram ›"));
+  }
+  double x{pad};
+  double y{bare ? 1.0 : 36.0};
+  double const gap{6};
+  double const height{36};
+  for (auto const &[key, title] : chips()) {
+    double const w{tagWidth(key, title)};
+    if ((x > pad) && (x + w > width - pad)) {
+      x = pad;
+      y += height + gap;
+    }
+    // the chip: a soft card, lit by drawTag while the component is on
+    QRectF const box(x, y, w, height);
+    p.setPen(QPen(c.border, 1));
+    p.setBrush(c.panel);
+    p.drawRoundedRect(box, 7, 7);
+    QString const status = tag(key).status;
+    drawTag(p, box.topLeft(), Qt::AlignLeft | Qt::AlignTop, key, title);
+    addTip(box, status.isEmpty() ? title : QStringLiteral("%1: %2").arg(title, status));
+    x += w + gap;
+  }
+}
+
 void ChamberView::paintEvent(QPaintEvent *) {
   theme::Colors const &c = theme::colors();
   QPainter             p(this);
@@ -239,7 +397,15 @@ void ChamberView::paintEvent(QPaintEvent *) {
   QRectF const panel = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
   p.setPen(QPen(c.border, 1 * s));
   p.setBrush(c.panel);
+  if (m_compact && !m_chipKeys.isEmpty()) { // a bare row of chips: no card
+    paintCompact(p);
+    return;
+  }
   p.drawRoundedRect(panel, 8 * s, 8 * s);
+  if (m_compact) {
+    paintCompact(p);
+    return;
+  }
 
   // canvas fitted into the panel
   QRectF const content(0, 0, CANVAS_W, CANVAS_H);
@@ -300,12 +466,59 @@ void ChamberView::drawPipe(QPainter &p, QPointF const &from, QPointF const &to, 
   }
 }
 
-void ChamberView::drawValve(QPainter &p, QPointF const &at, QString const &key, QString const &title, QString const &tip, bool tagAbove) {
+void ChamberView::drawPipePath(QPainter &p, QVector<QPointF> const &points, bool isFitted, bool flowing, QColor const &flowColor,
+                               bool startFlange, bool endFlange) {
+  if (points.size() < 2) {
+    return;
+  }
+  theme::Colors const &c = theme::colors();
+  QPainterPath         path;
+  path.moveTo(points.first());
+  for (int i{1}; i < points.size(); ++i) {
+    path.lineTo(points[i]);
+  }
+  QColor const wall = isFitted ? c.muted : c.off;
+  p.setBrush(Qt::NoBrush);
+  // walls, then the bore inside them; square bends
+  p.setPen(QPen(wall, 12, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+  p.drawPath(path);
+  p.setPen(QPen(theme::isDark() ? c.window : c.panelAlt, 7, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+  p.drawPath(path);
+  // flanges across the ends
+  auto flange = [&](QPointF const &end, QPointF const &next) {
+    QLineF const  line(end, next);
+    QPointF const across = QPointF(-line.dy(), line.dx()) / std::max(1.0, line.length()) * 10.0;
+    p.setPen(QPen(wall, 3, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(end - across, end + across);
+  };
+  if (startFlange) {
+    flange(points[0], points[1]);
+  }
+  if (endFlange) {
+    flange(points.last(), points[points.size() - 2]);
+  }
+  if (flowing) {
+    QPen dash(flowColor, 4, Qt::CustomDashLine, Qt::FlatCap, Qt::MiterJoin);
+    dash.setDashPattern({1.5, 1.5});
+    dash.setDashOffset(-m_phase * 0.6);
+    p.setPen(dash);
+    p.drawPath(path);
+  }
+}
+
+void ChamberView::drawValve(QPainter &p, QPointF const &at, QString const &key, QString const &title, QString const &tip, bool tagAbove,
+                            bool vertical) {
   theme::Colors const &c = theme::colors();
   bool const           isFitted{fitted(key)};
   bool const           open{on(key)};
   QColor const         color = !isFitted ? c.off : (open ? c.active : c.muted);
   double const         w{15}, h{11};
+  if (vertical) { // on a vertical pipe: the same valve turned, its actuator to the right, its tag to the left
+    p.save();
+    p.translate(at);
+    p.rotate(90);
+    p.translate(-at);
+  }
   // actuator
   p.setPen(QPen(color, 2));
   p.setBrush(Qt::NoBrush);
@@ -321,6 +534,12 @@ void ChamberView::drawValve(QPainter &p, QPointF const &at, QString const &key, 
   p.setBrush(open ? QBrush(QColor(color.red(), color.green(), color.blue(), 170)) : QBrush(c.panel));
   p.drawPolygon(left);
   p.drawPolygon(right);
+  if (vertical) {
+    p.restore();
+    drawTag(p, at + QPointF(-20, 0), Qt::AlignRight | Qt::AlignVCenter, key, title);
+    addTip(QRectF(at.x() - 16, at.y() - 22, 50, 44), isFitted ? tip : tr("%1: not fitted on this chamber").arg(tip));
+    return;
+  }
   drawTag(p, at + QPointF(0, tagAbove ? -36 : 14), Qt::AlignHCenter | (tagAbove ? Qt::AlignBottom : Qt::AlignTop), key, title);
   addTip(QRectF(at.x() - 22, at.y() - 34, 44, 50), isFitted ? tip : tr("%1: not fitted on this chamber").arg(tip));
 }
@@ -378,7 +597,8 @@ void ChamberView::drawChamber(QPainter &p) {
 
   // light: a bulb at the top, glowing when on
   QPointF const lamp{400, 252}; // on the ceiling
-  QPointF const glass{lamp.x(), lamp.y() - 3};
+  double const  hangAxis{lamp.y() + 2};                            // the bulb is drawn upright, then mirrored here
+  QPointF const glass{lamp.x(), 2 * hangAxis - (lamp.y() - 3)};    // so the glass hangs below its base
   bool const    lightOn{on("light")};
   if (lightOn) {
     double const    radius = 56 + 6 * std::sin(m_phase * 0.2);
@@ -390,11 +610,15 @@ void ChamberView::drawChamber(QPainter &p) {
     p.drawEllipse(glass, radius, radius);
   }
   {
-    // glass: a circle narrowing to the neck, then the screw base
-    double const r{7};
+    // glass: a circle narrowing to the neck, then the screw base; upside down, hanging from the ceiling
+    p.save();
+    p.translate(0, 2 * hangAxis);
+    p.scale(1, -1);
+    QPointF const upright{lamp.x(), lamp.y() - 3};
+    double const  r{7};
     QPainterPath bulb;
     bulb.moveTo(lamp.x() - 3.5, lamp.y() + 6);
-    bulb.arcTo(QRectF(glass.x() - r, glass.y() - r, 2 * r, 2 * r), 225, -270);
+    bulb.arcTo(QRectF(upright.x() - r, upright.y() - r, 2 * r, 2 * r), 225, -270);
     bulb.lineTo(lamp.x() + 3.5, lamp.y() + 6);
     bulb.closeSubpath();
     QColor const line = fitted("light") ? c.muted : c.off;
@@ -406,12 +630,20 @@ void ChamberView::drawChamber(QPainter &p) {
     p.drawRoundedRect(QRectF(lamp.x() - 3.5, lamp.y() + 6.5, 7, 2.2), 0.8, 0.8);
     p.drawRoundedRect(QRectF(lamp.x() - 3.5, lamp.y() + 9.3, 7, 2.2), 0.8, 0.8);
     p.drawEllipse(QPointF(lamp.x(), lamp.y() + 12.6), 1.6, 1.2);
+    p.restore();
+    // the cord and its mount on the ceiling
+    double const baseTop{2 * hangAxis - (lamp.y() + 13.8)};
+    p.setPen(QPen(line, 1.4, fitted("light") ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap));
+    p.drawLine(QPointF(lamp.x(), baseTop), QPointF(lamp.x(), baseTop - 7));
+    p.setPen(Qt::NoPen);
+    p.setBrush(line);
+    p.drawRoundedRect(QRectF(lamp.x() - 5, baseTop - 9, 10, 2.4), 1, 1);
   }
   addTip(QRectF(lamp.x() - 12, lamp.y() - 14, 24, 28), fitted("light") ? tr("Light") : tr("Light: disconnected"));
   drawTag(p, QPointF(lamp.x() - 14, lamp.y() + 2), Qt::AlignRight | Qt::AlignVCenter, "light", tr("Light"), true);
 
   // the plate: a slab on the floor, heater coil on its top face, coolant channel in its front (cooling unit and LN₂)
-  bool const heating{on("heater")};
+  bool const heating{this->heating()};
   bool const chilled{cooling() || on("ln2")};
   // a point of the top face: u across (0 left .. 1 right), v in depth (0 back .. 1 front)
   auto top = [](double u, double v) {
@@ -588,7 +820,7 @@ void ChamberView::drawGauge(QPainter &p) {
   // a vacuum gauge on a KF port: tube, clamp, neck, body and its connector on top
   theme::Colors const &c = theme::colors();
   bool const           reading{!std::isnan(pressureTorr())};
-  bool const           gaugeFitted{m_resHolder->states->contains("pres")};
+  bool const           gaugeFitted{fitted("gauge")};
   QColor const         line  = gaugeFitted ? c.muted : c.off;
   Qt::PenStyle const   style = gaugeFitted ? Qt::SolidLine : Qt::DotLine;
   double const         x{436};
@@ -605,12 +837,6 @@ void ChamberView::drawGauge(QPainter &p) {
   p.drawRect(QRectF(x - 13, top - 70, 26, 3));               // its top band
   p.setBrush(c.panel);
   p.drawRoundedRect(QRectF(x - 9, top - 82, 18, 12), 2, 2);  // connector
-  p.setPen(QPen(line, 2, style, Qt::RoundCap));
-  p.setBrush(Qt::NoBrush);
-  QPainterPath cable; // down the right of the body
-  cable.moveTo(x + 6, top - 82);
-  cable.cubicTo(x + 14, top - 90, x + 24, top - 80, x + 22, top - 40);
-  p.drawPath(cable);
   addTip(QRectF(x - 13, top - 82, 26, 82), gaugeFitted ? tr("Pressure gauge") : tr("Pressure gauge: not fitted on this chamber"));
 }
 
@@ -620,19 +846,26 @@ void ChamberView::drawVacuum(QPainter &p) {
   bool const           bpOn{on("bp")};
   bool const           vtmhOpen{on("vtmh")};
   bool const           vkOpen{on("vk")};
-  bool const           anyFitted{fitted("tmp") || fitted("bp")};
+  bool const           vtOpen{!fitted("vt") || on("vt")}; // no valve of its own: always open
 
   // lines: TMP -> V-TMH -> main line -> junction; chamber -> V-K -> junction; junction -> BP
   QPointF const vtmh{440, VAC_Y};
   QPointF const vk{548, JUNCTION.y()};
-  drawLine(p, {TMP + QPointF(0, -TMP_R), QPointF(TMP.x(), VAC_Y), vtmh}, fitted("tmp"), tmpOn && vtmhOpen && bpOn, c.accent);
-  drawLine(p, {vtmh, QPointF(MAIN_X, VAC_Y), QPointF(MAIN_X, 78)}, anyFitted, vtmhOpen && bpOn, c.accent);
-  drawLine(p, {QPointF(TMP.x(), VESSEL.top()), TMP + QPointF(0, TMP_R)}, fitted("tmp"), tmpOn && bpOn, c.accent);
-  // main line: a pipe, gas flowing down to the backing pump
-  drawPipe(p, QPointF(MAIN_X, 78), QPointF(MAIN_X, JUNCTION.y() - 6), anyFitted, (vtmhOpen || vkOpen) && bpOn, c.accent);
+  QPointF const vt{TMP.x(), (VESSEL.top() + TMP.y() + TMP_R) / 2.0};
+  drawPipePath(p, {QPointF(TMP.x(), VESSEL.top()), TMP + QPointF(0, TMP_R)}, fitted("tmp"), tmpOn && bpOn && vtOpen, c.accent);
+  drawPipePath(p, {TMP + QPointF(0, -TMP_R), QPointF(TMP.x(), VAC_Y), vtmh}, fitted("tmp"), tmpOn && vtmhOpen && bpOn, c.accent, true, false);
+  // main line: gas flowing down to the backing pump
+  drawPipePath(p, {vtmh, QPointF(MAIN_X, VAC_Y), JUNCTION}, fitted("tmp"), vtmhOpen && bpOn, c.accent, false, false);
   addTip(QRectF(MAIN_X - 10, 78, 20, JUNCTION.y() - 84), tr("Main line"));
-  drawLine(p, {QPointF(VESSEL.right(), JUNCTION.y()), vk, JUNCTION}, fitted("vk") || fitted("bp"), vkOpen && bpOn, c.accent);
-  drawLine(p, {JUNCTION, BP + QPointF(0, -BP_R)}, fitted("bp"), bpOn && (vkOpen || vtmhOpen), c.accent);
+  // the shortcut through V-K, and down to the backing pump
+  drawPipePath(p, {QPointF(VESSEL.right(), JUNCTION.y()), JUNCTION}, fitted("vk") || fitted("bp"), vkOpen && bpOn, c.accent, true, false);
+  drawPipePath(p, {JUNCTION, BP + QPointF(0, -BP_R)}, fitted("bp"), bpOn && (vkOpen || vtmhOpen), c.accent, false, true);
+  {
+    // the tee: one bore where the three pipes meet
+    p.setPen(Qt::NoPen);
+    p.setBrush(theme::isDark() ? c.window : c.panelAlt);
+    p.drawRect(QRectF(JUNCTION.x() - 3.5, JUNCTION.y() - 3.5, 7, 7));
+  }
   // exhaust
   drawLine(p, {BP + QPointF(BP_R, 0), QPointF(BP.x() + 72, BP.y())}, fitted("bp"), bpOn, c.accent);
   {
@@ -641,11 +874,9 @@ void ChamberView::drawVacuum(QPainter &p) {
     p.drawLine(tip, tip + QPointF(-9, -7));
     p.drawLine(tip, tip + QPointF(-9, 7));
   }
-  p.setPen(Qt::NoPen);
-  p.setBrush(anyFitted ? c.muted : c.off);
-  p.drawEllipse(JUNCTION, 5, 5);
 
   drawValve(p, vtmh, "vtmh", QStringLiteral("V-TMH"), tr("Valve between the turbo pump and the main line"), false);
+  drawValve(p, vt, "vt", QStringLiteral("V-T"), tr("Valve between the chamber and the turbo pump"), false, true);
   drawValve(p, vk, "vk", QStringLiteral("V-K"), tr("Valve between the chamber and the backing pump"), true);
 
   // turbo pump above the chamber, with its rotor

@@ -129,4 +129,13 @@ void GraphStyleSingleWidget::setEnabled(bool value) {
   updateSwatch();
 }
 
+void GraphStyleSingleWidget::setCompact() {
+  double const ssf{utils::ssf()};
+  m_lineStyle->setFixedSize(static_cast<int>(76 * ssf), static_cast<int>(28 * ssf));
+  m_lineStyle->setIconSize(QSize(static_cast<int>(48 * ssf), static_cast<int>(14 * ssf)));
+  m_lineWidth->setFixedSize(static_cast<int>(62 * ssf), static_cast<int>(28 * ssf));
+  m_label->setWordWrap(true);
+  layout()->setSpacing(static_cast<int>(6 * ssf));
+}
+
 } // namespace deepvaccontrol

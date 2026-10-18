@@ -49,6 +49,7 @@ public:
   // tool implementations (public for tests)
   QJsonObject listRuns(QJsonObject const &args) const;
   QJsonObject runSummary(QJsonObject const &args);
+  QJsonObject daySummary(QJsonObject const &args); // a day's recorded data: experiments, idle times, app closed
   QJsonObject listChannels(QJsonObject const &args);
   QJsonObject statistics(QJsonObject const &args);
   QJsonObject kpis(QJsonObject const &args);
@@ -60,6 +61,7 @@ public:
   QJsonObject events(QJsonObject const &args);
   QJsonObject plotRun(QJsonObject const &args);
   QJsonObject generateReport(QJsonObject const &args);
+  QJsonObject exportData(QJsonObject const &args); // CSV of a run, stage or time range in the export folder
 
 private:
   struct Loaded {

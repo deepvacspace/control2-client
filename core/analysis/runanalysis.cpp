@@ -1,5 +1,7 @@
 #include "runanalysis.h"
 
+#include <algorithm>
+
 #include <QJsonArray>
 #include <cmath>
 
@@ -86,6 +88,14 @@ QJsonObject kpisToJson(ControlKpis const &kpis) {
                      {"min", number(kpis.minValue)},
                      {"max", number(kpis.maxValue)},
                      {"end", number(kpis.endValue)}};
+}
+
+bool RunAnalysis::hasRamp() const {
+  return std::any_of(stages.cbegin(), stages.cend(), [](StageAnalysis const &s) { return s.segment.kind == Segment::Kind::RAMP; });
+}
+
+bool tracksSetpoint(Segment::Kind kind) {
+  return (kind == Segment::Kind::RAMP) || (kind == Segment::Kind::HOLD);
 }
 
 QJsonObject RunAnalysis::toJson() const {

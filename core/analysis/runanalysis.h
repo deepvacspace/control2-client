@@ -23,7 +23,13 @@ struct RunAnalysis {
   QVector<StageAnalysis> stages;
 
   [[nodiscard]] QJsonObject toJson() const; // stored in the experiment database (summary_json)
+  // the setpoint ramps somewhere: the whole-run MAE measures how the temperature followed it. Without a ramp the
+  // run starts away from a step setpoint and the MAE mostly measures that distance: report the tail MAE instead
+  [[nodiscard]] bool hasRamp() const;
 };
+
+// a stage whose MAE measures tracking: a ramp or a hold (a setpoint step starts away from its setpoint)
+[[nodiscard]] bool tracksSetpoint(Segment::Kind kind);
 
 // times: elapsed s; interval / cycle may be empty
 RunAnalysis analyseRun(QVector<double> const &times, QVector<double> const &value, QVector<double> const &reference,

@@ -8,7 +8,6 @@
 #include <QVBoxLayout>
 
 #include "aiadvisorwidget.h"
-#include "aisimulatorwidget.h"
 #include "offlineadvisorwidget.h"
 #include "theme.h"
 #include "utils.h"
@@ -31,10 +30,6 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   theme::setFlatTabs(m_tabWidget);
   mainLay->addWidget(m_tabWidget);
 
-  auto *simulatorWidget = new AiSimulatorWidget(resHolder, this);
-  prepareAiTabPage(simulatorWidget);
-  m_tabWidget->addTab(simulatorWidget, tr("Simulator"));
-
   auto *advisorWidget = new AiAdvisorWidget(resHolder, this);
   prepareAiTabPage(advisorWidget);
   // the online advisor (PPO, adjusts the gains while the job runs) is hidden for the time being
@@ -43,11 +38,22 @@ AiWidget::AiWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
 
   auto *offlineAdvisorWidget = new OfflineAdvisorWidget(resHolder, this);
   prepareAiTabPage(offlineAdvisorWidget);
-  m_tabWidget->addTab(offlineAdvisorWidget, tr("Advisor"));
+  // the AI Advisor and the digital-twin simulation in one tab
+  m_tabWidget->addTab(offlineAdvisorWidget, tr("Simulator"));
 
   m_assistantWidget = new assistant::AssistantWidget(resHolder, this);
   prepareAiTabPage(m_assistantWidget);
   m_tabWidget->addTab(m_assistantWidget, tr("Assistant"));
+  m_tabWidget->setCurrentWidget(offlineAdvisorWidget); // not the hidden online advisor (first in the tab order)
+}
+
+assistant::AssistantWidget *AiWidget::assistantWidget() const {
+  return m_assistantWidget;
+}
+
+void AiWidget::openAssistant(QString const &run, QString const &question) {
+  m_tabWidget->setCurrentWidget(m_assistantWidget);
+  m_assistantWidget->askAbout(run, question);
 }
 
 void AiWidget::setServices(AnalysisServices *services, std::function<void()> showPage) {

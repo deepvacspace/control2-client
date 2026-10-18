@@ -17,6 +17,7 @@ class CalendarCustomWidget : public QCalendarWidget {
   Q_OBJECT
 public:
   explicit CalendarCustomWidget(QMap<QDate, int> const &counts, QWidget *parent = nullptr);
+  void setCounts(QMap<QDate, int> const &counts);
 
 protected:
   void paintCell(QPainter *painter, QRect const &rect, QDate date) const override;

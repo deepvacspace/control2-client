@@ -11,13 +11,19 @@
 
 namespace deepvaccontrol {
 class ChamberView;
+class HomeTrend;
 class ControlBar;
 
-// Home page: live chamber sketch, chamber status and temperature, test time and program position.
+// Home page: chamber status and temperature, test time and program position, the components and the experiment chart.
 class Head : public QWidget {
   Q_OBJECT
 public:
   explicit Head(ResHolder *resHolder, QWidget *parent = nullptr);
+
+signals:
+  void diagramRequested(); // the compact diagram was tapped
+
+public:
 
   // Lazy setup all type of connection between components
   void setupGuiAndLogic();
@@ -32,7 +38,8 @@ private:
   void       updateGui();
   ResHolder *m_resHolder;
 
-  ChamberView *m_chamber{nullptr};
+  ChamberView *m_chamber{nullptr}; // compact: the components; the full diagram is in System > Diagram
+  HomeTrend   *m_trend{nullptr};
   QLabel      *m_statusDot{nullptr};
   QLabel      *m_statusText{nullptr};
   QLabel      *m_tempValue{nullptr};

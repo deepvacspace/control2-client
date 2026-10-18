@@ -11,6 +11,13 @@ namespace deepvaccontrol {
 AccessManager::AccessManager(ResHolder *resHolder, Logger *logger, QObject *parent)
     : QObject(parent), FileHandler{}, m_resHolder{resHolder}, m_logger{logger} {
   loadUsers();
+  // the administrator was called "System Engineer": the same account (password, level) under its new name
+  if (m_users.contains(LEGACY_ADMIN_USER_NAME) && !m_users.contains(ADMIN_USER_NAME)) {
+    m_users.insert(ADMIN_USER_NAME, m_users.take(LEGACY_ADMIN_USER_NAME));
+    if (m_lastUserFromFile == LEGACY_ADMIN_USER_NAME) {
+      m_lastUserFromFile = ADMIN_USER_NAME;
+    }
+  }
 
   if (!m_users.contains(SPECTATOR_USER_NAME)) {
     m_logger->stream(Logger::Level::WAR) << QString("There is no default user '%1'. Add it.").arg(SPECTATOR_USER_NAME);

@@ -16,6 +16,8 @@ public:
   void selectItem(int const index);
   void setElementsEnable(QVector<bool> enableList);
   void setElementsEnableAll();
+  // a page kept in the application but not offered in the menu (whatever the access level)
+  void setItemHidden(int index);
   void addWidget(QWidget *widget);
 
 signals:
@@ -36,6 +38,7 @@ private:
   QToolButton           *m_toggle{nullptr};
   bool                   m_collapsed{false};
   QVector<QToolButton *> m_buttons;
+  QVector<int>           m_hidden;
   QStringList            m_iconKinds;
   QHBoxLayout           *m_listLay;
   QHBoxLayout           *m_extraLay;

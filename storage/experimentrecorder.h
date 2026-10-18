@@ -55,6 +55,11 @@ public:
   // the running job sets the pressure and not the temperature (from the program it was sent with)
   [[nodiscard]] bool pressureControlled() const;
   [[nodiscard]] QString chamberRef() const; // "host:port" of the PLC gate, identifies the chamber across computers
+  // the job running now: its kind ("manual_setpoint", "program", ...), program (ProgramModel::programVariant())
+  // and start (epoch s); empty / NaN when none runs
+  [[nodiscard]] QString     runningJobKind() const;
+  [[nodiscard]] QVariantMap runningProgram() const;
+  [[nodiscard]] double      runningJobStart() const;
 
   // every sample received from the PLC (App); kept while a job runs and journaled to the experiment database
   void addSample(double epochSec, QVector<double> const &values);

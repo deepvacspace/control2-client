@@ -56,7 +56,7 @@ QString levelName(int level) {
     case AccessManager::AccessLevel::USER_EDIT_2:
       return UserWidget::tr("Level 2");
     default:
-      return UserWidget::tr("System Engineer");
+      return UserWidget::tr("Service Engineer");
   }
 }
 } // namespace

@@ -19,6 +19,9 @@ class QPushButton;
 class QTableWidget;
 
 class QDialog;
+namespace deepvaccontrol::ai {
+class AdvisorProgressDialog;
+}
 
 namespace deepvaccontrol {
 class LineEditNum;
@@ -74,12 +77,20 @@ private:
   void clearMetricsTable();
   ai::SimMetrics computeActualMetrics() const;
   QWidget *buildFormCard();
+  // the digital twin with the P / I / D of the fields: only the expected results
+  void simulate();
+  void setGainFields(double kp, double ki, double kd);
+  // the current Temperature PID of the band of the target, as the PLC would use it
+  void loadGainsFromSettings();
   QWidget *buildChartCard();
   QWidget *buildMetricsCard();
 
   ResHolder   *m_resHolder;
   GruOnnxModel m_model; // gru_rollout.onnx
 
+  LineEditNum *m_kpEdit{nullptr};
+  LineEditNum *m_kiEdit{nullptr};
+  LineEditNum *m_kdEdit{nullptr};
   LineEditNum *m_durationEdit{nullptr};
   LineEditNum *m_targetTempEdit{nullptr};
   LineEditNum *m_startTempEdit{nullptr}; // chamber temperature when the tab is first shown (0 offline), then the operator's
@@ -89,6 +100,7 @@ private:
   void         updateStartTemp();
 
   QPushButton  *m_runBtn{nullptr};
+  QPushButton  *m_simulateBtn{nullptr};
   QPushButton  *m_stopBtn{nullptr};
   QLabel       *m_statusLabel{nullptr};
   QLabel       *m_pidLabel{nullptr};
@@ -114,10 +126,7 @@ private:
   QVector<ai::TrajectoryPoint> m_actualTrajectory;
 
   ai::OfflineTuneWorker *m_tuneWorker{nullptr};
-  QDialog               *m_tuneDialog{nullptr}; // progress while the digital twin searches
-  QProgressBar          *m_tuneBar{nullptr};
-  QLabel                *m_tuneCount{nullptr};
-  QLabel                *m_tunePercent{nullptr};
+  ai::AdvisorProgressDialog *m_tuneDialog{nullptr}; // progress while the digital twin searches
   ai::OfflineTuneResult  m_tuneResult;
 };
 } // namespace deepvaccontrol

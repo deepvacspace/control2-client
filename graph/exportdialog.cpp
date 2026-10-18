@@ -55,11 +55,14 @@ struct Format {
 } // namespace
 
 ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, bool canComparisonCsv,
-                           QWidget *parent)
+                           QWidget *parent, bool embedded)
     : QDialog{parent}, m_resHolder{resHolder}, m_day{day} {
   setWindowTitle(tr("Export"));
+  if (embedded) {
+    setWindowFlags(Qt::Widget);
+  }
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(px(20), px(18), px(20), px(16));
+  lay->setContentsMargins(embedded ? QMargins(0, 0, px(8), 0) : QMargins(px(20), px(18), px(20), px(16)));
   lay->setSpacing(px(12));
 
   auto *title = new QLabel(tr("Export"), this);
@@ -67,11 +70,12 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   font.setBold(true);
   font.setPointSizeF(font.pointSizeF() * 1.25);
   title->setFont(font);
+  title->setVisible(!embedded); // the panel has its own
   lay->addWidget(title);
 
-  auto *columns = new QHBoxLayout();
+  QBoxLayout *columns = embedded ? static_cast<QBoxLayout *>(new QVBoxLayout()) : static_cast<QBoxLayout *>(new QHBoxLayout());
   columns->setSpacing(px(12));
-  lay->addLayout(columns, 1);
+  lay->addLayout(columns, embedded ? 0 : 1);
 
   // ---- what: file types as chips, in three groups
   auto *formatCard = card(this);
@@ -132,7 +136,7 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   }
   formatLay->addStretch();
   m_formats->buttons().first()->setChecked(true);
-  columns->addWidget(formatCard, 3);
+  columns->addWidget(formatCard, embedded ? 0 : 3);
 
   // ---- which range
   auto *rangeCard = card(this);
@@ -176,7 +180,7 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   m_rangeNote->setWordWrap(true);
   rangeLay->addWidget(m_rangeNote);
   rangeLay->addStretch();
-  columns->addWidget(rangeCard, 2);
+  columns->addWidget(rangeCard, embedded ? 0 : 2);
 
   // ---- buttons
   auto *buttons = new QHBoxLayout();
@@ -192,9 +196,15 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
     button->setFocusPolicy(Qt::NoFocus);
   }
   buttons->addWidget(m_previewBtn);
-  buttons->addStretch();
+  if (!embedded) {
+    buttons->addStretch();
+  }
   buttons->addWidget(cancelBtn);
-  buttons->addWidget(exportBtn);
+  buttons->addWidget(exportBtn, embedded ? 1 : 0);
+  cancelBtn->setVisible(!embedded); // the panel closes with its ×
+  if (embedded) {
+    lay->addStretch();
+  }
   lay->addLayout(buttons);
 
   connect(m_formats, &QButtonGroup::buttonToggled, this, &ExportDialog::updateState);
@@ -207,7 +217,9 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   });
 
   updateState();
-  resize(px(720), sizeHint().height());
+  if (!embedded) {
+    resize(px(720), sizeHint().height());
+  }
 }
 
 QString ExportDialog::format() const {

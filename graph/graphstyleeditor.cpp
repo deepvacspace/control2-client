@@ -129,4 +129,42 @@ void GraphStyleEditor::hideEvent(QHideEvent *event) {
   // Call the base class implementation
   QDialog::hideEvent(event);
 }
+void GraphStyleEditor::setCompact() {
+  double const ssf{utils::ssf()};
+  setWindowFlags(Qt::Widget);
+  setModal(false);
+  setMinimumSize(0, 0);
+  layout()->setContentsMargins(0, 0, static_cast<int>(8 * ssf), 0);
+  // the panel has its own title, and its × instead of Done
+  for (QLabel *label : findChildren<QLabel *>()) {
+    if (label->objectName() == QLatin1String("cardTitle")) {
+      label->hide();
+    }
+  }
+  for (QPushButton *button : findChildren<QPushButton *>()) {
+    if (button->objectName() == QLatin1String("primaryButton")) {
+      button->hide();
+    }
+  }
+  for (GraphStyleSingleWidget *row : std::as_const(widgetsMap)) {
+    row->setCompact();
+  }
+}
+
+void GraphStyleEditor::showOnly(QStringList const &channels) {
+  QStringList wanted;
+  for (QString const &channel : channels) {
+    wanted << channel.trimmed().toLower();
+  }
+  QStringList const  names  = m_resHolder->states->getNames();
+  QVariantList const styles = m_resHolder->settings->settingsMap()["states"].toList();
+  for (auto it = widgetsMap.begin(); it != widgetsMap.end(); ++it) {
+    QString const name  = names.value(it.key()).toLower();
+    QString const label = styles.value(it.key()).toMap().value("label").toString().section(QLatin1Char(','), 0, 0).trimmed().toLower();
+    it.value()->setEnabled(wanted.contains(name) || (!label.isEmpty() && wanted.contains(label)));
+  }
+  emit styleAllChanged(getStateStylesList());
+  updateCount();
+}
+
 } // namespace deepvaccontrol

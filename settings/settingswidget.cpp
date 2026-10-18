@@ -27,6 +27,8 @@ SettingsWidget::SettingsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{
   initGui();
 
   connect(m_resHolder->settings, &SettingsManager::settingsPulled, this, &SettingsWidget::updatePidsAndCalibrations);
+  // changed elsewhere (the AI Advisor's coefficients): shown here too, so a later Send does not undo them
+  connect(m_resHolder->settings, &SettingsManager::plcSettingsChanged, this, &SettingsWidget::updatePidsAndCalibrations);
 }
 
 void SettingsWidget::setPids(QVariantList const &pidVariantList) {
@@ -125,72 +127,13 @@ void SettingsWidget::initGui() {
   auto *alarmListWidget = new AlarmListWidget(m_resHolder, this);
   tabWidget->addTab(alarmListWidget, tr("Alarms"));
 
-  // App-only AI setting (not part of the settings sent to the PLC)
   double const ssf{utils::ssf()};
-  auto        *aiSettingsWidget = new QWidget(this);
-  {
-    auto *pageLay = new QVBoxLayout(aiSettingsWidget);
-    pageLay->setContentsMargins(0, 8 * ssf, 0, 0);
-    auto *card = new QFrame(aiSettingsWidget);
-    card->setObjectName("pageCard");
-    pageLay->addWidget(card);
-    auto *cardLay = new QVBoxLayout(card);
-    cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-    cardLay->setSpacing(8 * ssf);
-    auto *title = new QLabel(tr("AI"), card);
-    title->setObjectName("cardTitle");
-    cardLay->addWidget(title);
-
-    auto *row = new QFrame(card);
-    row->setObjectName("outputRow");
-    auto *rowLay = new QHBoxLayout(row);
-    rowLay->setContentsMargins(12 * ssf, 10 * ssf, 12 * ssf, 10 * ssf);
-    rowLay->setSpacing(12 * ssf);
-    auto *icon = new QLabel(row);
-    int const iconSize{static_cast<int>(22 * ssf)};
-    theme::setThemedIcon(icon, "ai", iconSize, "muted");
-    rowLay->addWidget(icon);
-    auto *texts = new QVBoxLayout();
-    texts->setSpacing(2 * ssf);
-    auto *rowTitle = new QLabel(tr("AI Advisor"), row);
-    rowTitle->setObjectName("rowTitle");
-    auto *rowText = new QLabel(tr("Before a job starts, offer to search suitable PID parameters with the AI Advisor."), row);
-    rowText->setProperty("muted", true);
-    texts->addWidget(rowTitle);
-    texts->addWidget(rowText);
-    rowLay->addLayout(texts, 1);
-
-    // Off / On
-    auto *group    = new QButtonGroup(row);
-    auto *segments = new QHBoxLayout();
-    segments->setSpacing(0);
-    QStringList const texts2{tr("Off"), tr("On")};
-    for (int i{0}; i < texts2.size(); ++i) {
-      auto *button = new QPushButton(texts2[i], row);
-      button->setCheckable(true);
-      button->setProperty("segment", true);
-      button->setProperty("segmentFirst", i == 0);
-      button->setProperty("segmentLast", i == texts2.size() - 1);
-      button->setFixedSize(80 * ssf, 30 * ssf);
-      group->addButton(button, i);
-      segments->addWidget(button);
-    }
-    group->setExclusive(true);
-    group->button(m_resHolder->aiAdvisorEnabled ? 1 : 0)->setChecked(true);
-    rowLay->addLayout(segments);
-    cardLay->addWidget(row);
-    cardLay->addStretch();
-
-    connect(group, &QButtonGroup::idClicked, this, [this](int id) {
-      m_resHolder->aiAdvisorEnabled = (id == 1);
-    });
-  }
-  tabWidget->addTab(aiSettingsWidget, tr("AI"));
+  Q_UNUSED(ssf)
 
   // App-only network links: chamber gate, Deepvac Insight, OPC UA
   tabWidget->addTab(new ConnectionsWidget(m_resHolder, ConnectionsWidget::Page::TCP, this), tr("TCP"));
   tabWidget->addTab(new ConnectionsWidget(m_resHolder, ConnectionsWidget::Page::OPC, this), tr("OPC"));
-  // app-only values of settings.json: refresh / polling periods, setpoint limits, program at start
+  // app-only values of settings.json: refresh / polling periods, backups, setpoint limits, default program, AI Advisor
   tabWidget->addTab(new ApplicationSettingsWidget(m_resHolder, this), tr("Application"));
   // databases and their backups
   tabWidget->addTab(new DataWidget(m_resHolder, this), tr("Data"));

@@ -3,7 +3,9 @@
 
 #include <QString>
 #include <QVector>
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <functional>
 
 #include "chambertwinsim.h"
@@ -70,13 +72,25 @@ struct CemResult {
 // thread.
 class CemOptimizer {
 public:
-  explicit CemOptimizer(GruOnnxModel *model);
+  // cancel: when set (from another thread), the search stops and returns an invalid result
+  explicit CemOptimizer(GruOnnxModel *model, std::atomic<bool> const *cancel = nullptr);
+  // threads for the rollouts (0: every core); 1 runs the population as one batch on the calling thread
+  void setThreads(int threads) { m_threads = threads; }
+  // candidates per pass and passes (default CEM_POPULATION x CEM_ITERATIONS)
+  void setSearchSize(int population, int iterations) {
+    m_population = std::max(population, 4);
+    m_iterations = std::max(iterations, 1);
+  }
 
   // progressCb(stepsDone, stepsTotal), called after each batched timestep;
   // optional.
   CemResult run(SimParams const &params, std::function<void(int, int)> const &progressCb = {}) const;
 
 private:
+  // rolloutPopulation over chunks of the candidates on every core (one ONNX Run per chunk and step)
+  bool rolloutParallel(SimParams const &params, QVector<std::array<double, 3>> const &candidates,
+                       QVector<QVector<TrajectoryPoint>> &trajectoriesOut, QVector<bool> &validOut,
+                       std::function<void(int, int)> const &stepProgressCb) const;
   bool rolloutPopulation(SimParams const &params, QVector<std::array<double, 3>> const &candidates,
                           QVector<QVector<TrajectoryPoint>> &trajectoriesOut, QVector<bool> &validOut,
                           std::function<void(int, int)> const &stepProgressCb) const;
@@ -84,7 +98,11 @@ private:
                       double candidateKp, double candidateKi, double candidateKd, double previousKp,
                       double previousKi, double previousKd, bool valid) const;
 
-  GruOnnxModel *m_model;
+  GruOnnxModel             *m_model;
+  std::atomic<bool> const *m_cancel{nullptr};
+  int                      m_threads{0};
+  int                      m_population{CEM_POPULATION};
+  int                      m_iterations{CEM_ITERATIONS};
 };
 
 } // namespace deepvaccontrol::ai

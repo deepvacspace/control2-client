@@ -206,6 +206,18 @@ bool ExperimentRecorder::jobActive() const {
   return !std::isnan(m_job.start);
 }
 
+QString ExperimentRecorder::runningJobKind() const {
+  return jobActive() ? m_job.info.kind : QString{};
+}
+
+QVariantMap ExperimentRecorder::runningProgram() const {
+  return jobActive() ? m_job.info.program : QVariantMap{};
+}
+
+double ExperimentRecorder::runningJobStart() const {
+  return m_job.start;
+}
+
 void ExperimentRecorder::addEvent(char const *type, QString const &message, QJsonObject const &data) {
   if (jobActive()) {
     m_job.events.push_back(core::RunEvent{nowSeconds(), QString::fromLatin1(type), QStringLiteral("app"), message, data});

@@ -121,6 +121,28 @@ QMenu::separator { height: %3px; background: %13; margin: %6px %6px; }
 QMenu::indicator { width: %9px; height: %9px; }
 QMenu::indicator:checked { image: url(%14); }
 QFrame#statsCard { background: %1; border: %3px solid %4; border-radius: %5px; }
+QFrame#sideBar { background: transparent; border: none; }
+QFrame#sideRail { background: %1; border: none; border-left: %3px solid %4; }
+QFrame#chartToolbar, QFrame#chartPad { background: %1; border: %3px solid %4; border-radius: %16px; }
+QToolButton#toolHandle { background: transparent; border: none; border-radius: %10px; color: %15; padding: 0 %10px; font-weight: bold; }
+QToolButton#toolHandle:hover { background: %11; }
+QToolButton#toolHandle[active="true"] { background: %17; color: %21; }
+QToolButton#toolButton { background: transparent; border: none; border-radius: %10px; }
+QToolButton#toolButton:hover { background: %11; }
+QToolButton#toolButton:checked { background: %17; }
+QToolButton#toolButton:disabled { background: transparent; }
+QToolButton#tabAdd { background: %1; border: %3px solid %4; border-radius: %16px; color: %15; font-size: 13pt; padding: 0; }
+QToolButton#tabAdd:hover { background: %11; color: %2; }
+QFrame#sidePanel { background: %1; border: none; border-left: %3px solid %4; }
+QToolButton#railButton { background: transparent; border: none; border-radius: %16px; color: %15; padding: %10px 0; font-size: %19pt; }
+QToolButton#railButton:hover { background: %11; }
+QToolButton#railButton:checked { background: %17; color: %21; font-weight: bold; }
+QToolButton#railButton:disabled { color: %12; }
+QToolButton#panelClose { background: transparent; border: none; color: %15; font-size: 14pt; padding: 0 %10px; }
+QToolButton#panelClose:hover { color: %2; }
+QFrame#statsBox { background: %1; border: %3px solid %13; border-radius: %16px; }
+QLabel#statsValue { font-family: Consolas, monospace; }
+QLabel#sectionCaption { color: %15; font-weight: bold; font-size: %19pt; }
 QPushButton#drawerSection, QPushButton#drawerSection:hover, QPushButton#drawerSection:pressed, QPushButton#drawerSection:checked {
   background: transparent; border: none; padding: 0; }
 QPushButton[softSegment="true"] { background: %1; color: %2; border: %3px solid %4; border-radius: 0; padding: %10px %18px; }
@@ -329,7 +351,10 @@ void setThemedIcon(QWidget *target, QString const &kind, int size, QString const
     return;
   }
   Colors const &c     = colors();
-  QColor const  color = (role == QLatin1String("muted")) ? c.muted : ((role == QLatin1String("danger")) ? c.danger : c.text);
+  QColor const  color = (role == QLatin1String("muted"))    ? c.muted
+                        : (role == QLatin1String("danger")) ? c.danger
+                        : (role == QLatin1String("accent")) ? c.accent
+                                                            : c.text;
   QIcon const   icon  = menuIcon(kind, color, color, size);
   target->setProperty("themeIcon", kind);
   target->setProperty("themeIconSize", size);
@@ -645,6 +670,83 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
     p.drawRect(QRectF(pt(0.2, 0.5), pt(0.36, 0.88)));
     p.drawRect(QRectF(pt(0.44, 0.22), pt(0.6, 0.88)));
     p.drawRect(QRectF(pt(0.68, 0.38), pt(0.84, 0.88)));
+  } else if (kind == "info") { // i in a circle
+    p.drawEllipse(pt(0.5, 0.5), s * 0.38, s * 0.38);
+    p.drawLine(pt(0.5, 0.46), pt(0.5, 0.72));
+    p.setBrush(color);
+    p.drawEllipse(pt(0.5, 0.31), s * 0.045, s * 0.045);
+    p.setBrush(Qt::NoBrush);
+  } else if (kind == "layers") { // what the chart shows: stacked sheets
+    QPolygonF const sheet{{pt(0.5, 0.14), pt(0.88, 0.34), pt(0.5, 0.54), pt(0.12, 0.34)}};
+    p.drawPolygon(sheet);
+    QPainterPath lower;
+    lower.moveTo(pt(0.12, 0.52));
+    lower.lineTo(pt(0.5, 0.72));
+    lower.lineTo(pt(0.88, 0.52));
+    p.drawPath(lower);
+    QPainterPath lowest;
+    lowest.moveTo(pt(0.12, 0.68));
+    lowest.lineTo(pt(0.5, 0.88));
+    lowest.lineTo(pt(0.88, 0.68));
+    p.drawPath(lowest);
+  } else if (kind == "export") { // arrow down into a tray
+    p.drawLine(pt(0.5, 0.12), pt(0.5, 0.62));
+    p.drawLine(pt(0.3, 0.44), pt(0.5, 0.64));
+    p.drawLine(pt(0.7, 0.44), pt(0.5, 0.64));
+    QPainterPath tray;
+    tray.moveTo(pt(0.14, 0.62));
+    tray.lineTo(pt(0.14, 0.86));
+    tray.lineTo(pt(0.86, 0.86));
+    tray.lineTo(pt(0.86, 0.62));
+    p.drawPath(tray);
+  } else if (kind == "pointer") { // mouse arrow: inspect
+    QPolygonF const arrow{{pt(0.28, 0.14), pt(0.28, 0.78), pt(0.44, 0.63), pt(0.56, 0.88), pt(0.66, 0.84), pt(0.54, 0.59), pt(0.76, 0.58)}};
+    p.drawPolygon(arrow);
+  } else if (kind == "boxzoom") { // a dashed box
+    QPen dashed = p.pen();
+    dashed.setStyle(Qt::DashLine);
+    dashed.setDashPattern({2.2, 1.6});
+    p.setPen(dashed);
+    p.drawRect(QRectF(pt(0.16, 0.2), pt(0.72, 0.66)));
+    p.setPen(pen);
+    p.drawLine(pt(0.58, 0.54), pt(0.86, 0.84));
+  } else if (kind == "zoom") { // magnifier
+    p.drawEllipse(pt(0.42, 0.42), s * 0.26, s * 0.26);
+    p.drawLine(pt(0.61, 0.61), pt(0.86, 0.86));
+    p.drawLine(pt(0.31, 0.42), pt(0.53, 0.42));
+    p.drawLine(pt(0.42, 0.31), pt(0.42, 0.53));
+  } else if (kind == "pan") { // four arrows
+    p.drawLine(pt(0.5, 0.1), pt(0.5, 0.9));
+    p.drawLine(pt(0.1, 0.5), pt(0.9, 0.5));
+    for (auto const &[tip, a, b] : {std::tuple{pt(0.5, 0.1), pt(0.38, 0.22), pt(0.62, 0.22)}, std::tuple{pt(0.5, 0.9), pt(0.38, 0.78), pt(0.62, 0.78)},
+                                    std::tuple{pt(0.1, 0.5), pt(0.22, 0.38), pt(0.22, 0.62)}, std::tuple{pt(0.9, 0.5), pt(0.78, 0.38), pt(0.78, 0.62)}}) {
+      p.drawLine(tip, a);
+      p.drawLine(tip, b);
+    }
+  } else if (kind == "labels") { // the labels box: lines with their names
+    p.drawRoundedRect(QRectF(pt(0.12, 0.2), pt(0.88, 0.8)), s * 0.06, s * 0.06);
+    p.drawLine(pt(0.24, 0.4), pt(0.4, 0.4));
+    p.drawLine(pt(0.5, 0.4), pt(0.76, 0.4));
+    p.drawLine(pt(0.24, 0.6), pt(0.4, 0.6));
+    p.drawLine(pt(0.5, 0.6), pt(0.7, 0.6));
+  } else if (kind == "tooltip") { // a crosshair with a value box
+    p.drawLine(pt(0.3, 0.12), pt(0.3, 0.88));
+    p.drawLine(pt(0.12, 0.62), pt(0.88, 0.62));
+    p.drawRoundedRect(QRectF(pt(0.44, 0.16), pt(0.88, 0.44)), s * 0.05, s * 0.05);
+  } else if (kind == "pin") {
+    p.drawLine(pt(0.5, 0.62), pt(0.5, 0.92));
+    p.drawLine(pt(0.24, 0.62), pt(0.76, 0.62));
+    QPainterPath body;
+    body.moveTo(pt(0.34, 0.62));
+    body.lineTo(pt(0.38, 0.32));
+    body.lineTo(pt(0.32, 0.12));
+    body.lineTo(pt(0.68, 0.12));
+    body.lineTo(pt(0.62, 0.32));
+    body.lineTo(pt(0.66, 0.62));
+    p.drawPath(body);
+  } else if (kind == "collapse") { // chevron up
+    p.drawLine(pt(0.26, 0.62), pt(0.5, 0.38));
+    p.drawLine(pt(0.5, 0.38), pt(0.74, 0.62));
   } else if (kind == "dots") { // vertical ellipsis
     p.setBrush(color);
     p.setPen(Qt::NoPen);

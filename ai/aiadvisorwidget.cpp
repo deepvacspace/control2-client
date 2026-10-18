@@ -197,10 +197,10 @@ QWidget *AiAdvisorWidget::buildMetricsCard() {
   m_pidLabel = new QLabel(frame);
   lay->addWidget(m_pidLabel);
 
-  m_metricsTable = new QTableWidget(5, 3, frame);
+  m_metricsTable = new QTableWidget(4, 3, frame);
   m_metricsTable->setHorizontalHeaderLabels({tr("Expected"), tr("Actual"), tr("CEM baseline")});
   m_metricsTable->setVerticalHeaderLabels(
-    {tr("Cost"), tr("Tail MAE"), tr("Overshoot max, °C"), tr("Settle time, s"), tr("Final temp, °C")});
+    {tr("Tail MAE"), tr("Overshoot max, °C"), tr("Settle time, s"), tr("Final temp, °C")});
   m_metricsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_metricsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_metricsTable->setSelectionMode(QAbstractItemView::NoSelection);
@@ -1028,26 +1028,24 @@ ai::SimMetrics AiAdvisorWidget::computeActualMetrics() const {
 }
 
 void AiAdvisorWidget::setMetricsColumn(int column, ai::SimMetrics const &metrics) {
-  auto *costItem   = new QTableWidgetItem(formatNumber(metrics.cost, 2));
   auto *maeItem    = new QTableWidgetItem(formatNumber(metrics.tailMae, 3));
   auto *osItem     = new QTableWidgetItem(formatNumber(metrics.overshootMax, 2));
   auto *settleItem = new QTableWidgetItem(formatNumber(metrics.timeToSettleS, 0));
   auto *endItem    = new QTableWidgetItem(formatNumber(metrics.endTemp, 2));
 
-  for (auto *item : {costItem, maeItem, osItem, settleItem, endItem}) {
+  for (auto *item : {maeItem, osItem, settleItem, endItem}) {
     item->setTextAlignment(Qt::AlignCenter);
   }
 
-  m_metricsTable->setItem(0, column, costItem);
-  m_metricsTable->setItem(1, column, maeItem);
-  m_metricsTable->setItem(2, column, osItem);
-  m_metricsTable->setItem(3, column, settleItem);
-  m_metricsTable->setItem(4, column, endItem);
+  m_metricsTable->setItem(0, column, maeItem); // (the search's cost is internal: not shown)
+  m_metricsTable->setItem(1, column, osItem);
+  m_metricsTable->setItem(2, column, settleItem);
+  m_metricsTable->setItem(3, column, endItem);
 }
 
 void AiAdvisorWidget::clearMetricsTable() {
   for (int col{0}; col < 3; ++col) {
-    for (int row{0}; row < 5; ++row) {
+    for (int row{0}; row < 4; ++row) {
       auto *item = new QTableWidgetItem(QStringLiteral("—"));
       item->setTextAlignment(Qt::AlignCenter);
       m_metricsTable->setItem(row, col, item);

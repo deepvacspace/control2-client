@@ -11,6 +11,8 @@
 #include <QStackedWidget>
 #include <QTabBar>
 #include <QTimer>
+#include <QHBoxLayout>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include "analysisnotesstore.h"
@@ -89,11 +91,53 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
     font.setPointSizeF(font.pointSizeF() * 0.85);
     m_tabBar->setFont(font);
   }
-  lay->addWidget(m_tabBar);
+  // the tabs, then a small + to open an experiment or a comparison
+  auto *header = new QHBoxLayout();
+  header->setSpacing(6 * ssf);
+  m_tabBar->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+  header->addWidget(m_tabBar);
+  m_addBtn = new QToolButton(this);
+  m_addBtn->setObjectName("tabAdd");
+  m_addBtn->setText(QStringLiteral("+"));
+  m_addBtn->setToolTip(tr("Open an experiment, or a new comparison"));
+  m_addBtn->setFocusPolicy(Qt::NoFocus);
+  m_addBtn->setFixedSize(28 * ssf, 28 * ssf);
+  header->addWidget(m_addBtn, 0, Qt::AlignVCenter);
+  header->addStretch();
+  lay->addLayout(header);
+  connect(m_addBtn, &QToolButton::clicked, this, [this] {
+    emit activated();
+    emit addRequested(m_addBtn->mapToGlobal(QPoint(0, m_addBtn->height())));
+  });
 
-  // the pane's chart; comparison tabs bring their own
+  // the pane's chart; comparison tabs bring their own. The tools float over it, or stand beside it when pinned
   m_stack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  lay->addWidget(m_stack, 1);
+  m_chartRow = new QHBoxLayout();
+  m_chartRow->setSpacing(6 * ssf);
+  m_chartRow->addWidget(m_stack, 1);
+  lay->addLayout(m_chartRow, 1);
+  m_toolbar = new ChartToolbar(this);
+  m_pad     = new ChartPad(this);
+  m_pad->hide();
+  connect(m_toolbar, &ChartToolbar::sizeChanged, this, &ChartPane::placeOverlays);
+  connect(m_toolbar, &ChartToolbar::dragged, this, [this](QPoint const &delta) {
+    if (!m_toolbarMoved) {
+      int const gap{static_cast<int>(6 * utils::ssf())};
+      m_toolbarOffset = QPoint(gap, gap); // from the corner it stood in
+      m_toolbarMoved  = true;
+    }
+    m_toolbarOffset += delta;
+    placeOverlays();
+  });
+  connect(m_pad, &ChartPad::zoomRequested, this, [this](double x, double y) {
+    emit activated();
+    this->viewer()->zoomView(x, y);
+  });
+  connect(m_pad, &ChartPad::moveRequested, this, [this](double x, double y) {
+    emit activated();
+    this->viewer()->moveView(x, y);
+  });
+  connect(m_pad, &ChartPad::closeRequested, this, &ChartPane::toolResetRequested);
   attachViewer(m_viewer);
 
   // where a dragged tab would go
@@ -133,6 +177,14 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
 
 void ChartPane::attachViewer(DataViewer *viewer) {
   m_stack->addWidget(viewer);
+  // the tool in use applies to it too; the overlays follow its plot area
+  viewer->setAnnotateMode(m_tool == ChartToolbar::Tool::ANNOTATE);
+  viewer->setBoxZoomMode(m_tool == ChartToolbar::Tool::BOX_ZOOM);
+  connect(viewer->getPlot(), &QCustomPlot::afterReplot, this, [this, viewer] {
+    if (viewer == this->viewer()) {
+      placeOverlays();
+    }
+  });
   viewer->getPlot()->installEventFilter(this); // a click in it makes the pane the focused one
   connect(viewer, &DataViewer::annotationDrawn, this, &ChartPane::annotationDrawn);
   connect(viewer, &DataViewer::valueCursorMoved, this, &ChartPane::cursorMoved);
@@ -368,6 +420,8 @@ void ChartPane::showTab(int index) {
     m_viewer->setViewState(view); // its own zoom again
   }
   refreshRegions();
+  applyTool();
+  QTimer::singleShot(0, this, &ChartPane::placeOverlays);
   emit currentTabChanged();
 }
 
@@ -500,7 +554,7 @@ void ChartPane::startTabDrag(QString const &key) {
 bool ChartPane::dropTarget(ChartPane *source, QPoint const &pos, int &at, bool &rightHalf, QRect &hint) const {
   at        = -1;
   rightHalf = false;
-  QRect const bar = m_tabBar->geometry();
+  QRect const bar(m_tabBar->mapTo(this, QPoint(0, 0)), m_tabBar->size());
   if (bar.adjusted(0, -bar.height(), 0, bar.height() / 2).contains(pos)) {
     // in the tab row: before the tab under the mouse
     int const index{m_tabBar->tabAt(m_tabBar->mapFrom(this, QPoint(pos.x(), bar.center().y())))};
@@ -573,6 +627,80 @@ void ChartPane::dropEvent(QDropEvent *event) {
 void ChartPane::resizeEvent(QResizeEvent *event) {
   QFrame::resizeEvent(event);
   m_dropHint->hide();
+  placeOverlays();
+}
+
+ChartToolbar *ChartPane::toolbar() const {
+  return m_toolbar;
+}
+
+void ChartPane::setToolbarPinned(bool pinned) {
+  m_toolbar->setPinned(pinned);
+  m_chartRow->removeWidget(m_toolbar);
+  if (pinned) {
+    m_chartRow->insertWidget(0, m_toolbar, 0, Qt::AlignTop); // a strip beside the chart
+  }
+  placeOverlays();
+}
+
+void ChartPane::setToolbarShown(bool shown) {
+  m_toolbar->setVisible(shown);
+  placeOverlays();
+}
+
+void ChartPane::setTool(ChartToolbar::Tool tool, bool pad) {
+  m_tool     = tool;
+  m_padShown = pad;
+  applyTool();
+}
+
+void ChartPane::applyTool() {
+  ChartToolbar::Tool const tool = m_tool;
+  Tab const               *shown = currentTab();
+  for (DataViewer *chart : viewers()) {
+    // a comparison's aligned axis is not recorded time: no annotations there
+    chart->setAnnotateMode((tool == ChartToolbar::Tool::ANNOTATE) && !(shown && shown->comparison));
+    chart->setBoxZoomMode(tool == ChartToolbar::Tool::BOX_ZOOM);
+  }
+  bool const pad{m_padShown && ((tool == ChartToolbar::Tool::ZOOM) || (tool == ChartToolbar::Tool::PAN))};
+  if (pad) {
+    m_pad->setMode(tool);
+  }
+  m_pad->setVisible(pad);
+  placeOverlays();
+}
+
+void ChartPane::placeOverlays() {
+  DataViewer *chart = viewer();
+  if (!chart || !m_toolbar) {
+    return;
+  }
+  // the plot area (inside the axes) of the chart shown, in the pane
+  QCustomPlot *plot  = chart->getPlot();
+  QRect const  area  = plot->axisRect()->rect();
+  QPoint const start = plot->mapTo(this, area.topLeft());
+  QPoint const end   = plot->mapTo(this, area.bottomLeft());
+  int const    gap{static_cast<int>(6 * utils::ssf())};
+  bool const floating{m_toolbar->isVisibleTo(this) && !m_toolbar->pinned()};
+  if (floating) {
+    m_toolbar->adjustSize();
+    QPoint at = start + (m_toolbarMoved ? m_toolbarOffset : QPoint(gap, gap));
+    // within the pane, however far it was dragged
+    at.setX(std::clamp(at.x(), 0, std::max(0, width() - m_toolbar->width())));
+    at.setY(std::clamp(at.y(), 0, std::max(0, height() - m_toolbar->height())));
+    if (m_toolbarMoved) {
+      m_toolbarOffset = at - start;
+    }
+    m_toolbar->move(at);
+    m_toolbar->raise();
+  }
+  // the labels box right of the floating tools' handle, while it stands in the corner
+  chart->setLegendOffset((floating && !m_toolbarMoved) ? m_toolbar->width() + gap : 0);
+  if (m_pad->isVisible()) {
+    m_pad->adjustSize();
+    m_pad->move(end.x() + gap, end.y() - gap - m_pad->height());
+    m_pad->raise();
+  }
 }
 
 } // namespace deepvaccontrol

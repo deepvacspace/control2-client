@@ -3,6 +3,7 @@
 #include <QAbstractSocket>
 #include <QDataStream>
 #include <QDateTime>
+#include <QHash>
 #include <QElapsedTimer>
 
 #include "messagedialog.h"
@@ -250,7 +251,11 @@ void GateTcp::sendKeepAlive() {
   sendTextCmd("ka");
 }
 
-void GateTcp::sendTextCmd(QString const &cmd) {
+void GateTcp::sendTextCmd(QString const &command) {
+  // the PLC program spells these commands "confrim_…": the app uses the right spelling, the wire keeps the PLC's
+  static QHash<QString, QString> const plcSpelling{{QStringLiteral("confirm_alarm"), QStringLiteral("confrim_alarm")},
+                                                   {QStringLiteral("confirm_finish"), QStringLiteral("confrim_finish")}};
+  QString const cmd = plcSpelling.value(command.trimmed(), command);
   QByteArray data = utils::makePascalString(cmd);
   // Add code for 'text command' type of message
   data.push_front(static_cast<char>(OutcomeMessageCode::TEXT_CMD));
@@ -341,6 +346,10 @@ void GateTcp::parsePlcMessage(QByteArray const &data) {
       m_logger->stream(Logger::Level::DEB) << "Get job finished";
       emit jobFinishedReceived();
       break;
+    case IncomeMessageCode::COMPONENTS:
+      m_logger->stream(Logger::Level::DEB) << "Get fitted components";
+      parseComponents(data.sliced(cmdCodeSize)); // drop 1-byte code from data
+      break;
     case IncomeMessageCode::USER_MSG:
       m_logger->stream(Logger::Level::DEB) << "Get message from user";
       parseUserMsg(data.sliced(cmdCodeSize)); // drop 1-byte code from data
@@ -348,6 +357,23 @@ void GateTcp::parsePlcMessage(QByteArray const &data) {
     default:
       break;
   }
+}
+
+bool GateTcp::parseComponents(QByteArray data) {
+  if (data.isEmpty()) {
+    return false;
+  }
+  quint8 const count{static_cast<quint8>(data.front())};
+  data.remove(0, 1);
+  QStringList components;
+  while (!data.isEmpty()) {
+    QString const key{utils::fromPascalString(data)};
+    if (!key.isEmpty()) {
+      components << key;
+    }
+  }
+  emit componentsReceived(components);
+  return components.size() == count;
 }
 
 bool GateTcp::parseStateNamesList(QByteArray data) {

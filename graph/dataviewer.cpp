@@ -3,6 +3,7 @@
 #include "theme.h"
 
 #include <QHBoxLayout>
+#include <algorithm>
 #include <cmath>
 
 #include "utils.h"
@@ -275,7 +276,8 @@ void DataViewer::setData(std::shared_ptr<DataHolder const> data) {
     }
   }
 
-  m_data = data;
+  m_data     = data;
+  m_fitStart = qQNaN();
   m_updateDataConnection
     = connect(m_data.get(), &DataHolder::dataChanged, this, &DataViewer::onDataChanged, Qt::QueuedConnection);
   if (true == static_cast<bool>(m_updateDataConnection)) {
@@ -365,9 +367,68 @@ void DataViewer::switchControlMode() {
   m_plot->replot();
 }
 
+// The time shown stays on the data: at most a few times its duration, never beside it.
+void DataViewer::limitView(QRectF &view) const {
+  QVector<double> const times = m_data ? m_data->getTimes() : QVector<double>{};
+  if (times.isEmpty()) {
+    return;
+  }
+  double const first{times.first()};
+  double const last{times.last()};
+  double const maxWidth{std::max(4.0 * (last - first), 600.0)};
+  if (view.width() > maxWidth) {
+    double const center{std::clamp(view.center().x(), first, last)};
+    view.setLeft(center - maxWidth / 2.0);
+    view.setRight(center + maxWidth / 2.0);
+  }
+  if (view.right() < first) {
+    view.moveLeft(view.left() + (first - view.right()));
+  } else if (view.left() > last) {
+    view.moveLeft(last);
+  }
+
+  // the values likewise: at most ten times the range of the lines shown
+  QCPRange values;
+  bool     haveValues{false};
+  for (int i{0}; i < m_plot->graphCount(); ++i) {
+    QCPGraph *graph = m_plot->graph(i);
+    bool      found{false};
+    QCPRange const range = graph->visible() && (graph->valueAxis() == m_plot->yAxis) ? graph->getValueRange(found) : QCPRange{};
+    if (found) {
+      values     = haveValues ? QCPRange(std::min(values.lower, range.lower), std::max(values.upper, range.upper)) : range;
+      haveValues = true;
+    }
+  }
+  if (!haveValues) {
+    return;
+  }
+  double const lower{std::min(view.top(), view.bottom())};
+  double const upper{std::max(view.top(), view.bottom())};
+  double const maxHeight{std::max(10.0 * values.size(), 100.0)};
+  if (upper - lower > maxHeight) {
+    double const center{std::clamp((lower + upper) / 2.0, values.lower, values.upper)};
+    bool const   upward{view.top() > view.bottom()}; // getRange(): top is the upper value
+    view.setTop(center + (upward ? 0.5 : -0.5) * maxHeight);
+    view.setBottom(center - (upward ? 0.5 : -0.5) * maxHeight);
+  }
+}
+
+bool DataViewer::viewFitsData(QJsonObject const &state) const {
+  QVector<double> const times = m_data ? m_data->getTimes() : QVector<double>{};
+  if (times.isEmpty()) {
+    return true; // nothing to judge it by yet
+  }
+  QRectF view(QPointF(state.value("x0").toDouble(), 0.0), QPointF(state.value("x1").toDouble(), 1.0));
+  QRectF limited = view;
+  limitView(limited);
+  return limited == view;
+}
+
 void DataViewer::moveView(double addX, double addY) {
+  m_currentView = getRange(); // the axes may have been dragged since
   QPointF const addition(fabs(m_currentView.width()) * addX, fabs(m_currentView.height()) * addY);
   m_currentView.moveCenter(m_currentView.center() + addition);
+  limitView(m_currentView);
 
   if ((DataViewer::ControlMode::LEAD_FULL == m_controlMode) || (addX != 0.0)) {
     setControlMode(DataViewer::ControlMode::ZOOM);
@@ -379,6 +440,7 @@ void DataViewer::moveView(double addX, double addY) {
 }
 
 void DataViewer::zoomView(double mulX, double mulY) {
+  m_currentView = getRange(); // the axes may have been dragged since
   QPointF const center{m_currentView.center()};
   double const  halfWidth{qAbs(m_currentView.width()) * 0.5};
   double const  halfHeight{qAbs(m_currentView.height()) * 0.5};
@@ -388,6 +450,7 @@ void DataViewer::zoomView(double mulX, double mulY) {
 
   m_currentView.setTop(center.y() + halfHeight * mulY);
   m_currentView.setBottom(center.y() - halfHeight * mulY);
+  limitView(m_currentView);
 
   if (DataViewer::ControlMode::LEAD_FULL == m_controlMode) {
     setControlMode(DataViewer::ControlMode::ZOOM);
@@ -400,6 +463,9 @@ void DataViewer::zoomView(double mulX, double mulY) {
 
 void DataViewer::setControlMode(ControlMode const mode) {
   m_controlMode = mode;
+  if (ControlMode::LEAD_FULL != mode) {
+    m_fitStart = qQNaN();
+  }
   emit controlModeChanged(m_controlMode);
   // fit / follow right away (not only when new data arrives: a saved experiment never changes)
   if ((ControlMode::ZOOM != mode) && m_data && (m_plot->graphCount() > 0)) {
@@ -465,7 +531,22 @@ void DataViewer::setRegions(QVector<Region> const &regions) {
 
 void DataViewer::setAnnotateMode(bool enabled) {
   m_annotateMode = enabled;
-  m_plot->setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+  m_plot->setCursor((m_annotateMode || m_boxZoomMode) ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
+void DataViewer::setLegendOffset(int left) {
+  QCPLayoutInset *inset = m_plot->axisRect()->insetLayout();
+  if (inset->margins().left() == left) {
+    return;
+  }
+  inset->setAutoMargins(QCP::msNone);
+  inset->setMargins(QMargins(left, 0, 0, 0));
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::setBoxZoomMode(bool enabled) {
+  m_boxZoomMode = enabled;
+  m_plot->setCursor((m_annotateMode || m_boxZoomMode) ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void DataViewer::setLabelsVisible(bool visible) {
@@ -487,8 +568,13 @@ void DataViewer::updateValueCursor(QPointF const &pos) {
     return;
   }
 
-  // an event / anomaly marker under the mouse: its text
   double const x{m_plot->xAxis->pixelToCoord(pos.x())};
+  if (!m_valuesVisible) { // Tooltip off: the crosshair alone, always
+    showCursor(x, m_plot->yAxis->pixelToCoord(pos.y()), -1, -1);
+    return;
+  }
+
+  // an event / anomaly marker under the mouse: its text
   for (Marker const &marker : std::as_const(m_markers)) {
     if (std::fabs(m_plot->xAxis->coordToPixel(marker.x) - pos.x()) <= 6.0 * utils::ssf()) {
       showCursor(marker.x, qQNaN(), -1, -1);
@@ -762,6 +848,10 @@ void DataViewer::setViewState(QJsonObject const &state) {
     return;
   }
   auto const mode = static_cast<ControlMode>(state.value("mode").toInt(static_cast<int>(ControlMode::LEAD_FULL)));
+  if ((mode == ControlMode::ZOOM) && !viewFitsData(state)) {
+    setControlMode(ControlMode::LEAD_FULL); // a zoom beside or far wider than the data: the whole data instead
+    return;
+  }
   if (mode != ControlMode::ZOOM) {
     setControlMode(mode); // follows the data again
     return;
@@ -928,6 +1018,8 @@ void DataViewer::updateSetpointLine() {
   m_setpointCurve->setVisible(show);
   if (show) {
     m_setpointCurve->setData(times, values);
+  } else {
+    m_setpointCurve->data()->clear(); // no stale line of another tab
   }
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
@@ -992,13 +1084,27 @@ void DataViewer::setOverlays(bool min, bool max, bool avg, QString const &channe
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
+void DataViewer::setFitStart(double from) {
+  m_fitStart = from;
+  setControlMode(ControlMode::LEAD_FULL);
+}
+
+bool DataViewer::fittedToAll() const {
+  return (ControlMode::LEAD_FULL == m_controlMode) && std::isnan(m_fitStart);
+}
+
 void DataViewer::setTimeRange(double from, double to) {
   if (to <= from) {
     return;
   }
   setControlMode(ControlMode::ZOOM);
   m_plot->xAxis->setRange(from, to);
-  // values fitted to the visible time range
+  fitValues(from, to);
+  m_currentView = getRange();
+  m_plot->replot();
+}
+
+void DataViewer::fitValues(double from, double to) {
   for (QCPAxis *axis : {m_plot->yAxis, m_plot->yAxis2}) {
     QCPRange range;
     bool     haveRange{false};
@@ -1023,8 +1129,6 @@ void DataViewer::setTimeRange(double from, double to) {
       }
     }
   }
-  m_currentView = getRange();
-  m_plot->replot();
 }
 
 void DataViewer::rebuildDecorations() {
@@ -1197,9 +1301,31 @@ void DataViewer::rebuildDecorations() {
 }
 
 void DataViewer::updateRange() {
+  // the time axis spans the data shown, whatever other curves (hidden ones included) still hold
+  // (the samples drawn: the data may already hold newer ones, drawn at the next refresh)
+  auto fitTime = [this] {
+    if ((m_plot->graphCount() == 0) || m_plot->graph(0)->data()->isEmpty()) {
+      m_plot->xAxis->rescale(true);
+      return;
+    }
+    double const first{m_plot->graph(0)->data()->constBegin()->key};
+    double const last{(m_plot->graph(0)->data()->constEnd() - 1)->key};
+    if (!std::isnan(m_fitStart) && (last > m_fitStart)) {
+      m_plot->xAxis->setRange(std::max(first, m_fitStart), last); // from the start asked for
+    } else if (last > first) {
+      m_plot->xAxis->setRange(first, last);
+    } else {
+      m_plot->xAxis->setRange(first - 30.0, first + 30.0); // a single sample
+    }
+  };
   switch (m_controlMode) {
     case ControlMode::LEAD_FULL:
-      m_plot->xAxis->rescale();
+      fitTime();
+      if (!std::isnan(m_fitStart)) {
+        fitValues(m_plot->xAxis->range().lower, m_plot->xAxis->range().upper); // the values of that part only
+        m_currentView = getRange();
+        break;
+      }
       m_plot->yAxis->rescale(true);
 
       if (m_plot->yAxis->range().size() > 4000) {
@@ -1214,7 +1340,7 @@ void DataViewer::updateRange() {
       m_currentView = getRange();
       break;
     case ControlMode::LEAD_X: {
-      m_plot->xAxis->rescale();
+      fitTime();
       m_plot->xAxis->setRangeLower(m_plot->xAxis->range().upper - m_currentView.width());
       m_currentView.setLeft(m_plot->xAxis->range().lower);
       m_currentView.setRight(m_plot->xAxis->range().upper);
@@ -1255,7 +1381,7 @@ void DataViewer::mouseEventHeadler(QMouseEvent *event) {
     m_pointPress = event->pos();
 
     // right button: rectangle zoom, left button: drag (or a time range to annotate)
-    bool const rectZoom{event->button() == Qt::RightButton};
+    bool const rectZoom{(event->button() == Qt::RightButton) || (m_boxZoomMode && (event->button() == Qt::LeftButton))};
     bool const annotate{m_annotateMode && (event->button() == Qt::LeftButton)};
     // a finger with Tooltip on moves the value label (two fingers pan and zoom)
     bool const scrub{m_fromTouch && m_valuesVisible && !annotate};
@@ -1263,7 +1389,7 @@ void DataViewer::mouseEventHeadler(QMouseEvent *event) {
     m_plot->setInteraction(QCP::iRangeDrag, !rectZoom && !annotate && !scrub);
   }
 
-  if ((event->type() == QEvent::MouseMove) && m_valuesVisible) {
+  if (event->type() == QEvent::MouseMove) { // the crosshair follows the mouse, with values when Tooltip is on
     updateValueCursor(event->position());
   }
 }
@@ -1319,6 +1445,7 @@ void DataViewer::zoomViewAt(QPointF const &pixelPos, double mulX, double mulY) {
   m_currentView.setRight(xAnchor + (xRange.upper - xAnchor) * mulX);
   m_currentView.setTop(yAnchor + (yRange.upper - yAnchor) * mulY);
   m_currentView.setBottom(yAnchor - (yAnchor - yRange.lower) * mulY);
+  limitView(m_currentView);
 
   if (DataViewer::ControlMode::LEAD_FULL == m_controlMode) {
     setControlMode(DataViewer::ControlMode::ZOOM);

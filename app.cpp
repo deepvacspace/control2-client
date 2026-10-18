@@ -224,10 +224,10 @@ void App::runtimeSetups() {
   m_alarmDialog = new AlarmDialog(m_mainWindow);
 
   connect(m_alarmDialog, &AlarmDialog::accepted, this, [this]() {
-    m_gateTcp->sendTextCmd("confrim_alarm");
+    m_gateTcp->sendTextCmd("confirm_alarm");
   });
 
-  // Second way to display finish confrim dialog
+  // Second way to display finish confirm dialog
   connect(
     &m_hardStatus,
     &HardwareStatus::statusChanged,
@@ -269,6 +269,9 @@ void App::onConnectToServer() {
 }
 
 void App::onDisconnectFromServer() {
+  // the chamber may come back restarted with another configuration (and other components): checked again on reconnect
+  m_status.setStatesIdentical(false);
+  m_status.setSettingsListIdentical(false);
   m_status.setAppState(StatusManager::AppState::CONNECTING);
 }
 
@@ -460,7 +463,7 @@ void App::onJobFinishedReceived() {
   if (nullptr == m_finishDialog) {
     m_finishDialog = new MessageDialog(tr("Operation complete"), tr("Chamber operation completed"), m_mainWindow);
     connect(m_finishDialog, &MessageDialog::finished, this, [this](int) {
-      m_gateTcp->sendTextCmd("confrim_finish");
+      m_gateTcp->sendTextCmd("confirm_finish");
       m_finishDialog->deleteLater();
       m_finishDialog = nullptr;
     });

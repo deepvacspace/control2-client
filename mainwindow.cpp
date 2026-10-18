@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 
+#include "assistantwidget.h"
+
 #include "analysisservices.h"
 
 #include <QPushButton>
@@ -67,6 +69,14 @@ void MainWindow::initGui() {
   m_aiWidget         = new AiWidget(m_resHolder, this);
   // the assistant shows experiments on the chart page
   m_aiWidget->setServices(m_resHolder->analysis, [this] { selectWidgetWindow(m_stackedWidget->indexOf(m_graphWidget)); });
+  // the chart page's AI panel: the assistant, about the experiment shown
+  connect(m_graphWidget, &GraphWidget::assistantRequested, this, [this](QString const &run, QString const &question) {
+    selectWidgetWindow(m_stackedWidget->indexOf(m_aiWidget));
+    m_aiWidget->openAssistant(run, question);
+  });
+  // questions asked in the chart's AI panel are answered there, about what the chart shows
+  connect(m_graphWidget, &GraphWidget::chartQuestionAsked, m_aiWidget->assistantWidget(), &assistant::AssistantWidget::askFromChart);
+  connect(m_aiWidget->assistantWidget(), &assistant::AssistantWidget::chartExchange, m_graphWidget, &GraphWidget::showAssistantExchange);
   auto *userWidget   = new UserWidget(m_resHolder->logger, m_resHolder->users, this);
   auto *systemWidget = new SystemWidget(m_resHolder, this);
 
@@ -86,8 +96,15 @@ void MainWindow::initGui() {
   addWidgetToStacked(m_settingsWidget, tr("Settings"), "settings");
   addWidgetToStacked(userWidget, tr("Users"), "users");
   addWidgetToStacked(systemWidget, tr("System"), "system");
+  // the data analysis page is merged into the chart page: no longer offered (its code is kept)
+  m_menu->setItemHidden(m_stackedWidget->indexOf(m_dataAnalysisWidget));
 
   selectWidgetWindow(0);
+  // the compact diagram on Home opens the full one
+  connect(m_head, &Head::diagramRequested, this, [this, systemWidget] {
+    selectWidgetWindow(m_stackedWidget->indexOf(systemWidget));
+    systemWidget->showDiagram();
+  });
 
   connect(m_menu, &Menu::itemClicked, this, [this](int indexSelected, int) {
     m_stackedWidget->setCurrentIndex(indexSelected);
@@ -96,8 +113,11 @@ void MainWindow::initGui() {
   // the header carries what the former status bar showed; the chart page hides it for a bigger chart
   m_headerBar = new HeaderBar(m_resHolder, this);
   mainLay->addWidget(m_headerBar);
-  connect(m_stackedWidget, &QStackedWidget::currentChanged, this, [this, previous = m_stackedWidget->currentWidget()](int) mutable {
+  connect(m_stackedWidget, &QStackedWidget::currentChanged, this, [this, pagesLay, previous = m_stackedWidget->currentWidget()](int) mutable {
     QWidget *current = m_stackedWidget->currentWidget();
+    // the chart page's side rail sits on the right edge of the window
+    int const gap{static_cast<int>(10 * utils::ssf())};
+    pagesLay->setContentsMargins(gap, static_cast<int>(8 * utils::ssf()), (current == m_graphWidget) ? 0 : gap, static_cast<int>(8 * utils::ssf()));
     if ((current == m_graphWidget) && (previous != m_graphWidget)) {
       m_headerWasCollapsed = m_headerBar->isCollapsed();
       m_headerBar->setCollapsed(true);
@@ -158,10 +178,11 @@ void MainWindow::initGui() {
 
   m_flasher = new Flasher(this);
 
-  // daily database backups (data/backups), shortly after start and then checked hourly
-  auto runBackups = [] {
-    QThread *thread = QThread::create([] {
-      storage::BackupService::backupAll(false);
+  // database backups (data/backups) every N days (Settings > Application), checked shortly after start and then hourly
+  auto runBackups = [this] {
+    int const days{std::max(1, m_resHolder->settings->settingsMap().value("app_settings").toMap().value("backup_days", 1).toInt())};
+    QThread  *thread = QThread::create([days] {
+      storage::BackupService::backupAll(false, nullptr, days);
     });
     connect(thread, &QThread::finished, thread, &QObject::deleteLater);
     thread->start(QThread::LowestPriority);

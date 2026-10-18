@@ -20,6 +20,8 @@
 #include "actionmanager.h"
 #include "experimentrecorder.h"
 #include "advisorcem.h"
+#include "chambertwinsim.h"
+#include "advisorprogressdialog.h"
 #include "confdialog.h"
 #include "constants.h"
 #include "gatetcp.h"
@@ -46,12 +48,6 @@ QString formatPid(double kp, double ki, double kd) {
 
 constexpr qint64 TELEMETRY_TIMEOUT_MS{10'000}; // no telemetry for this long aborts the run
 
-// the search cannot be interrupted: Escape does not close its window
-class BusyDialog : public QDialog {
-public:
-  using QDialog::QDialog;
-  void reject() override {}
-};
 } // namespace
 
 OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent)
@@ -113,6 +109,9 @@ void OfflineAdvisorWidget::updateRunButtonEnabled() {
   m_runBtn->setToolTip(online ? QString() : tr("The chamber is not connected: the best coefficients are calculated and the "
                                                "experiment is predicted with the digital twin; nothing is sent to the chamber"));
   m_runBtn->setEnabled(m_model.isLoaded() && (!online || (allowed && settled)) && !m_running && !m_tuneWorker);
+  if (m_simulateBtn) {
+    m_simulateBtn->setEnabled(m_model.isLoaded() && !m_running && !m_tuneWorker);
+  }
 }
 
 namespace {
@@ -171,6 +170,16 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
     row->addLayout(box);
     return edit;
   };
+  // the coefficients: simulated with Simulate, filled with the ones the AI Advisor finds
+  auto gainField = [&](QString const &title, double min, double max, int prec, float value) {
+    LineEditNum *edit = addField(title, min, max, prec, value);
+    edit->setFixedWidth(static_cast<int>(80 * ssf));
+    return edit;
+  };
+  m_kpEdit = gainField(tr("P"), ai::KP_MIN, ai::KP_MAX, 2, ai::DEFAULT_KP);
+  m_kiEdit = gainField(tr("I"), ai::KI_MIN, ai::KI_MAX, 1, ai::DEFAULT_KI);
+  m_kdEdit = gainField(tr("D"), ai::KD_MIN, ai::KD_MAX, 2, ai::DEFAULT_KD);
+  row->addSpacing(10 * ssf);
   m_startTempEdit  = addField(tr("Start, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, 0.0f);
   m_targetTempEdit = addField(tr("Target, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, ai::DEFAULT_TARGET_TEMP);
   m_durationEdit   = addField(tr("Duration, s"), 1, 100000, 0, ai::DEFAULT_DURATION_S);
@@ -182,12 +191,14 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   buttonRow->setSpacing(8 * ssf);
   m_runBtn = new QPushButton(tr("Run experiment"), frame);
   m_runBtn->setObjectName("primaryButton");
+  m_simulateBtn = new QPushButton(tr("Simulate"), frame);
+  m_simulateBtn->setToolTip(tr("Predict the run with these P / I / D with the digital twin (nothing is sent to the chamber)"));
   m_stopBtn = new QPushButton(tr("Stop"), frame);
   m_stopBtn->setObjectName("stopButton");
   m_stopBtn->setVisible(false);
   auto *resultsBtn = new QPushButton(tr("Results"), frame);
   resultsBtn->setToolTip(tr("Expected, actual and baseline KPIs of the last experiment"));
-  for (QPushButton *button : {m_runBtn, m_stopBtn, resultsBtn}) {
+  for (QPushButton *button : {m_runBtn, m_simulateBtn, m_stopBtn, resultsBtn}) {
     button->setFixedHeight(static_cast<int>(32 * ssf));
     button->setMinimumWidth(static_cast<int>(130 * ssf));
     buttonRow->addWidget(button);
@@ -213,6 +224,7 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   lay->addLayout(row);
 
   connect(m_runBtn, &QPushButton::clicked, this, &OfflineAdvisorWidget::runExperiment);
+  connect(m_simulateBtn, &QPushButton::clicked, this, &OfflineAdvisorWidget::simulate);
   connect(m_stopBtn, &QPushButton::clicked, this, [this] {
     stopExperiment(true, tr("Experiment stopped by user"));
   });
@@ -238,6 +250,7 @@ void OfflineAdvisorWidget::showEvent(QShowEvent *event) {
   if (!m_startTempFilled) {
     m_startTempFilled = true;
     updateStartTemp();
+    loadGainsFromSettings();
   }
 }
 
@@ -254,11 +267,11 @@ QWidget *OfflineAdvisorWidget::buildMetricsCard() {
   m_pidLabel->setWordWrap(true);
   lay->addWidget(m_pidLabel);
 
-  m_metricsTable = new QTableWidget(5, 3, frame);
+  m_metricsTable = new QTableWidget(4, 3, frame);
   m_metricsTable->setObjectName("flatTable");
   m_metricsTable->setHorizontalHeaderLabels({tr("Expected").toUpper(), tr("Actual").toUpper(), tr("Baseline").toUpper()});
   m_metricsTable->setVerticalHeaderLabels(
-    {tr("Cost"), tr("Tail MAE, °C"), tr("Overshoot max, °C"), tr("Settle time, s"), tr("Final temp, °C")});
+    {tr("Tail MAE, °C"), tr("Overshoot max, °C"), tr("Settle time, s"), tr("Final temp, °C")});
   m_metricsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_metricsTable->horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
   m_metricsTable->horizontalHeader()->setHighlightSections(false);
@@ -288,7 +301,7 @@ QWidget *OfflineAdvisorWidget::buildMetricsCard() {
 }
 
 QWidget *OfflineAdvisorWidget::buildChartCard() {
-  QFrame *frame = advisorCard(this, tr("Response"));
+  QFrame *frame = advisorCard(this, {});
   auto   *lay   = static_cast<QVBoxLayout *>(frame->layout());
 
   m_plot = new QCustomPlot(frame);
@@ -331,6 +344,95 @@ QWidget *OfflineAdvisorWidget::buildChartCard() {
   lay->addWidget(m_plot, 1);
 
   return frame;
+}
+
+void OfflineAdvisorWidget::setGainFields(double kp, double ki, double kd) {
+  m_kpEdit->setValue(static_cast<float>(kp));
+  m_kiEdit->setValue(static_cast<float>(ki));
+  m_kdEdit->setValue(static_cast<float>(kd));
+}
+
+void OfflineAdvisorWidget::loadGainsFromSettings() {
+  QVariantList const pids = m_resHolder->settings->settingsMap().value("plc_settings").toMap().value("pids").toList();
+  if (pids.isEmpty()) {
+    return;
+  }
+  QVariantMap const pid = pids.first().toMap();
+  int const         points{pid.value("points").toInt()};
+  double const      low{pid.value("min").toDouble()};
+  double const      high{pid.value("max").toDouble()};
+  if ((points <= 0) || (high <= low)) {
+    return;
+  }
+  int const band{std::clamp(static_cast<int>(std::floor((m_targetTempEdit->text().toDouble() - low) / ((high - low) / points))), 0, points - 1)};
+  setGainFields(pid.value("p").toList().value(band).toDouble(), pid.value("i").toList().value(band).toDouble(),
+                pid.value("d").toList().value(band).toDouble());
+}
+
+void OfflineAdvisorWidget::simulate() {
+  if (!m_model.isLoaded()) {
+    setStatusText(m_model.statusMessage(), true);
+    return;
+  }
+  ai::SimParams params;
+  params.kp         = m_kpEdit->text().toDouble();
+  params.ki         = m_kiEdit->text().toDouble();
+  params.kd         = m_kdEdit->text().toDouble();
+  params.startTemp  = m_startTempEdit->text().toDouble();
+  params.targetTemp = m_targetTempEdit->text().toDouble();
+  params.durationS  = m_durationEdit->text().toDouble();
+  params.dtS        = ai::DEFAULT_DT_S;
+  if ((params.durationS <= 0.0) || !std::isfinite(params.startTemp) || !std::isfinite(params.targetTemp)) {
+    setStatusText(tr("Invalid scenario parameters"), true);
+    return;
+  }
+
+  ai::ChamberTwinSim sim(&m_model);
+  QString            error;
+  if (!sim.begin(params, &error)) {
+    setStatusText(error, true);
+    return;
+  }
+  ai::TrajectoryPoint point;
+  while (!sim.isFinished()) {
+    if (!sim.stepOnce(point, &error)) {
+      setStatusText(error, true);
+      return;
+    }
+  }
+
+  // only the expected results: the actual run and the baseline belong to an AI Advisor run
+  m_targetTemp      = params.targetTemp;
+  m_targetDurationS = params.durationS;
+  clearMetricsTable();
+  setMetricsColumn(0, sim.metrics());
+  QString const gains = tr("P %1 / I %2 / D %3").arg(params.kp).arg(params.ki).arg(params.kd);
+  m_pidLabel->setText(tr("Simulated: %1").arg(gains));
+  for (int i{0}; i < m_plot->graphCount(); ++i) {
+    m_plot->graph(i)->data()->clear();
+  }
+  QVector<double> xs, ys;
+  for (ai::TrajectoryPoint const &p : sim.trajectory()) {
+    xs << p.elapsedS;
+    ys << p.temp;
+  }
+  m_plot->graph(0)->setData(QVector<double>{0.0, params.durationS}, QVector<double>{params.targetTemp, params.targetTemp}, true);
+  m_plot->graph(1)->setData(xs, ys, true);
+  m_plot->rescaleAxes();
+  m_plot->yAxis->scaleRange(1.08);
+  m_plot->replot();
+
+  // as the old simulator: say when the case or the gains are outside what the twin knows
+  QString warning = m_model.envelope().checkScenario(params.startTemp, params.targetTemp, params.durationS);
+  if (warning.isEmpty() && !m_model.envelope().containsPid(params.kp, params.ki, params.kd)) {
+    warning = tr("these gains are outside the range the digital twin was trained on");
+  }
+  if (warning.isEmpty() && !sim.metrics().valid) {
+    warning = sim.metrics().invalidReason;
+  }
+  setStatusText(warning.isEmpty() ? tr("Simulated with %1 (expected results)").arg(gains)
+                                  : tr("Simulated with %1 (warning: %2)").arg(gains, warning),
+                !warning.isEmpty());
 }
 
 void OfflineAdvisorWidget::setStatusText(QString const &text, bool isError) {
@@ -512,42 +614,16 @@ void OfflineAdvisorWidget::startTuning() {
 
   int const totalCandidates = ai::CEM_POPULATION * ai::CEM_ITERATIONS;
 
-  double const ssf{utils::ssf()};
-  m_tuneDialog = new BusyDialog(this);
-  m_tuneDialog->setWindowTitle(tr("Advisor"));
-  m_tuneDialog->setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint);
-  m_tuneDialog->setWindowModality(Qt::WindowModal);
-  auto *lay = new QVBoxLayout(m_tuneDialog);
-  lay->setContentsMargins(22 * ssf, 18 * ssf, 22 * ssf, 18 * ssf);
-  lay->setSpacing(10 * ssf);
-  auto *title = new QLabel(tr("Computing optimal setting with the digital twin..."), m_tuneDialog);
-  title->setObjectName("cardTitle");
-  title->setWordWrap(true);
-  lay->addWidget(title);
-  m_tuneBar = new QProgressBar(m_tuneDialog);
-  m_tuneBar->setObjectName("slimProgress");
-  m_tuneBar->setTextVisible(false);
-  m_tuneBar->setFixedHeight(static_cast<int>(8 * ssf));
-  m_tuneBar->setRange(0, totalCandidates);
-  m_tuneBar->setValue(0);
-  lay->addWidget(m_tuneBar);
-  auto *info = new QHBoxLayout();
-  m_tuneCount = new QLabel(m_tuneDialog);
-  m_tuneCount->setProperty("muted", true);
-  m_tunePercent = new QLabel(m_tuneDialog);
-  m_tunePercent->setProperty("muted", true);
-  info->addWidget(m_tuneCount);
-  info->addStretch();
-  info->addWidget(m_tunePercent);
-  lay->addLayout(info);
-  onTuneProgress(0, totalCandidates);
-  m_tuneDialog->setFixedWidth(static_cast<int>(460 * ssf));
-  m_tuneDialog->adjustSize();
+  m_tuneDialog = new ai::AdvisorProgressDialog(this);
+  m_tuneDialog->setProgress(0, totalCandidates);
   m_tuneDialog->show();
 
-  setStatusText(tr("Running the AI Advisor over the digital twin..."), false);
+  setStatusText(tr("Calculating the best settings"), false);
 
   m_tuneWorker = new ai::OfflineTuneWorker(&m_model, m_currentParams, this);
+  connect(m_tuneDialog, &ai::AdvisorProgressDialog::cancelRequested, m_tuneWorker, [worker = m_tuneWorker] {
+    worker->cancel(); // closing the window cancels the calculation
+  });
   connect(m_tuneWorker, &ai::OfflineTuneWorker::progress, this, &OfflineAdvisorWidget::onTuneProgress);
   connect(m_tuneWorker, &QThread::finished, this, &OfflineAdvisorWidget::onTuneFinished);
   connect(m_tuneWorker, &QThread::finished, m_tuneWorker, &QObject::deleteLater);
@@ -556,10 +632,7 @@ void OfflineAdvisorWidget::startTuning() {
 
 void OfflineAdvisorWidget::onTuneProgress(int done, int total) {
   if (m_tuneDialog) {
-    m_tuneBar->setMaximum(total);
-    m_tuneBar->setValue(done);
-    m_tuneCount->setText(tr("%1 of %2 candidates simulated").arg(done).arg(total));
-    m_tunePercent->setText(QStringLiteral("%1 %").arg(total > 0 ? (100 * done) / total : 0));
+    m_tuneDialog->setProgress(done, total);
   }
 }
 
@@ -568,9 +641,15 @@ void OfflineAdvisorWidget::onTuneFinished() {
   m_tuneWorker                       = nullptr;
 
   if (m_tuneDialog) {
-    m_tuneDialog->close();
+    m_tuneDialog->finish();
     m_tuneDialog->deleteLater();
     m_tuneDialog = nullptr;
+  }
+
+  if (result.cancelled) {
+    setStatusText(tr("Calculation cancelled"), false);
+    updateRunButtonEnabled();
+    return;
   }
 
   if (!result.ok) {
@@ -580,6 +659,7 @@ void OfflineAdvisorWidget::onTuneFinished() {
   }
 
   m_tuneResult = result;
+  setGainFields(result.bestKp, result.bestKi, result.bestKd); // Simulate then predicts these, or others typed in
 
   if (m_predictionOnly) {
     // no chamber: the suggested coefficients, the predicted experiment and the baseline only
@@ -842,26 +922,24 @@ ai::SimMetrics OfflineAdvisorWidget::computeActualMetrics() const {
 }
 
 void OfflineAdvisorWidget::setMetricsColumn(int column, ai::SimMetrics const &metrics) {
-  auto *costItem   = new QTableWidgetItem(formatNumber(metrics.cost, 2));
   auto *maeItem    = new QTableWidgetItem(formatNumber(metrics.tailMae, 3));
   auto *osItem     = new QTableWidgetItem(formatNumber(metrics.overshootMax, 2));
   auto *settleItem = new QTableWidgetItem(formatNumber(metrics.timeToSettleS, 0));
   auto *endItem    = new QTableWidgetItem(formatNumber(metrics.endTemp, 2));
 
-  for (auto *item : {costItem, maeItem, osItem, settleItem, endItem}) {
+  for (auto *item : {maeItem, osItem, settleItem, endItem}) {
     item->setTextAlignment(Qt::AlignCenter);
   }
 
-  m_metricsTable->setItem(0, column, costItem);
-  m_metricsTable->setItem(1, column, maeItem);
-  m_metricsTable->setItem(2, column, osItem);
-  m_metricsTable->setItem(3, column, settleItem);
-  m_metricsTable->setItem(4, column, endItem);
+  m_metricsTable->setItem(0, column, maeItem); // (the search's cost is internal: not shown)
+  m_metricsTable->setItem(1, column, osItem);
+  m_metricsTable->setItem(2, column, settleItem);
+  m_metricsTable->setItem(3, column, endItem);
 }
 
 void OfflineAdvisorWidget::clearMetricsTable() {
   for (int col{0}; col < 3; ++col) {
-    for (int row{0}; row < 5; ++row) {
+    for (int row{0}; row < 4; ++row) {
       auto *item = new QTableWidgetItem(QStringLiteral("—"));
       item->setTextAlignment(Qt::AlignCenter);
       m_metricsTable->setItem(row, col, item);

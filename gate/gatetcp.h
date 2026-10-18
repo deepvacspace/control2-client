@@ -39,7 +39,8 @@ private:
     CONFIGURATION = 0x04,
     ALARM         = 0x05,
     JOB_FINISHED  = 0x06,
-    USER_MSG      = 0x07
+    USER_MSG      = 0x07,
+    COMPONENTS    = 0x08 // the parts fitted on the chamber (optional: a PLC that does not send it is judged by its outputs)
   };
 
 public:
@@ -90,6 +91,9 @@ signals:
   //
   void userMsgReceived(QString userMsg);
 
+  // the component keys the chamber reports as fitted ("tmp", "vk", "bp", ...); empty when disconnected
+  void componentsReceived(QStringList components);
+
 private slots:
   void onConnected();
   void onDisconnected();
@@ -111,6 +115,7 @@ private slots:
   void parsePlcMessage(QByteArray const &data);
 
   bool parseStateNamesList(QByteArray data);
+  bool parseComponents(QByteArray data);
 
   bool parseStateValuesList(QByteArray data);
 

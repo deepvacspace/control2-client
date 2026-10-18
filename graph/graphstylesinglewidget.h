@@ -14,6 +14,8 @@ namespace deepvaccontrol {
 class GraphStyleSingleWidget : public QFrame {
   Q_OBJECT
 public:
+  // narrower line style and width boxes (side panel)
+  void setCompact();
   explicit GraphStyleSingleWidget(int index, QVariantMap const &stateMap, QWidget *parent = nullptr);
   QVariantMap getStateMapVariant() const; // =getStyle;
   void        setEnabled(bool value);

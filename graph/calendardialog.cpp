@@ -31,6 +31,11 @@ CalendarCustomWidget::CalendarCustomWidget(QMap<QDate, int> const &counts, QWidg
   setFirstDayOfWeek(Qt::Monday); // after the locale, which sets its own first day
 }
 
+void CalendarCustomWidget::setCounts(QMap<QDate, int> const &counts) {
+  m_counts = counts;
+  updateCells();
+}
+
 void CalendarCustomWidget::paintCell(QPainter *painter, QRect const &rect, QDate date) const {
   theme::Colors const &c = theme::colors();
   double const         ssf{utils::ssf()};

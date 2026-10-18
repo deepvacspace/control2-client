@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QButtonGroup>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
@@ -54,6 +55,7 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
   m_tempMin     = makeValue("temp_min", temp.value("min", -75).toDouble(), -200, 500, prec);
   m_tempMax     = makeValue("temp_max", temp.value("max", 150).toDouble(), -200, 500, prec);
   m_defaultTemp = makeValue("default_temp", program.value("temp", 20).toDouble(), -200, 500, prec);
+  m_backupDays  = makeValue("backup_days", appSettings.value("backup_days", 1).toDouble(), 1, 365, 0);
 
   auto *pageLay = new QVBoxLayout(this);
   pageLay->setContentsMargins(0, 8 * ssf, 0, 0);
@@ -116,6 +118,8 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
   addRow(tr("PLC status request period"),
          tr("How often the PLC state list and settings are requested while connecting. Applies immediately."),
          numField(m_pollPeriod), tr("s"));
+  addRow(tr("Automatic backup"), tr("How often the databases (experiments, annotations, profiles) are backed up to data/backups. Applies immediately."),
+         numField(m_backupDays), tr("days"));
 
   section(tr("Setpoint limits"));
   addRow(tr("Lowest setpoint"), tr("Lowest temperature accepted in Manual control and program intervals. Applies on the next start."),
@@ -123,7 +127,7 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
   addRow(tr("Highest setpoint"), tr("Highest temperature accepted in Manual control and program intervals. Applies on the next start."),
          numField(m_tempMax), QStringLiteral("°C"));
 
-  section(tr("Program at start"));
+  section(tr("Default Program Control"));
   addRow(tr("Setpoint"), tr("Temperature of the interval Program control shows when the application starts. Applies on the next start."),
          numField(m_defaultTemp), QStringLiteral("°C"));
   m_defaultDuration = new LineEditTime(static_cast<quint64>(program.value("duration", 3600).toULongLong()), 1, 3599999, true);
@@ -134,6 +138,31 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
     part->setFixedHeight(30 * ssf);
   }
   addRow(tr("Duration"), tr("Length of that interval. Applies on the next start."), m_defaultDuration, QString());
+
+  // the AI Advisor: on or off right away (not saved in the settings file)
+  section(tr("AI"));
+  {
+    auto *advisor  = new QWidget();
+    auto *segments = new QHBoxLayout(advisor);
+    segments->setContentsMargins(0, 0, 0, 0);
+    segments->setSpacing(0);
+    auto             *group = new QButtonGroup(advisor);
+    QStringList const texts{tr("Off"), tr("On")};
+    for (int i{0}; i < texts.size(); ++i) {
+      auto *button = new QPushButton(texts[i], advisor);
+      button->setCheckable(true);
+      button->setProperty("segment", true);
+      button->setProperty("segmentFirst", i == 0);
+      button->setProperty("segmentLast", i == texts.size() - 1);
+      button->setFixedSize(65 * ssf, 30 * ssf);
+      group->addButton(button, i);
+      segments->addWidget(button);
+    }
+    group->setExclusive(true);
+    group->button(m_resHolder->aiAdvisorEnabled ? 1 : 0)->setChecked(true);
+    connect(group, &QButtonGroup::idClicked, this, [this](int id) { m_resHolder->aiAdvisorEnabled = (id == 1); });
+    addRow(tr("AI Advisor"), tr("Before a job starts, offer to search suitable PID parameters with the AI Advisor."), advisor, QString());
+  }
   listLay->addStretch(1);
 
   auto *scroll = new QScrollArea(card);
@@ -164,13 +193,14 @@ void ApplicationSettingsWidget::save() {
     return;
   }
   if ((start < lo) || (start > hi)) {
-    (new MessageDialog(tr("Warning"), tr("The setpoint of the program at start must lie between the setpoint limits."), this))->open();
+    (new MessageDialog(tr("Warning"), tr("The setpoint of the default program must lie between the setpoint limits."), this))->open();
     return;
   }
 
   QVariantMap const settings    = m_resHolder->settings->settingsMap();
   QVariantMap       appSettings = settings.value("app_settings").toMap();
   appSettings["graphUpdatePeriod"] = qRound(m_graphPeriod->getValue());
+  appSettings["backup_days"]       = qRound(m_backupDays->getValue());
   QVariantMap communication                     = settings.value("communication").toMap();
   communication["base_params_request_period_sec"] = qRound(m_pollPeriod->getValue());
   QVariantList controlParams = settings.value("control_params").toList();
@@ -191,7 +221,7 @@ void ApplicationSettingsWidget::save() {
                                                        {"control_params", controlParams},
                                                        {"default_program", program}});
   (new MessageDialog(saved ? tr("Saved") : tr("Error"),
-                     saved ? tr("The application settings are saved. Setpoint limits and the program at start apply on the next start.")
+                     saved ? tr("The application settings are saved. Setpoint limits and the default program apply on the next start.")
                            : tr("The settings file could not be written."),
                      this))
     ->open();

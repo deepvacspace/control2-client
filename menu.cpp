@@ -156,13 +156,20 @@ void Menu::setElementsEnable(QVector<bool> enableList) {
   }
 
   for (int i{0}; i < m_buttons.size(); ++i) {
-    m_buttons[i]->setVisible(enableList[i]);
+    m_buttons[i]->setVisible(enableList[i] && !m_hidden.contains(i));
+  }
+}
+
+void Menu::setItemHidden(int index) {
+  if ((index >= 0) && (index < m_buttons.size()) && !m_hidden.contains(index)) {
+    m_hidden.push_back(index);
+    m_buttons[index]->hide();
   }
 }
 
 void Menu::setElementsEnableAll() {
-  for (auto &item : m_buttons) {
-    item->setVisible(true);
+  for (int i{0}; i < m_buttons.size(); ++i) {
+    m_buttons[i]->setVisible(!m_hidden.contains(i));
   }
 }
 

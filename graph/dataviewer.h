@@ -113,6 +113,10 @@ public:
   void setOverlays(bool min, bool max, bool avg, QString const &channel);
   // shows [from, to] (epoch s) with the value axes fitted to it
   void setTimeRange(double from, double to);
+  // follow the data from `from` on (fit mode); NaN: all of it. Any other zoom or new data clears it
+  void setFitStart(double from);
+  // fitted to all its data and following it (the first Fit)
+  [[nodiscard]] bool fittedToAll() const;
   // time axis: wall clock (false) or time from the first sample shown (true)
   void setRelativeTime(bool relative);
   bool relativeTime() const;
@@ -126,6 +130,10 @@ public:
   bool scatter() const;
   // left-drag marks a time range (annotationDrawn) instead of moving the view
   void setAnnotateMode(bool enabled);
+  // a left drag draws a box and zooms into it (the right button always does)
+  void setBoxZoomMode(bool enabled);
+  // the labels box starts this far right of the plot's left edge (room for the chart tools)
+  void setLegendOffset(int left);
 
   // legend as one row under the plot with the channel names only, always shown
   void setCompactLegend(bool compact);
@@ -169,6 +177,8 @@ private:
 
   void setPlotRange(QRectF const &rect);
   void zoomViewAt(QPointF const &pixelPos, double mulX, double mulY);
+  void limitView(QRectF &view) const;                            // keeps the time shown on the data
+  [[nodiscard]] bool viewFitsData(QJsonObject const &state) const; // a saved zoom still within limitView
 
   QCustomPlot                      *m_plot{nullptr};
   std::shared_ptr<DataHolder const> m_data;
@@ -185,6 +195,7 @@ private:
 
   QVector<QCPAbstractItem *> m_regionItems;
   bool                       m_annotateMode{false};
+  bool                       m_boxZoomMode{false};
 
   // variable rule bands and min / max / average lines, rebuilt when the data or the styles change
   void                       rebuildDecorations();
@@ -231,6 +242,8 @@ private:
 
   QRectF      m_currentView;
   ControlMode m_controlMode;
+  double      m_fitStart{qQNaN()};
+  void        fitValues(double from, double to); // the value axes to the lines between these times
   ControlMode m_controlModeOnPress;
   bool        m_labelsVisible{false};
   bool        m_valuesVisible{false};

@@ -19,7 +19,8 @@ class AccessManager
   Q_OBJECT
   inline static QString const LAST_USER_FILE{"last_user.txt"};
   inline static QString const SECRET_KEY{"SuperSecretKey123"};
-  inline static QString const ADMIN_USER_NAME{QObject::tr("System Engineer")}; //Системный инженер
+  inline static QString const ADMIN_USER_NAME{QObject::tr("Service Engineer")}; // Сервисный инженер
+  inline static QString const LEGACY_ADMIN_USER_NAME{QStringLiteral("System Engineer")}; // its name before
   inline static QString const ADMIN_DEFAULT_PASS{"8520"};
 
 public:

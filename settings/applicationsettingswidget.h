@@ -26,6 +26,7 @@ private:
   SystemValue  *m_tempMin{nullptr};
   SystemValue  *m_tempMax{nullptr};
   SystemValue  *m_defaultTemp{nullptr};
+  SystemValue  *m_backupDays{nullptr}; // automatic database backups: every this many days
   LineEditTime *m_defaultDuration{nullptr};
 };
 

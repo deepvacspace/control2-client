@@ -4,6 +4,7 @@
 #include <QString>
 #include <QThread>
 #include <QVector>
+#include <atomic>
 
 #include "chambertwinsim.h"
 #include "gruonnxmodel.h"
@@ -16,6 +17,7 @@ namespace deepvaccontrol::ai {
 // fixed-PID run" baseline for the post-run comparison table.
 struct OfflineTuneResult {
   bool    ok{false};
+  bool    cancelled{false}; // stopped with cancel(): no result
   QString errorMessage;
 
   double                   bestKp{0.0};
@@ -40,6 +42,8 @@ public:
   OfflineTuneWorker(GruOnnxModel *model, SimParams const &params, QObject *parent = nullptr);
 
   OfflineTuneResult const &result() const;
+  // stops the search (any thread); the worker then finishes with result().cancelled
+  void cancel();
 
 signals:
   void progress(int done, int total);
@@ -51,6 +55,7 @@ private:
   GruOnnxModel     *m_model;
   SimParams         m_params;
   OfflineTuneResult m_result;
+  std::atomic<bool> m_cancel{false};
 };
 
 } // namespace deepvaccontrol::ai

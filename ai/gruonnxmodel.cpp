@@ -1,5 +1,7 @@
 #include "gruonnxmodel.h"
 
+#include <mutex>
+
 #include <algorithm>
 
 #include <QFile>
@@ -164,8 +166,13 @@ bool GruOnnxModel::predictDeltaT1(QVector<float> const &windowFlat, float &delta
 
 bool GruOnnxModel::predictDeltaT1Batch(QVector<float> const &windowsFlat, int batchSize, QVector<float> &deltaOut) {
 #ifdef DEEPVACCONTROL_HAVE_ONNXRUNTIME
+  // called from several threads at once (the advisor's rollouts): Run is thread safe, the status needs a lock
+  static std::mutex statusLock;
   if (!m_loaded || !m_impl->session) {
-    m_status = QObject::tr("Model not loaded");
+    {
+      std::lock_guard<std::mutex> const lock(statusLock);
+      m_status = QObject::tr("Model not loaded");
+    }
     return false;
   }
 
@@ -173,7 +180,10 @@ bool GruOnnxModel::predictDeltaT1Batch(QVector<float> const &windowsFlat, int ba
   int64_t const shape[3]{batchSize, m_windowSteps, nFeatures};
 
   if (windowsFlat.size() != static_cast<qsizetype>(batchSize) * m_windowSteps * nFeatures) {
-    m_status = QObject::tr("Invalid feature window size for batched prediction");
+    {
+      std::lock_guard<std::mutex> const lock(statusLock);
+      m_status = QObject::tr("Invalid feature window size for batched prediction");
+    }
     return false;
   }
 
@@ -192,7 +202,10 @@ bool GruOnnxModel::predictDeltaT1Batch(QVector<float> const &windowsFlat, int ba
     std::copy(outData, outData + batchSize, deltaOut.begin());
     return true;
   } catch (Ort::Exception const &ex) {
-    m_status = QObject::tr("ONNX batched prediction error: %1").arg(ex.what());
+    {
+      std::lock_guard<std::mutex> const lock(statusLock);
+      m_status = QObject::tr("ONNX batched prediction error: %1").arg(ex.what());
+    }
     return false;
   }
 #else

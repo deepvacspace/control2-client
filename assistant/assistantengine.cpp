@@ -101,6 +101,75 @@ QStringList AssistantEngine::mentionedRuns(QString const &question) {
   return runs;
 }
 
+QJsonObject AssistantEngine::chartCommand(QString const &question, QJsonObject const &view) {
+  QString const run = view.value("run").toString();
+  if (run.isEmpty()) {
+    return {};
+  }
+  auto has = [&question](char const *pattern) {
+    return QRegularExpression(QString::fromLatin1(pattern), QRegularExpression::CaseInsensitiveOption).match(question).hasMatch();
+  };
+  if (!has("\\b(?:zoom|show|go to|jump|focus|display|fit|move to|take me|bring)\\b")) {
+    return {};
+  }
+  double const from{view.value("from_s").toDouble()};
+  double const to{view.value("to_s").toDouble()};
+  double const duration{view.value("duration_s").toDouble(to)};
+  QJsonObject  args{{"run", run}};
+  // the whole experiment
+  if (has("\\b(?:fit|whole|entire|everything|full (?:run|experiment|range)|reset (?:the )?(?:zoom|view))\\b")) {
+    return args;
+  }
+  // a stage: "the second hold", "last ramp", "stage 3"
+  static QRegularExpression const stageNumber(QStringLiteral("\\bstage\\s*(\\d+)\\b"), QRegularExpression::CaseInsensitiveOption);
+  if (QRegularExpressionMatch const m = stageNumber.match(question); m.hasMatch()) {
+    args.insert("stage", m.captured(1));
+    return args;
+  }
+  static QRegularExpression const stageKind(
+    QStringLiteral("\\b(first|second|third|fourth|fifth|sixth|last|final|\\d+(?:st|nd|rd|th))?\\s*(hold|stabili[sz]ation|soak|ramp|setpoint|step)s?\\b"),
+    QRegularExpression::CaseInsensitiveOption);
+  if (QRegularExpressionMatch const m = stageKind.match(question); m.hasMatch()) {
+    static QStringList const ordinals{"first", "second", "third", "fourth", "fifth", "sixth"};
+    QString const ordinal = m.captured(1).toLower();
+    int           occurrence{1};
+    if ((ordinal == QLatin1String("last")) || (ordinal == QLatin1String("final"))) {
+      occurrence = -1;
+    } else if (ordinals.contains(ordinal)) {
+      occurrence = static_cast<int>(ordinals.indexOf(ordinal)) + 1;
+    } else if (!ordinal.isEmpty()) {
+      occurrence = ordinal.left(ordinal.size() - 2).toInt();
+    }
+    QString const word = m.captured(2).toLower();
+    QString const kind = word.startsWith(QLatin1String("ramp"))                                         ? QStringLiteral("ramp")
+                         : (word.startsWith(QLatin1String("setpoint")) || word.startsWith(QLatin1String("step"))) ? QStringLiteral("setpoint")
+                                                                                                        : QStringLiteral("hold");
+    args.insert("stage", QStringLiteral("%1:%2").arg(kind).arg(occurrence));
+    return args;
+  }
+  // a stretch of time: "the last 2 h", "first 30 min"
+  static QRegularExpression const stretch(QStringLiteral("\\b(last|final|first)\\s+(\\d+(?:[.,]\\d+)?)\\s*(h|hours?|min|minutes?|s|seconds?)\\b"),
+                                          QRegularExpression::CaseInsensitiveOption);
+  if (QRegularExpressionMatch const m = stretch.match(question); m.hasMatch() && (duration > 0)) {
+    double const amount{m.captured(2).replace(QLatin1Char(','), QLatin1Char('.')).toDouble()};
+    QString const unit = m.captured(3).toLower();
+    double const  span{amount * (unit.startsWith(QLatin1Char('h')) ? 3600.0 : (unit.startsWith(QLatin1String("m")) ? 60.0 : 1.0))};
+    bool const    first{m.captured(1).toLower() == QLatin1String("first")};
+    args.insert("from_s", std::round(first ? 0.0 : std::max(0.0, duration - span)));
+    args.insert("to_s", std::round(first ? std::min(duration, span) : duration));
+    return args;
+  }
+  // in or out of the view shown, around its middle
+  if ((to > from) && has("\\bzoom (?:in|out)\\b")) {
+    double const middle{(from + to) / 2.0};
+    double const half{(to - from) / 2.0 * (has("\\bzoom out\\b") ? 2.0 : 0.5)};
+    args.insert("from_s", std::round(std::max(0.0, middle - half)));
+    args.insert("to_s", std::round((duration > 0) ? std::min(duration, middle + half) : middle + half));
+    return args;
+  }
+  return {};
+}
+
 QString AssistantEngine::cleanAnswer(QString const &answer) {
   static QRegularExpression const selfReview(
     QStringLiteral("\\s*\\((?=[^()]*\\b(?:final|response|requirements?|constraints?|confirm\\w*|delivered|end of|"
@@ -111,11 +180,11 @@ QString AssistantEngine::cleanAnswer(QString const &answer) {
   // the answer ends where a small model starts looping: a sentence that comes again, one that only restates numbers
   // already given, an echo of its instructions, or more than 4 sentences (a list may have up to 10 items)
   static QRegularExpression const echo(
-    QStringLiteral("quote values|exactly as (?:recorded|written)|no calculated|never calculate|tool results?\b|"
+    QStringLiteral("quote values|exactly as (?:recorded|written)|no calculated|never calculate|tool results?\\b|"
                    "the user does not see|as instructed"),
     QRegularExpression::CaseInsensitiveOption);
-  static QRegularExpression const numberPattern(QStringLiteral("\d+(?:[.,]\d+)?"));
-  static QRegularExpression const listItem(QStringLiteral("^(?:[-*•]|\d+[.)])\s"));
+  static QRegularExpression const numberPattern(QStringLiteral("\\d+(?:[.,]\\d+)?"));
+  static QRegularExpression const listItem(QStringLiteral("^(?:[-*•]|\\d+[.)])\\s"));
   QSet<QString> seen;
   QSet<QString> numbersSeen;
   int           sentences{0};
@@ -267,7 +336,7 @@ void AssistantEngine::cancel() {
   }
 }
 
-void AssistantEngine::ask(QString const &question, QString const &focusRun) {
+void AssistantEngine::ask(QString const &question, QString const &focusRun, QJsonObject const &view) {
   if (m_busy) {
     emit failed(tr("Still answering the previous question"));
     return;
@@ -281,15 +350,36 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun) {
   if (runs.size() >= 2) {
     content += QStringLiteral("\n(Hint: answer with one compare_runs call for runs %1.)").arg(runs.join(QStringLiteral(", ")));
   }
+  // asked from the chart: what it shows, so "this view", "here" and chart commands have their experiment and range
+  QString const viewRun = view.value("run").toString();
+  if (!viewRun.isEmpty()) {
+    QStringList const channels = view.value("channels").toVariant().toStringList();
+    content += QStringLiteral("\n(Chart shown in the app: experiment %1, visible from %2 s to %3 s after its start (%4 to %5)%6. "
+                              "'This view', 'here' and 'visible' mean that range. To change the chart, call plot_run with run %1, "
+                              "from_s / to_s in s after the start, and channels (state names) only to change the lines shown.)")
+                 .arg(viewRun)
+                 .arg(std::round(view.value("from_s").toDouble()))
+                 .arg(std::round(view.value("to_s").toDouble()))
+                 .arg(view.value("from").toString(), view.value("to").toString(),
+                      channels.isEmpty() ? QString{} : QStringLiteral("; lines shown: %1").arg(channels.join(QStringLiteral(", "))));
+  }
+  // a day shown (the live data or a recorded day): its experiments and what happened between them
+  QString const viewDay = view.value("day").toString();
+  if (viewRun.isEmpty() && !viewDay.isEmpty()) {
+    content += QStringLiteral("\n(Chart shown in the app: everything recorded on %1, visible from %2 to %3. 'This day', 'today', "
+                              "'this view' and 'here' mean it; call get_day_summary with date %1.)")
+                 .arg(viewDay, view.value("from").toString(), view.value("to").toString());
+  }
   static QRegularExpression const showVerbs(
-    QStringLiteral("\\b(?:show|plot|display|open|graph|chart|muestra|mostrar|muéstrame|grafica|graficar|abre|abrir|ver)\\b"),
+    QStringLiteral("\\b(?:show|plot|display|open|graph|chart|zoom|go to|jump|focus|fit|hide|add|remove|muestra|mostrar|muéstrame|"
+                   "grafica|graficar|abre|abrir|ver)\\b"),
     QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
   if (showVerbs.match(question).hasMatch()) {
-    content += QStringLiteral("\n(Hint: the user wants to see it: call plot_run.)");
+    content += QStringLiteral("\n(Hint: the user wants to see it or change the chart: call plot_run.)");
   }
   m_history.push_back(QJsonObject{{"role", "user"}, {"content", content}});
   trimHistory();
-  prefetch(question, focusRun);
+  prefetch(question, viewRun.isEmpty() ? focusRun : viewRun, view);
   m_round     = 0;
   m_cancelled = false;
   m_corrected = false; // evidence is kept: follow-up questions are checked against everything fetched so far
@@ -392,39 +482,65 @@ void AssistantEngine::runTool(QString const &id, QString const &name, QJsonObjec
   m_evidence += compact(result) + QLatin1Char('\n');
 }
 
-void AssistantEngine::prefetch(QString const &question, QString const &focusRun) {
+void AssistantEngine::prefetch(QString const &question, QString const &focusRun, QJsonObject const &view) {
   // questions over many experiments (rankings, lists) are left to the model's own tool calls
   static QRegularExpression const overMany(
     QStringLiteral("\\b(?:which|best|worst|lowest|highest|rank\\w*|list|all|every|how many|most|least)\\b"),
     QRegularExpression::CaseInsensitiveOption);
+  // about the chart's visible range
+  static QRegularExpression const aboutView(
+    QStringLiteral("\\b(?:this view|the view|in view|here|visible|on screen|on the chart|shown|this range|this part|this section|zoomed)\\b"),
+    QRegularExpression::CaseInsensitiveOption);
   QStringList const runs = mentionedRuns(question);
-  QString     name;
-  QJsonObject arguments;
-  QString     key;
-  if (runs.size() >= 2) {
-    name      = QStringLiteral("compare_runs");
-    arguments = QJsonObject{{"runs", QJsonArray::fromStringList(runs.mid(0, 5))}};
-    key       = name + runs.join(QLatin1Char(','));
+  QVector<std::pair<QString, QJsonObject>> calls;
+  QJsonObject const command = runs.isEmpty() ? chartCommand(question, view) : QJsonObject{};
+  if (!command.isEmpty()) {
+    // a chart command: carried out now (the model only confirms it)
+    calls.push_back({QStringLiteral("plot_run"), command});
+  } else if (runs.size() >= 2) {
+    calls.push_back({QStringLiteral("compare_runs"), QJsonObject{{"runs", QJsonArray::fromStringList(runs.mid(0, 5))}}});
+  } else if (view.value("run").toString().isEmpty() && !view.value("day").toString().isEmpty() && runs.isEmpty()) {
+    // a day shown: what happened in its visible part
+    calls.push_back({QStringLiteral("get_day_summary"), QJsonObject{{"date", view.value("day")},
+                                                                    {"from", view.value("from").toString().right(8).left(5)},
+                                                                    {"to", view.value("to").toString().right(8).left(5)}}});
+  } else if (!view.value("run").toString().isEmpty() && runs.isEmpty() && aboutView.match(question).hasMatch()) {
+    // the visible range of the experiment shown: its control KPIs and the statistics of its lines
+    QJsonObject range{{"run", view.value("run")}, {"from_s", std::round(view.value("from_s").toDouble())},
+                      {"to_s", std::round(view.value("to_s").toDouble())}};
+    calls.push_back({QStringLiteral("get_kpis"), range});
+    QStringList channels = view.value("channels").toVariant().toStringList().mid(0, 4);
+    if (!channels.isEmpty()) {
+      range.insert("channels", QJsonArray::fromStringList(channels));
+    }
+    calls.push_back({QStringLiteral("get_statistics"), range});
   } else if (!runs.isEmpty() || !overMany.match(question).hasMatch()) {
     QString const run = !runs.isEmpty() ? runs.first() : (!focusRun.isEmpty() ? focusRun : QStringLiteral("latest"));
-    name              = QStringLiteral("get_run_summary");
-    arguments         = QJsonObject{{"run", run}};
-    key               = name + run;
+    calls.push_back({QStringLiteral("get_run_summary"), QJsonObject{{"run", run}}});
   }
-  if (name.isEmpty() || m_fetched.contains(key)) {
+  // as if the model had asked for them: an assistant tool call message, then the results
+  QJsonArray                                toolCalls;
+  QVector<std::pair<QString, std::pair<QString, QJsonObject>>> pending;
+  for (auto const &[name, arguments] : calls) {
+    QString const key = name + QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact));
+    if (m_fetched.contains(key) && (name != QLatin1String("plot_run"))) {
+      continue; // fetched already (a chart command is carried out every time)
+    }
+    m_fetched.insert(key);
+    QString const id = QStringLiteral("deepvac-%1").arg(++m_prefetchCount);
+    toolCalls.push_back(QJsonObject{{"id", id},
+                                    {"type", "function"},
+                                    {"function", QJsonObject{{"name", name},
+                                                             {"arguments", QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact))}}}});
+    pending.push_back({id, {name, arguments}});
+  }
+  if (toolCalls.isEmpty()) {
     return;
   }
-  m_fetched.insert(key);
-  // as if the model had asked for it: an assistant tool call, then its result
-  QString const id = QStringLiteral("deepvac-%1").arg(++m_prefetchCount);
-  m_history.push_back(QJsonObject{
-    {"role", "assistant"},
-    {"content", QString{}},
-    {"tool_calls", QJsonArray{QJsonObject{{"id", id},
-                                          {"type", "function"},
-                                          {"function", QJsonObject{{"name", name},
-                                                                   {"arguments", QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact))}}}}}}});
-  runTool(id, name, arguments);
+  m_history.push_back(QJsonObject{{"role", "assistant"}, {"content", QString{}}, {"tool_calls", toolCalls}});
+  for (auto const &[id, call] : pending) {
+    runTool(id, call.first, call.second);
+  }
 }
 
 void AssistantEngine::onAnswer(QString content) {

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <limits>
 #include <random>
+#include <thread>
 #include <vector>
 
 namespace deepvaccontrol::ai {
@@ -23,7 +24,54 @@ struct Candidate {
 };
 } // namespace
 
-CemOptimizer::CemOptimizer(GruOnnxModel *model) : m_model{model} {}
+CemOptimizer::CemOptimizer(GruOnnxModel *model, std::atomic<bool> const *cancel) : m_model{model}, m_cancel{cancel} {}
+
+bool CemOptimizer::rolloutParallel(SimParams const &params, QVector<std::array<double, 3>> const &candidates,
+                                   QVector<QVector<TrajectoryPoint>> &trajectoriesOut, QVector<bool> &validOut,
+                                   std::function<void(int, int)> const &stepProgressCb) const {
+  int const n{static_cast<int>(candidates.size())};
+  int const cores{m_threads > 0 ? m_threads : std::max(1, static_cast<int>(std::thread::hardware_concurrency()))};
+  constexpr int MIN_CHUNK{8}; // smaller batches cost more in ONNX calls than they gain in parallel
+  int const chunks{std::clamp(n / MIN_CHUNK, 1, cores)};
+  if (chunks <= 1) {
+    return rolloutPopulation(params, candidates, trajectoriesOut, validOut, stepProgressCb);
+  }
+
+  // candidates are independent: each chunk is simulated on its own thread, the results put back in order
+  QVector<QVector<std::array<double, 3>>>        parts(chunks);
+  QVector<QVector<QVector<TrajectoryPoint>>>     partTrajectories(chunks);
+  QVector<QVector<bool>>                          partValids(chunks);
+  std::vector<char>                               partOk(chunks, 0);
+  for (int c{0}; c < n; ++c) {
+    parts[static_cast<qsizetype>(c) * chunks / n].push_back(candidates[c]);
+  }
+  std::vector<std::thread> threads;
+  threads.reserve(chunks);
+  for (int i{0}; i < chunks; ++i) {
+    threads.emplace_back([&, i] {
+      // the first chunk reports the progress: they all advance together
+      partOk[i] = rolloutPopulation(params, parts[i], partTrajectories[i], partValids[i],
+                                    (0 == i) ? stepProgressCb : std::function<void(int, int)>{})
+                    ? 1
+                    : 0;
+    });
+  }
+  for (std::thread &thread : threads) {
+    thread.join();
+  }
+
+  trajectoriesOut.clear();
+  validOut.clear();
+  trajectoriesOut.reserve(n);
+  validOut.reserve(n);
+  bool ok{true};
+  for (int i{0}; i < chunks; ++i) {
+    ok = ok && (0 != partOk[i]);
+    trajectoriesOut += partTrajectories[i];
+    validOut += partValids[i];
+  }
+  return ok;
+}
 
 bool CemOptimizer::rolloutPopulation(SimParams const &params, QVector<std::array<double, 3>> const &candidates,
                                       QVector<QVector<TrajectoryPoint>> &trajectoriesOut, QVector<bool> &validOut,
@@ -86,6 +134,9 @@ bool CemOptimizer::rolloutPopulation(SimParams const &params, QVector<std::array
   std::vector<double> u(n), uP(n), uI(n), uD(n);
 
   for (int step{0}; step < totalSteps; ++step) {
+    if (m_cancel && m_cancel->load()) {
+      return false;
+    }
     for (int c{0}; c < n; ++c) {
       for (int k{0}; k < nSubsteps; ++k) {
         double const diffOut = diffs[c].update(currentTemp[c]);
@@ -213,7 +264,7 @@ CemResult CemOptimizer::run(SimParams const &params, std::function<void(int, int
   std::mt19937 rng(42U);
 
   int const totalSteps           = std::max(1, static_cast<int>(std::ceil(params.durationS / std::max(params.dtS, 1e-9))));
-  int const totalStepEvaluations = totalSteps * CEM_ITERATIONS;
+  int const totalStepEvaluations = totalSteps * m_iterations;
   int       stepsDone{0};
 
   double                   bestCost{std::numeric_limits<double>::infinity()};
@@ -223,11 +274,11 @@ CemResult CemOptimizer::run(SimParams const &params, std::function<void(int, int
   double                   currentCost{CEM_W_INVALID}; // cold-start triplet's own cost, sample[0] of iter 0
   QVector<TrajectoryPoint> currentTrajectory;
   QVector<Candidate>       allCandidates;
-  allCandidates.reserve(CEM_POPULATION * CEM_ITERATIONS);
+  allCandidates.reserve(m_population * m_iterations);
 
-  for (int iter{0}; iter < CEM_ITERATIONS; ++iter) {
-    QVector<std::array<double, 3>> samples(CEM_POPULATION);
-    for (int sampleIdx{0}; sampleIdx < CEM_POPULATION; ++sampleIdx) {
+  for (int iter{0}; iter < m_iterations; ++iter) {
+    QVector<std::array<double, 3>> samples(m_population);
+    for (int sampleIdx{0}; sampleIdx < m_population; ++sampleIdx) {
       for (int d{0}; d < 3; ++d) {
         double raw;
         if (0 == iter) {
@@ -251,16 +302,19 @@ CemResult CemOptimizer::run(SimParams const &params, std::function<void(int, int
 
     QVector<QVector<TrajectoryPoint>> trajectories;
     QVector<bool>                     valids;
-    bool const rolloutOk = rolloutPopulation(params, samples, trajectories, valids, [&](int doneSteps, int) {
+    bool const rolloutOk = rolloutParallel(params, samples, trajectories, valids, [&](int doneSteps, int) {
       if (progressCb) {
         progressCb(stepsDone + doneSteps, totalStepEvaluations);
       }
     });
     stepsDone += totalSteps;
+    if (m_cancel && m_cancel->load()) {
+      return CemResult{}; // cancelled: not valid
+    }
 
     QVector<Candidate> iterCandidates;
-    iterCandidates.reserve(CEM_POPULATION);
-    for (int sampleIdx{0}; sampleIdx < CEM_POPULATION; ++sampleIdx) {
+    iterCandidates.reserve(m_population);
+    for (int sampleIdx{0}; sampleIdx < m_population; ++sampleIdx) {
       std::array<double, 3> const &sample = samples[sampleIdx];
       double const                 cost   = rolloutOk ? horizonCost(trajectories[sampleIdx], params, sample[0],
                                                                      sample[1], sample[2], current[0], current[1],
@@ -285,7 +339,7 @@ CemResult CemOptimizer::run(SimParams const &params, std::function<void(int, int
       return a.cost < b.cost;
     });
 
-    int const eliteN = std::max(2, static_cast<int>(std::round(CEM_POPULATION * CEM_ELITE_FRAC)));
+    int const eliteN = std::max(2, static_cast<int>(std::round(m_population * CEM_ELITE_FRAC)));
     int const nElite = std::min(eliteN, static_cast<int>(iterCandidates.size()));
 
     for (int d{0}; d < 3; ++d) {

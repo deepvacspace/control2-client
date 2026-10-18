@@ -14,12 +14,9 @@ namespace assistant {
 class AssistantWidget;
 }
 
-// "AI" page. A tabbed container: "Simulator" (default) hosts the GRU
-// digital-twin closed-loop simulator (AiSimulatorWidget), "Advisor" runs
-// the online PPO advisor against the real chamber (AiAdvisorWidget), and
-// "Offline advisor" pre-tunes a fixed PID via CEM search before each real
-// run (OfflineAdvisorWidget). "Assistant" is the offline, read-only
-// natural-language interface to the recorded experiments (assistant::AssistantWidget).
+// "AI" page. A tabbed container: "Simulator" (OfflineAdvisorWidget) pre-tunes a fixed PID via CEM search before
+// a real run and simulates any P / I / D with the digital twin; the online PPO advisor (AiAdvisorWidget) is hidden.
+// "Assistant" is the offline, read-only natural-language interface to the experiments (assistant::AssistantWidget).
 class AiWidget : public QWidget {
   Q_OBJECT
 public:
@@ -27,6 +24,9 @@ public:
 
   // the assistant's tools read the experiments of the Data analysis page and can show runs there
   void setServices(AnalysisServices *services, std::function<void()> showPage);
+  // the assistant tab, about this experiment, with this question asked (if any)
+  void openAssistant(QString const &run, QString const &question);
+  [[nodiscard]] assistant::AssistantWidget *assistantWidget() const;
 
 private:
   QTabWidget                   *m_tabWidget;

@@ -1,5 +1,7 @@
 #include "backupservice.h"
 
+#include <QDate>
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -47,14 +49,17 @@ QString BackupService::backupDatabase(QString const &fileName, QString const &re
   return target;
 }
 
-QStringList BackupService::backupAll(bool force, QStringList *errors) {
+QStringList BackupService::backupAll(bool force, QStringList *errors, int everyDays) {
   QStringList   created;
-  QString const today = stamp("yyyyMMdd");
+  // a backup made the same calendar day counts as fresh; older ones by whole days since
+  QDate const   today = QDate::currentDate();
   for (QString const &fileName : databases()) {
     QDir const dir(QDir(backupsDir()).filePath(stem(fileName)));
-    bool const doneToday{!force && !dir.entryList({QStringLiteral("%1_%2*.sqlite3").arg(stem(fileName), today)}, QDir::Files).isEmpty()};
-    if (doneToday) {
-      continue;
+    if (!force) {
+      QFileInfoList const automatic = dir.entryInfoList({QStringLiteral("%1_*_daily.sqlite3").arg(stem(fileName))}, QDir::Files, QDir::Time);
+      if (!automatic.isEmpty() && (automatic.first().lastModified().date().daysTo(today) < std::max(1, everyDays))) {
+        continue;
+      }
     }
     QString error;
     QString const path = backupDatabase(fileName, force ? QStringLiteral("manual") : QStringLiteral("daily"), &error);

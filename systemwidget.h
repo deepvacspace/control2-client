@@ -32,6 +32,7 @@ class SystemWidget : public QWidget {
   Q_OBJECT
 public:
   explicit SystemWidget(ResHolder *resHolder, QWidget *parent = nullptr);
+  void showDiagram(); // the Diagram tab
 
 signals:
   void prepareToCloseApp();
@@ -40,6 +41,7 @@ signals:
 private:
   void        handleAccessChange(QString const &, AccessManager::AccessLevel newLevel);
   QTabWidget *m_tabWidget;
+  QWidget    *m_diagramTab{nullptr};
   QWidget    *m_osTab{nullptr};
   QWidget    *m_outputsTab{nullptr};
   QWidget    *m_commandsTab{nullptr};

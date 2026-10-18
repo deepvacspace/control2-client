@@ -1,7 +1,9 @@
 #include "head.h"
+#include "hometrend.h"
 
 #include <QCoreApplication>
 #include <QEvent>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -130,12 +132,19 @@ void Head::handleAccessChange(QString const &name, AccessManager::AccessLevel ne
 }
 
 void Head::initBaseGui() {
+  // the experiment's chart where the diagram was (the diagram is in System > Diagram), the readings beside it
   auto *mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
   mainLay->setSpacing(px(10));
 
+  m_trend = new HomeTrend(m_resHolder, this);
+  mainLay->addWidget(m_trend, 64);
+  // beside its title: the thermal plate and the TMP; a tap opens the diagram
   m_chamber = new ChamberView(m_resHolder, this);
-  mainLay->addWidget(m_chamber, 64);
+  m_chamber->setCompact(true);
+  m_chamber->setChips({QStringLiteral("heater"), QStringLiteral("tmp")});
+  connect(m_chamber, &ChamberView::diagramRequested, this, &Head::diagramRequested);
+  m_trend->addHeaderWidget(m_chamber);
 
   auto *column = new QVBoxLayout();
   column->setSpacing(px(10));
@@ -184,9 +193,9 @@ void Head::initBaseGui() {
     value = new QLabel(box);
     unit  = new QLabel(unitText, box);
     unit->setProperty("muted", true);
-    unit->setAlignment(Qt::AlignTop);
-    row->addWidget(value);
-    row->addWidget(unit);
+    unit->setAlignment(Qt::AlignLeft | Qt::AlignBottom);
+    row->addWidget(value, 0, Qt::AlignBottom);
+    row->addWidget(unit, 0, Qt::AlignBottom);
     readings->addWidget(caption, 0, column, Qt::AlignLeft | Qt::AlignBottom);
     readings->addWidget(box, 1, column, Qt::AlignLeft | Qt::AlignBottom);
     return QVector<QWidget *>{caption, box};
@@ -228,8 +237,13 @@ void Head::initBaseGui() {
   // test time and program position
   auto *timeCard = makeCard();
   auto *timeLay  = static_cast<QVBoxLayout *>(timeCard->layout());
-  timeLay->addWidget(muted(tr("Total test time")));
+  // all centred; the program position always shown (a dash without a program), so the card reads the same way
+  timeLay->addStretch();
+  auto *timeTitle = muted(tr("Total test time"));
+  timeTitle->setAlignment(Qt::AlignHCenter);
+  timeLay->addWidget(timeTitle);
   m_curWorkTimeLabel = new QLabel(timeCard);
+  m_curWorkTimeLabel->setAlignment(Qt::AlignHCenter);
   timeLay->addWidget(m_curWorkTimeLabel);
   timeLay->addSpacing(px(8));
   auto *positionRow = new QHBoxLayout();
@@ -238,8 +252,11 @@ void Head::initBaseGui() {
     auto *lay = new QVBoxLayout(box);
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(px(2));
-    lay->addWidget(muted(title));
+    auto *name = muted(title);
+    name->setAlignment(Qt::AlignHCenter);
+    lay->addWidget(name);
     value = new QLabel(box);
+    value->setAlignment(Qt::AlignHCenter);
     lay->addWidget(value);
     positionRow->addWidget(box, 1);
     return box;
@@ -250,7 +267,7 @@ void Head::initBaseGui() {
   timeLay->addSpacing(px(10));
   m_nextIntervalBtn = new QPushButton(tr("Next step"), timeCard);
   m_nextIntervalBtn->setFixedSize(px(100), px(26));
-  timeLay->addWidget(m_nextIntervalBtn);
+  timeLay->addWidget(m_nextIntervalBtn, 0, Qt::AlignHCenter);
   timeLay->addStretch();
   column->addWidget(timeCard, 40);
 
@@ -287,6 +304,11 @@ QLabel[muted="true"] { color: %6; }
   m_tempUnit->setFont(sized(1.8, false));
   m_presValue->setFont(sized(4.0, true));
   m_presUnit->setFont(sized(1.8, false));
+  // the unit's baseline on the number's: lifted by the difference of their descents
+  for (auto const &[value, unit] : {std::pair{m_tempValue, m_tempUnit}, std::pair{m_presValue, m_presUnit}}) {
+    int const lift{QFontMetrics(value->font()).descent() - QFontMetrics(unit->font()).descent()};
+    unit->setContentsMargins(0, 0, 0, std::max(0, lift));
+  }
   m_setpointValue->setFont(sized(1.3, true));
   m_outputValue->setFont(sized(1.3, true));
   m_curWorkTimeLabel->setFont(sized(2.6, true));
@@ -378,8 +400,9 @@ void Head::updateGui() {
   SystemValue const *total = sys("t_total");
   m_curWorkTimeLabel->setText(working && total ? utils::timeFromSec(static_cast<long>(total->getValue()), true) : QStringLiteral("--:--:--"));
 
+  // the program position: always shown, a dash when no program runs; Next step only usable when there is one
   bool const isProgramJob{working && (HardwareStatus::JobType::PROGRAM == jobType)};
-  m_intervalBox->setVisible(isProgramJob);
+  bool       canStep{false};
   if (isProgramJob && sys("interval") && sys("intervals_count") && sys("cycle_cur") && sys("cycle_total")) {
     qint32 const intervalCur{static_cast<qint32>(sys("interval")->getValue())};
     qint32 const intervalCount{static_cast<qint32>(sys("intervals_count")->getValue())};
@@ -387,13 +410,15 @@ void Head::updateGui() {
     qint32 const cycleCount{static_cast<qint32>(sys("cycle_total")->getValue())};
 
     m_intervalLabel->setText(tr("%1 of %2").arg(intervalCur).arg(intervalCount));
-    m_nextIntervalBtn->setVisible((intervalCur < intervalCount) || (cycleCur < cycleCount));
-    m_cycleBox->setVisible(cycleCount > 1);
     m_cycleLabel->setText(tr("%1 of %2").arg(cycleCur).arg(cycleCount));
+    canStep = (intervalCur < intervalCount) || (cycleCur < cycleCount);
   } else {
-    m_cycleBox->setVisible(false);
-    m_nextIntervalBtn->setVisible(false);
+    m_intervalLabel->setText(QStringLiteral("—"));
+    m_cycleLabel->setText(QStringLiteral("—"));
   }
-  m_nextIntervalBtn->setEnabled(AccessManager::AccessLevel::SPECTATOR_0 != m_accessLevel);
+  m_intervalBox->setVisible(true);
+  m_cycleBox->setVisible(true);
+  m_nextIntervalBtn->setVisible(true);
+  m_nextIntervalBtn->setEnabled(canStep && (AccessManager::AccessLevel::SPECTATOR_0 != m_accessLevel));
 }
 } // namespace deepvaccontrol

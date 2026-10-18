@@ -6,9 +6,12 @@
 #include <memory>
 
 #include "chartcomparison.h"
+#include "charttoolbar.h"
 #include "dataholder.h"
 
+class QHBoxLayout;
 class QStackedWidget;
+class QToolButton;
 class QTabBar;
 
 namespace deepvaccontrol {
@@ -85,6 +88,13 @@ public:
   void setHighlighted(bool highlighted);
   // the left pane: a tab dropped on the right half of its own chart splits the page
   void setPrimary(bool primary);
+  // ---- the chart's tools (top left of the plot) and the zoom / pan pad (bottom left)
+  [[nodiscard]] ChartToolbar *toolbar() const;
+  void setToolbarPinned(bool pinned);
+  // only the left pane shows the tools; they act on whichever pane is selected
+  void setToolbarShown(bool shown);
+  // the tool in use on this pane's charts; pad: the zoom / pan pad here (the selected pane)
+  void setTool(ChartToolbar::Tool tool, bool pad);
 
 signals:
   void activated(); // clicked: the buttons now act on this pane
@@ -101,6 +111,10 @@ signals:
   // a tab is being dragged out of this pane (no pane may go away until it ends)
   void tabDragStarted();
   void tabDragFinished();
+  // the + after the tabs: open an experiment or a comparison here
+  void addRequested(QPoint const &globalPos);
+  // the pad's middle icon: back to Inspect
+  void toolResetRequested();
 
 protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
@@ -109,6 +123,12 @@ protected:
   void dragLeaveEvent(QDragLeaveEvent *event) override;
   void dropEvent(QDropEvent *event) override;
   void resizeEvent(QResizeEvent *event) override;
+
+private:
+  // the tool in use on the charts of the pane, the pad shown or not
+  void applyTool();
+  // the floating tools and the pad in the corners of the plot area
+  void placeOverlays();
 
 private:
   void showTab(int index);
@@ -123,6 +143,16 @@ private:
   QStringList         m_channelNames;
   QTabBar            *m_tabBar;
   QStackedWidget     *m_stack;
+  QHBoxLayout        *m_chartRow{nullptr}; // the pinned tools, then the chart
+  ChartToolbar       *m_toolbar{nullptr};
+  ChartPad           *m_pad{nullptr};
+  QToolButton        *m_addBtn{nullptr};
+  ChartToolbar::Tool  m_tool{ChartToolbar::Tool::INSPECT};
+  bool                m_padShown{false};
+  // the floating tools moved by the user: where, from the plot area's top left corner
+  bool                m_toolbarMoved{false};
+  QPoint              m_toolbarOffset;
+  QMetaObject::Connection m_replotConnection; // the overlays follow the plot's area
   QWidget            *m_dropHint;
   QVector<Tab>        m_tabs;
   AnalysisNotesStore *m_notes{nullptr};

@@ -3,14 +3,22 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QScrollBar>
+#include <QTextBrowser>
 #include <QComboBox>
+#include "calendarpanel.h"
+#include "chartsidebar.h"
+#include "chartstatspanel.h"
 #include "datetimefield.h"
+#include "lineeditscreen.h"
 #include "hardwarestatus.h"
 #include "derivedexpression.h"
 #include "derivedvariablesdialog.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
+#include <numeric>
+#include <QDataStream>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRadioButton>
@@ -24,6 +32,7 @@
 #include <QPainter>
 #include <QSplitter>
 #include <QSet>
+#include <QSettings>
 #include <QTabBar>
 #include <QTextStream>
 #include <QThread>
@@ -150,64 +159,9 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   cardLay->setHorizontalSpacing(8 * ssf);
   cardLay->setVerticalSpacing(8 * ssf);
 
-  auto iconButton = [&](QString const &kind, QString const &tip) {
-    auto *button = new QPushButton(card);
-    theme::setThemedIcon(button, kind, static_cast<int>(14 * ssf));
-    button->setFixedSize(26 * ssf, 26 * ssf);
-    button->setToolTip(tip);
-    return button;
-  };
-  auto textButton = [&](QString const &text) {
-    auto *button = new QPushButton(text, card);
-    button->setFixedHeight(26 * ssf);
-    return button;
-  };
-
-  // value axis and time axis controls
-  auto *zoomYBtn = iconButton("plus", tr("Zoom in (values)"));
-  auto *outYBtn  = iconButton("minus", tr("Zoom out (values)"));
-  auto *incYBtn  = iconButton("up", tr("Move up"));
-  auto *decYBtn  = iconButton("down", tr("Move down"));
-  auto *zoomXBtn = iconButton("plus", tr("Zoom in (time)"));
-  auto *outXBtn  = iconButton("minus", tr("Zoom out (time)"));
-  auto *decXBtn  = iconButton("left", tr("Earlier"));
-  auto *incXBtn  = iconButton("right", tr("Later"));
-  auto *fitBtn   = textButton(tr("Fit"));
-  fitBtn->setMinimumWidth(52 * ssf);
-  fitBtn->setToolTip(tr("Show the whole day and follow new values"));
-
-  // experiment list (drawer over the page)
-  m_listBtn = iconButton("folder", tr("Experiments: open a saved experiment or a recorded day in a new tab"));
-  m_listBtn->setEnabled(false); // until the experiment list is set
-
-  // compare, statistics, annotate, export, channels | labels, tooltip, day, options
-  m_compareBtn = textButton(tr("Compare"));
-  m_compareBtn->setMinimumWidth(84 * ssf);
-  m_compareBtn->setToolTip(tr("Compare channels of open tabs or other experiments in a new tab"));
-  m_compareBtn->setEnabled(false); // until the experiment list is set
-  m_statisticsBtn = textButton(tr("Statistics"));
-  m_statisticsBtn->setMinimumWidth(90 * ssf);
-  m_statisticsBtn->setToolTip(tr("Statistics of the visible range, annotations and variable rules"));
-  m_statisticsBtn->setEnabled(false); // until the annotations store is set
-  m_optionsBtn = textButton(tr("Options"));
-  m_optionsBtn->setMinimumWidth(80 * ssf);
-  m_optionsBtn->setToolTip(tr("Time range, smoothing and overlays"));
-  m_annotateBtn = textButton(tr("Annotate"));
-  m_annotateBtn->setCheckable(true);
-  m_annotateBtn->setMinimumWidth(80 * ssf);
-  m_annotateBtn->setToolTip(tr("Drag across the chart to mark and label a time range"));
-  m_annotateBtn->setEnabled(false); // until the annotations store is set
-  m_styleBtn = textButton(tr("Channels ▾"));
-  m_styleBtn->setMinimumWidth(90 * ssf);
-  m_styleBtn->setToolTip(tr("Visible channels, colours and line styles"));
-
-  // Actions ▾: what the chart shows, and export
-  m_actionsBtn = textButton(tr("Actions ▾"));
-  m_actionsBtn->setMinimumWidth(96 * ssf);
-  m_actionsBtn->setToolTip(tr("Labels, tooltip, events, anomalies, stages, setpoint and export"));
-  auto *actionsMenu = new QMenu(m_actionsBtn);
-  auto  toggle      = [actionsMenu](QString const &text, QString const &tip, bool on) {
-    QAction *action = actionsMenu->addAction(text);
+  // what the chart shows (side bar ▸ Actions)
+  auto toggle = [this](QString const &text, QString const &tip, bool on) {
+    auto *action = new QAction(text, this);
     action->setCheckable(true);
     action->setChecked(on);
     action->setToolTip(tip);
@@ -215,25 +169,10 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   };
   m_labelsBtn = toggle(tr("Labels"), tr("The box with the line labels and colours"), true);
   m_valuesBtn = toggle(tr("Tooltip"), tr("The value of the line where the mouse points (split: the other chart follows)"), false);
-  actionsMenu->addSeparator();
   m_eventsAct    = toggle(tr("Events"), tr("Program, PLC and operator events as dotted lines"), false);
   m_anomaliesAct = toggle(tr("Anomalies"), tr("The detected anomalies as coloured lines"), false);
   m_stagesAct    = toggle(tr("Stages"), tr("Ramp / setpoint / hold stages as a strip along the top"), false);
   m_setpointAct  = toggle(tr("Setpoint"), tr("The setpoint as a dashed line (a comparison: its first experiment's)"), false);
-  actionsMenu->addSeparator();
-  m_exportToBtn = actionsMenu->addAction(tr("Export…"));
-  actionsMenu->setToolTipsVisible(true);
-  m_actionsBtn->setMenu(actionsMenu);
-
-  // Info: the experiment shown
-  m_infoBtn = textButton(tr("Info"));
-  m_infoBtn->setMinimumWidth(64 * ssf);
-  m_infoBtn->setToolTip(tr("Experiment number, DUT, purpose, operator, duration and samples"));
-  auto *calendarBtn = textButton(QString());
-  m_dayBtn          = calendarBtn;
-  theme::setThemedIcon(calendarBtn, "calendar", static_cast<int>(13 * ssf));
-  calendarBtn->setMinimumWidth(110 * ssf);
-  calendarBtn->setToolTip(tr("Open a saved experiment, or go back to the live data of today"));
 
   // the charts with their tabs: one pane, or two side by side ("Split right")
   m_split = new QSplitter(Qt::Horizontal, card);
@@ -241,36 +180,48 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_split->setChildrenCollapsible(false);
   m_split->setStyleSheet(QStringLiteral("QSplitter::handle { background: transparent; }"));
   ChartPane *first = addPane();
-  cardLay->addWidget(m_split, 0, 1, 2, 1);
+  cardLay->addWidget(m_split, 0, 0);
+  cardLay->setRowStretch(0, 1);
+  cardLay->setColumnStretch(0, 1);
 
-  // experiment list and value axis controls left of the chart (below the tabs); the other controls in one row below
-  auto *yAxisTools = new QVBoxLayout();
-  yAxisTools->setSpacing(8 * ssf);
-  yAxisTools->addSpacing(first->tabBar()->sizeHint().height() + 4 * ssf);
-  yAxisTools->addWidget(m_listBtn);
-  yAxisTools->addSpacing(8 * ssf);
-  for (QPushButton *button : {zoomYBtn, outYBtn, incYBtn, decYBtn}) {
-    yAxisTools->addWidget(button);
-  }
-  yAxisTools->addStretch();
-  cardLay->addLayout(yAxisTools, 0, 0, 2, 1);
-  cardLay->setRowStretch(1, 1);
-  cardLay->setColumnStretch(1, 1);
 
-  auto *toolBar = new QHBoxLayout();
-  toolBar->setSpacing(8 * ssf);
-  for (QPushButton *button : {zoomXBtn, outXBtn, decXBtn, incXBtn}) {
-    toolBar->addWidget(button);
-  }
-  toolBar->addWidget(fitBtn);
-  toolBar->addStretch();
-  for (QPushButton *button :
-       {m_compareBtn, m_statisticsBtn, m_annotateBtn, m_styleBtn, m_infoBtn, m_actionsBtn, calendarBtn, m_optionsBtn}) {
-    toolBar->addWidget(button);
-  }
-  cardLay->addLayout(toolBar, 2, 1);
+  // the side bar right of the chart: a rail of buttons and the panel of the one chosen
+  mainLay->setHorizontalSpacing(10 * ssf);
+  m_sideBar    = new ChartSideBar(this);
+  m_statsPanel = new ChartStatsPanel(m_resHolder->states->getNames(), m_resHolder->settings->settingsMap()["states"].toList());
+  m_calendarPanel = new CalendarPanel();
+  m_exportHost    = new QWidget();
+  auto *exportLay = new QVBoxLayout(m_exportHost);
+  exportLay->setContentsMargins(0, 0, 0, 0);
+  m_exportEmpty = new QLabel(tr("There is no data to export in this chart."), m_exportHost);
+  m_exportEmpty->setProperty("muted", true);
+  m_exportEmpty->setWordWrap(true);
+  exportLay->addWidget(m_exportEmpty);
+  m_sideBar->addPage(QStringLiteral("channels"), tr("Channels"), QStringLiteral("channels"), buildChannelsPage(), false, false);
+  m_sideBar->addPage(QStringLiteral("options"), tr("Options"), QStringLiteral("manual"), buildOptions());
+  m_sideBar->addPage(QStringLiteral("statistics"), tr("Statistics"), QStringLiteral("stats"), m_statsPanel);
+  m_sideBar->addPage(QStringLiteral("actions"), tr("Actions"), QStringLiteral("layers"), buildActionsPage());
+  m_sideBar->addPage(QStringLiteral("info"), tr("Info"), QStringLiteral("info"), buildInfoPage());
+  m_sideBar->addPage(QStringLiteral("ai"), tr("Assistant"), QStringLiteral("ai"), buildAiPage());
+  m_sideBar->addPage(QStringLiteral("calendar"), tr("Calendar"), QStringLiteral("calendar"), m_calendarPanel, true);
+  m_sideBar->addPage(QStringLiteral("export"), tr("Export"), QStringLiteral("export"), m_exportHost, true);
+  mainLay->addWidget(m_sideBar, 0, 1);
+  mainLay->setColumnStretch(0, 1);
+  connect(m_sideBar, &ChartSideBar::opened, this, &GraphWidget::refreshSide);
+  connect(m_calendarPanel, &CalendarPanel::experimentSelected, this, &GraphWidget::showExperiment);
+  connect(m_calendarPanel, &CalendarPanel::daySelected, this, &GraphWidget::showDay);
+  connect(m_calendarPanel, &CalendarPanel::liveSelected, this, [this] {
+    m_panes.first()->selectTab(ChartPane::LIVE_KEY);
+    setFocusedPane(m_panes.first());
+  });
+  connect(m_statsPanel, &ChartStatsPanel::fullReportRequested, this, [this] {
+    if (m_statistics) {
+      m_statistics->show();
+      m_statistics->raise();
+      updateStatisticsSource(); // shown: its analysis is wanted now
+    }
+  });
 
-  connect(fitBtn, &QPushButton::clicked, this, [this] { viewer()->setControlMode(DataViewer::ControlMode::LEAD_FULL); });
   connect(m_labelsBtn, &QAction::toggled, this, &GraphWidget::updateLegendMode);
   connect(m_valuesBtn, &QAction::toggled, this, &GraphWidget::updateLegendMode);
   for (QAction *marker : {m_eventsAct, m_anomaliesAct, m_stagesAct}) {
@@ -283,46 +234,12 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     applySetpointLine();
     scheduleSessionSave();
   });
-  connect(m_infoBtn, &QPushButton::clicked, this, &GraphWidget::showInfo);
   // the live tab's analysis is brought up to date now and then
   m_insightTimer = new QTimer(this);
   m_insightTimer->setInterval(60'000);
   connect(m_insightTimer, &QTimer::timeout, this, &GraphWidget::requestInsights);
   m_insightTimer->start();
 
-  connect(zoomXBtn, &QPushButton::clicked, this, [this] {
-    viewer()->zoomView(0.8, 1);
-  });
-  connect(outXBtn, &QPushButton::clicked, this, [this] {
-    viewer()->zoomView(1.2, 1);
-  });
-  connect(zoomYBtn, &QPushButton::clicked, this, [this] {
-    viewer()->zoomView(1, 0.8);
-  });
-  connect(outYBtn, &QPushButton::clicked, this, [this] {
-    viewer()->zoomView(1, 1.2);
-  });
-  connect(incXBtn, &QPushButton::clicked, this, [this] {
-    viewer()->moveView(0.2, 0);
-  });
-  connect(decXBtn, &QPushButton::clicked, this, [this] {
-    viewer()->moveView(-0.2, 0);
-  });
-  connect(incYBtn, &QPushButton::clicked, this, [this] {
-    viewer()->moveView(0, 0.2);
-  });
-  connect(decYBtn, &QPushButton::clicked, this, [this] {
-    viewer()->moveView(0, -0.2);
-  });
-  connect(m_styleBtn, &QPushButton::clicked, this, [this] {
-    Tab const *tab = m_focused->currentTab();
-    if (tab && tab->comparison) {
-      openCompareDialog(tab->key); // a comparison's channels
-    } else {
-      m_styleEditor->show();
-    }
-  });
-  connect(m_compareBtn, &QPushButton::clicked, this, [this] { openCompareDialog(); });
 
   // styles apply to every chart
   connect(m_styleEditor, &GraphStyleEditor::styleChanged, this, [this](int index, QVariantMap style) {
@@ -336,25 +253,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     }
   });
 
-  connect(m_exportToBtn, &QAction::triggered, this, &GraphWidget::exportData);
 
-  connect(calendarBtn, &QPushButton::clicked, this, &GraphWidget::openCalendar);
-
-  // options: a drawer over the right of the page
-  m_optionsDrawer = new OverlayDrawer(this, 320, OverlayDrawer::Side::RIGHT);
-  m_optionsDrawer->setContent(buildOptions(), true); // scrolls when it does not fit
-  connect(m_optionsBtn, &QPushButton::clicked, this, [this] {
-    updateOptions();
-    m_optionsDrawer->toggle();
-  });
-
-  connect(m_annotateBtn, &QPushButton::toggled, this, [this](bool on) {
-    for (ChartPane *pane : std::as_const(m_panes)) {
-      for (DataViewer *chart : pane->viewers()) {
-        chart->setAnnotateMode(on);
-      }
-    }
-  });
 
   connect(m_resHolder->dataManager, &DataManager::intervalToAddRecreated, this, [this](double key) {
     for (ChartPane *pane : std::as_const(m_panes)) {
@@ -400,7 +299,6 @@ DataViewer *GraphWidget::makeViewer() {
     chart->setSetpointLine(m_setpointAct->isChecked());
     chart->setLabelsVisible(m_labelsBtn->isChecked());
     chart->setValuesVisible(m_valuesBtn->isChecked());
-    chart->setAnnotateMode(m_annotateBtn->isChecked());
   }
   applyViewOptions(chart);
   return chart;
@@ -418,6 +316,19 @@ ChartPane *GraphWidget::addPane() {
   if (m_notes) {
     pane->setNotes(m_notes);
   }
+  // the tools: shown in the left pane only, acting on the selected pane
+  pane->setToolbarShown(m_panes.size() == 1);
+  pane->toolbar()->bindToggles(m_labelsBtn, m_valuesBtn);
+  pane->setToolbarPinned(m_toolbarPinned);
+  pane->setTool(m_tool, false);
+  connect(pane->toolbar(), &ChartToolbar::pinnedChanged, this, [this](bool pinned) { setToolbarsPinned(pinned); });
+  connect(pane->toolbar(), &ChartToolbar::toolChanged, this, [this](ChartToolbar::Tool tool) {
+    m_tool = tool;
+    applyTool();
+  });
+  connect(pane->toolbar(), &ChartToolbar::fitRequested, this, &GraphWidget::fitView);
+  connect(pane, &ChartPane::toolResetRequested, this, [this] { m_panes.first()->toolbar()->setTool(ChartToolbar::Tool::INSPECT); });
+  connect(pane, &ChartPane::addRequested, this, [this, pane](QPoint const &globalPos) { showAddMenu(pane, globalPos); });
 
   connect(pane, &ChartPane::activated, this, [this, pane] {
     setFocusedPane(pane);
@@ -500,8 +411,16 @@ void GraphWidget::removePane(ChartPane *pane) {
   setFocusedPane(m_panes.first());
 }
 
+void GraphWidget::applyTool() {
+  // every pane drags the same way; the zoom / pan pad is on the selected one
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    pane->setTool(m_tool, pane == m_focused);
+  }
+}
+
 void GraphWidget::setFocusedPane(ChartPane *pane) {
   m_focused = pane;
+  applyTool();
   bool const split{m_panes.size() > 1};
   for (ChartPane *each : std::as_const(m_panes)) {
     each->setHighlighted(split && (each == m_focused));
@@ -675,27 +594,10 @@ void GraphWidget::syncCursor(ChartPane *source, double x, int graph) {
 }
 
 void GraphWidget::updateDayButton() {
-  Tab const *shown = m_focused ? m_focused->currentTab() : nullptr;
   // annotations and rules are of recorded time: not on a comparison's aligned axis
-  bool const comparison{shown && shown->comparison};
-  if (comparison && m_annotateBtn->isChecked()) {
-    m_annotateBtn->setChecked(false);
-  }
-  m_annotateBtn->setEnabled(m_canAnnotate && !comparison);
-  m_styleBtn->setText(comparison ? tr("Channels…") : tr("Channels ▾"));
-  if (shown && (shown->key != ChartPane::LIVE_KEY)) {
-    m_dayBtn->setText(shown->label);
-    m_dayBtn->setToolTip(tr("%1\nOpen another experiment, or go back to the live data of today").arg(shown->name));
-    return;
-  }
-  m_dayBtn->setToolTip(tr("Open a saved experiment, or go back to the live data of today"));
-  auto const interval = m_resHolder->dataManager->getIntervalToDisplay();
-  if (!interval) {
-    m_dayBtn->setText(tr("Today"));
-    return;
-  }
-  QDate const shownDay = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(interval->getIntervalKey())).date();
-  m_dayBtn->setText(shownDay == QDate::currentDate() ? tr("Today") : shownDay.toString("yyyy-MM-dd"));
+  Tab const *shown = m_focused ? m_focused->currentTab() : nullptr;
+  m_panes.first()->toolbar()->setAnnotateEnabled(m_canAnnotate && !(shown && shown->comparison));
+  refreshSide();
 }
 
 void GraphWidget::updateLegendMode() {
@@ -707,15 +609,308 @@ void GraphWidget::updateLegendMode() {
   }
 }
 
-void GraphWidget::openCalendar() {
-  auto *dialog = new CalendarDialog(storage::RunStore::spans(), this);
-  connect(dialog, &CalendarDialog::experimentSelected, this, &GraphWidget::showExperiment);
-  connect(dialog, &CalendarDialog::liveSelected, this, [this] {
-    m_panes.first()->selectTab(ChartPane::LIVE_KEY);
-    setFocusedPane(m_panes.first());
+void GraphWidget::showAddMenu(ChartPane *pane, QPoint const &globalPos) {
+  setFocusedPane(pane);
+  QMenu    menu(this);
+  QAction *open    = menu.addAction(tr("Open experiment…"));
+  QAction *compare = menu.addAction(tr("New comparison…"));
+  open->setEnabled(m_drawer != nullptr);
+  compare->setEnabled(m_services != nullptr);
+  QAction const *chosen = menu.exec(globalPos);
+  if ((chosen == open) && m_drawer) {
+    m_drawer->open(); // the experiment list
+  } else if (chosen == compare) {
+    openCompareDialog();
+  }
+}
+
+void GraphWidget::setToolbarsPinned(bool pinned, bool remember) {
+  m_toolbarPinned = pinned;
+  for (ChartPane *pane : std::as_const(m_panes)) {
+    pane->setToolbarPinned(pinned);
+  }
+  if (remember) {
+    QSettings settings(QStringLiteral("data/chart/toolbar.ini"), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("pinned/%1").arg(m_resHolder->users->getCurrentUserName()), pinned);
+  }
+}
+
+void GraphWidget::refreshCalendar() {
+  // "#N" as in the experiment list (#1 is the oldest)
+  QHash<QString, int> numbers;
+  if (m_services) {
+    m_services->ensureScanned(); // the numbers come once the list is read (runsChanged)
+  }
+  if (m_library) {
+    QVector<ExperimentRun> const all = m_library->chronological();
+    for (int i{0}; i < all.size(); ++i) {
+      if (!all[i].storeKey.isEmpty()) {
+        numbers.insert(all[i].storeKey, i + 1);
+      }
+    }
+  }
+  m_calendarPanel->setExperiments(storage::RunStore::spans(), numbers);
+}
+
+void GraphWidget::refreshSide() {
+  if (!m_sideBar || !m_focused) {
+    return;
+  }
+  QString const key = m_sideBar->current();
+  Tab const    *tab = m_focused->currentTab();
+  bool const    comparison{tab && tab->comparison};
+  if (key == QLatin1String("options")) {
+    updateOptions();
+  } else if (key == QLatin1String("info")) {
+    refreshInfo();
+  } else if (key == QLatin1String("ai")) {
+    if (m_services) {
+      m_services->ensureScanned(); // the experiment's number comes with the list (runsChanged)
+    }
+    QString const run = runReference();
+    m_aiContext->setText(!run.isEmpty() ? tr("About experiment %1 and the range shown; the assistant can also move the chart.").arg(run)
+                                        : QString{});
+    m_aiContext->setVisible(false); // no description: the panel is about the chart shown
+    m_aiExplainBtn->setEnabled((m_aiLive < 0) && (!run.isEmpty() || !chartView().isEmpty()));
+  } else if (key == QLatin1String("statistics")) {
+    m_statsPanel->setSource(viewer(), comparison);
+  } else if (key == QLatin1String("export")) {
+    refreshExportPanel();
+  } else if (key == QLatin1String("calendar")) {
+    refreshCalendar();
+  } else if (key == QLatin1String("channels")) {
+    m_styleEditor->setVisible(!comparison); // a comparison draws the channels chosen for it
+    m_channelsNote->setVisible(comparison);
+  }
+}
+
+QWidget *GraphWidget::buildChannelsPage() {
+  double const ssf{utils::ssf()};
+  auto        *page = new QWidget();
+  auto        *lay  = new QVBoxLayout(page);
+  lay->setContentsMargins(0, 0, 0, 0);
+  m_styleEditor->setParent(page);
+  m_styleEditor->setCompact();
+  lay->addWidget(m_styleEditor, 1);
+  m_styleEditor->show();
+  m_channelsNote = new QWidget(page);
+  auto *noteLay  = new QVBoxLayout(m_channelsNote);
+  noteLay->setContentsMargins(0, 0, 8 * ssf, 0);
+  auto *note = new QLabel(tr("A comparison draws the channels chosen for it."), m_channelsNote);
+  note->setProperty("muted", true);
+  note->setWordWrap(true);
+  auto *changeBtn = new QPushButton(tr("Change comparison…"), m_channelsNote);
+  changeBtn->setMinimumHeight(30 * ssf);
+  changeBtn->setFocusPolicy(Qt::NoFocus);
+  connect(changeBtn, &QPushButton::clicked, this, [this] {
+    if (Tab const *tab = m_focused ? m_focused->currentTab() : nullptr; tab && tab->comparison) {
+      openCompareDialog(tab->key);
+    }
   });
-  connect(dialog, &CalendarDialog::daySelected, this, &GraphWidget::showDay);
-  dialog->open();
+  noteLay->addWidget(note);
+  noteLay->addWidget(changeBtn);
+  noteLay->addStretch();
+  m_channelsNote->hide();
+  lay->addWidget(m_channelsNote, 1);
+  return page;
+}
+
+QWidget *GraphWidget::buildActionsPage() {
+  double const ssf{utils::ssf()};
+  auto        *page = new QWidget();
+  auto        *lay  = new QVBoxLayout(page);
+  lay->setContentsMargins(0, 0, 8 * ssf, 0);
+  lay->setSpacing(2 * ssf);
+  auto caption = [page, lay, ssf](QString const &text) {
+    auto *label = new QLabel(text.toUpper(), page);
+    label->setObjectName("sectionCaption");
+    lay->addSpacing(6 * ssf);
+    lay->addWidget(label);
+  };
+  // a tick box per toggle, kept in step with it both ways
+  auto bind = [this, page, lay, ssf](QAction *action) {
+    auto *check = new QCheckBox(action->text(), page);
+    check->setToolTip(action->toolTip());
+    check->setChecked(action->isChecked());
+    check->setMinimumHeight(32 * ssf);
+    check->setFocusPolicy(Qt::NoFocus);
+    connect(check, &QCheckBox::toggled, action, &QAction::setChecked);
+    connect(action, &QAction::toggled, check, &QCheckBox::setChecked);
+    lay->addWidget(check);
+  };
+  caption(tr("Markers"));
+  bind(m_eventsAct);
+  bind(m_anomaliesAct);
+  bind(m_stagesAct);
+  bind(m_setpointAct);
+  lay->addStretch();
+  return page;
+}
+
+QString GraphWidget::runReference() const {
+  Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
+  if (!tab || tab->comparison || !m_library || (tab->key == ChartPane::LIVE_KEY)) {
+    return {};
+  }
+  ExperimentRun const          run = runOfTab(*tab);
+  QVector<ExperimentRun> const all = m_library->chronological();
+  for (int i{0}; i < all.size(); ++i) {
+    if ((all[i].key == run.key) || (!run.storeKey.isEmpty() && (all[i].storeKey == run.storeKey))) {
+      return QStringLiteral("#%1").arg(i + 1);
+    }
+  }
+  return {};
+}
+
+QJsonObject GraphWidget::chartView() const {
+  QString const run = runReference();
+  if (!m_focused) {
+    return {};
+  }
+  auto clock = [](double t) { return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(t))).toString("yyyy-MM-dd HH:mm:ss"); };
+  if (run.isEmpty()) {
+    // the live data or a recorded day: the day and the part of it shown
+    Tab const *tab = m_focused->currentTab();
+    if (!tab || tab->comparison || !viewer()->getData()) {
+      return {};
+    }
+    QString day;
+    if (tab->key == ChartPane::LIVE_KEY) {
+      day = QDate::currentDate().toString(Qt::ISODate);
+    } else if (tab->key.startsWith(QLatin1String("day:"))) {
+      day = tab->key.mid(4, 10);
+    } else {
+      return {};
+    }
+    QCPRange const view = viewer()->getPlot()->xAxis->range();
+    return QJsonObject{{"day", day}, {"from", clock(view.lower)}, {"to", clock(view.upper)}};
+  }
+  double const start{m_focused->dataStart()};
+  if (std::isnan(start)) {
+    return {};
+  }
+  QCPRange const view = viewer()->getPlot()->xAxis->range();
+  // the lines shown
+  QStringList const names = m_resHolder->states->getNames();
+  QCustomPlot      *plot  = viewer()->getPlot();
+  QStringList       channels;
+  for (int i{0}; (i < plot->graphCount()) && (i < names.size()); ++i) {
+    if (plot->graph(i)->visible()) {
+      channels << names[i];
+    }
+  }
+  auto const       data  = viewer()->getData();
+  double const     last{(data && !data->getTimes().isEmpty()) ? data->getTimes().last() : view.upper};
+  return QJsonObject{{"run", run},
+                     {"duration_s", std::max(0.0, last - start)},
+                     {"from_s", std::max(0.0, view.lower - start)},
+                     {"to_s", std::max(0.0, view.upper - start)},
+                     {"from", clock(view.lower)},
+                     {"to", clock(view.upper)},
+                     {"channels", QJsonArray::fromStringList(channels)}};
+}
+
+void GraphWidget::askAssistant(QString const &question) {
+  if (question.trimmed().isEmpty()) {
+    return;
+  }
+  m_aiBlocks << QStringLiteral("**%1**").arg(question.trimmed().toHtmlEscaped());
+  m_aiBlocks << QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg(tr("Thinking…"));
+  m_aiLive = static_cast<int>(m_aiBlocks.size()) - 1;
+  m_aiTranscript->setMarkdown(m_aiBlocks.join(QStringLiteral("\n\n")));
+  m_aiAskBtn->setEnabled(false);
+  m_aiExplainBtn->setEnabled(false);
+  emit chartQuestionAsked(question, chartView());
+}
+
+void GraphWidget::showAssistantExchange(QString const &status, QString const &answer, bool done) {
+  if ((m_aiLive < 0) || (m_aiLive >= m_aiBlocks.size())) {
+    return;
+  }
+  m_aiBlocks[m_aiLive] = answer.isEmpty() ? QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg(status.toHtmlEscaped()) : answer;
+  if (done) {
+    m_aiLive = -1;
+    m_aiAskBtn->setEnabled(true);
+    m_aiExplainBtn->setEnabled(true);
+  }
+  m_aiTranscript->setMarkdown(m_aiBlocks.join(QStringLiteral("\n\n")));
+  m_aiTranscript->verticalScrollBar()->setValue(m_aiTranscript->verticalScrollBar()->maximum());
+}
+
+QWidget *GraphWidget::buildAiPage() {
+  double const ssf{utils::ssf()};
+  auto        *page = new QWidget();
+  auto        *lay  = new QVBoxLayout(page);
+  lay->setContentsMargins(0, 0, 8 * ssf, 0);
+  lay->setSpacing(8 * ssf);
+  m_aiContext = new QLabel(page);
+  m_aiContext->setProperty("muted", true);
+  m_aiContext->setWordWrap(true);
+  lay->addWidget(m_aiContext);
+  // what the visible range shows, in a few sentences
+  m_aiExplainBtn = new QPushButton(tr("Explain this view"), page);
+  m_aiExplainBtn->setObjectName("primaryButton");
+  m_aiExplainBtn->setMinimumHeight(32 * ssf);
+  m_aiExplainBtn->setFocusPolicy(Qt::NoFocus);
+  lay->addWidget(m_aiExplainBtn);
+  // the questions and answers of this panel
+  m_aiTranscript = new QTextBrowser(page);
+  m_aiTranscript->setObjectName("statsList");
+  m_aiTranscript->setOpenExternalLinks(false);
+  m_aiTranscript->setMinimumHeight(220 * ssf);
+  touch::enableScrolling(m_aiTranscript);
+  lay->addWidget(m_aiTranscript, 1);
+  auto *question = new LineEditScreen(page, VirtualKeyboard::EN);
+  question->setPlaceholderText(tr("Ask, or tell the chart: \"zoom to the second hold\"…"));
+  question->setMinimumHeight(32 * ssf);
+  question->setProperty("soft", true);
+  lay->addWidget(question);
+  auto *row = new QHBoxLayout();
+  row->setSpacing(8 * ssf);
+  m_aiAskBtn = new QPushButton(tr("Ask"), page);
+  m_aiAskBtn->setMinimumHeight(32 * ssf);
+  m_aiAskBtn->setFocusPolicy(Qt::NoFocus);
+  auto *openBtn = new QPushButton(tr("Open the assistant"), page);
+  openBtn->setMinimumHeight(32 * ssf);
+  openBtn->setFocusPolicy(Qt::NoFocus);
+  row->addWidget(m_aiAskBtn, 1);
+  row->addWidget(openBtn, 1);
+  lay->addLayout(row);
+  auto ask = [this, question] {
+    QString const text = question->text();
+    question->clear();
+    askAssistant(text);
+  };
+  connect(m_aiAskBtn, &QPushButton::clicked, this, ask);
+  connect(question, &QLineEdit::returnPressed, this, ask);
+  connect(m_aiExplainBtn, &QPushButton::clicked, this, [this] {
+    if (chartView().contains(QLatin1String("day"))) { // a day: its experiments and what happened between them
+      askAssistant(tr("Explain what happened on this day: the experiments, and what the chamber did between them."));
+    } else {
+      askAssistant(tr("Explain what happens in this view: the setpoint and how well the temperature followed it, and anything unusual."));
+    }
+  });
+  connect(openBtn, &QPushButton::clicked, this, [this] { emit assistantRequested(runReference(), QString{}); });
+  return page;
+}
+
+QWidget *GraphWidget::buildInfoPage() {
+  double const ssf{utils::ssf()};
+  auto        *page = new QWidget();
+  auto        *lay  = new QVBoxLayout(page);
+  lay->setContentsMargins(0, 0, 8 * ssf, 0);
+  lay->setSpacing(10 * ssf);
+  m_infoLabel = new QLabel(page);
+  m_infoLabel->setWordWrap(true);
+  m_infoLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  lay->addWidget(m_infoLabel);
+  m_detailsBtn = new QPushButton(tr("Edit experiment details…"), page);
+  m_detailsBtn->setMinimumHeight(30 * ssf);
+  m_detailsBtn->setFocusPolicy(Qt::NoFocus);
+  connect(m_detailsBtn, &QPushButton::clicked, this, &GraphWidget::editExperimentDetails);
+  lay->addWidget(m_detailsBtn);
+  lay->addStretch();
+  return page;
 }
 
 void GraphWidget::initAnalysis() {
@@ -734,9 +929,13 @@ void GraphWidget::initAnalysis() {
     m_drawer->close();
     showRun(run, splitRight);
   });
-  connect(m_listBtn, &QPushButton::clicked, m_drawer, &OverlayDrawer::toggle);
-  m_listBtn->setEnabled(true);
-  m_compareBtn->setEnabled(true);
+  connect(m_library, &ExperimentLibrary::runsChanged, this, [this] {
+    // the panels that number experiments, once the list is read
+    QString const open = m_sideBar->current();
+    if ((open == QLatin1String("calendar")) || (open == QLatin1String("ai")) || (open == QLatin1String("info"))) {
+      refreshSide();
+    }
+  });
 
   for (ChartPane *pane : std::as_const(m_panes)) {
     pane->setNotes(m_notes);
@@ -746,11 +945,6 @@ void GraphWidget::initAnalysis() {
   m_statistics = new ChartStatisticsDialog(m_resHolder, m_notes, this);
   connect(m_statistics, &ChartStatisticsDialog::zoomRequested, this, [this](double from, double to) {
     viewer()->setTimeRange(from, to);
-  });
-  connect(m_statisticsBtn, &QPushButton::clicked, this, [this] {
-    m_statistics->show();
-    m_statistics->raise();
-    updateStatisticsSource(); // shown: its analysis is wanted now
   });
   // the alignment changed in the comparison tab of the statistics: the comparison tab follows
   connect(m_statistics->comparisonPanel(), &ComparisonPanel::alignmentChanged, this, [this] {
@@ -769,7 +963,6 @@ void GraphWidget::initAnalysis() {
     m_focused->updateTab(key, tab->label, name, std::make_shared<ChartComparison const>(changed));
     computeComparison(key, changed);
   });
-  m_statisticsBtn->setEnabled(true);
 
   // experiments the assistant shows open here
   m_services->setShowHandler([this](ExperimentRun const &run, QStringList const &channels, double from, double to,
@@ -890,9 +1083,11 @@ void GraphWidget::refreshComparisonStatistics() {
   m_statistics->comparisonPanel()->setAlignment(tab->comparison->alignMode, tab->comparison->alignN);
 }
 
-void GraphWidget::showInfo() {
+void GraphWidget::refreshInfo() {
   Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
+  updateOptions(); // Edit experiment details: only for saved experiments
   if (!tab) {
+    m_infoLabel->clear();
     return;
   }
   auto const data  = viewer()->getData();
@@ -937,25 +1132,46 @@ void GraphWidget::showInfo() {
     rows += row(tr("Samples"), QLocale().toString(times.size()));
   }
 
-  // a small card above the button, closed by a tap elsewhere
-  auto *popup = new QFrame(this, Qt::Popup);
-  popup->setAttribute(Qt::WA_DeleteOnClose);
-  popup->setObjectName("infoCard");
-  theme::Colors const &c = theme::colors();
-  popup->setStyleSheet(QStringLiteral("QFrame#infoCard { background: %1; border: 1px solid %2; border-radius: 8px; }")
-                         .arg(c.panel.name(), c.border.name()));
-  auto *lay   = new QVBoxLayout(popup);
-  double const ssf{utils::ssf()};
-  lay->setContentsMargins(14 * ssf, 12 * ssf, 14 * ssf, 12 * ssf);
-  auto *label = new QLabel(QStringLiteral("<b>%1</b><table style='margin-top:6px'>%2</table>").arg(tab->name.toHtmlEscaped(), rows), popup);
-  label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  label->setMaximumWidth(static_cast<int>(520 * ssf));
-  label->setWordWrap(true);
-  lay->addWidget(label);
-  popup->adjustSize();
-  QPoint const anchor = m_infoBtn->mapToGlobal(QPoint(0, 0));
-  popup->move(anchor.x(), anchor.y() - popup->height() - static_cast<int>(6 * ssf));
-  popup->show();
+  m_infoLabel->setText(QStringLiteral("<b>%1</b><table style='margin-top:8px' cellpadding='3'>%2</table>").arg(tab->name.toHtmlEscaped(), rows));
+}
+
+void GraphWidget::fitView() {
+  // first Fit: all the data of the tab (live or a day: the day); again on a day: its last experiment, and back
+  DataViewer *chart = viewer();
+  Tab const  *tab   = m_focused ? m_focused->currentTab() : nullptr;
+  bool const wholeDay{tab && ((tab->key == ChartPane::LIVE_KEY) || tab->key.startsWith(QLatin1String("day:")))};
+  if (!chart->fittedToAll() || !wholeDay || !chart->getData()) {
+    chart->setFitStart(qQNaN());
+    return;
+  }
+  // the experiment: the last stretch of samples with the chamber working (between gaps, which are NaN)
+  int const status{static_cast<int>(m_resHolder->states->getNames().indexOf("status_condition"))};
+  QVector<double> const          times  = chart->getData()->getTimes();
+  QVector<QVector<double>> const states = chart->getData()->getStates();
+  if ((status < 0) || (status >= states.size()) || times.isEmpty()) {
+    return;
+  }
+  constexpr double WORK{2.0};
+  QVector<double> const &condition = states[status];
+  for (int end{static_cast<int>(times.size()) - 1}; end >= 0; --end) {
+    if (condition[end] != WORK) {
+      continue;
+    }
+    int start{end};
+    while ((start > 0) && (condition[start - 1] == WORK)) {
+      --start;
+    }
+    if ((times[end] - times[start] < 60.0) && (end < times.size() - 1)) {
+      end = start; // a moment of work, not an experiment: look further back
+      continue;
+    }
+    if (end == times.size() - 1) {
+      chart->setFitStart(times[start]); // still running: from its start, following it
+    } else {
+      chart->setTimeRange(times[start], times[end]);
+    }
+    return;
+  }
 }
 
 void GraphWidget::updateLiveActivity() {
@@ -1246,8 +1462,7 @@ void GraphWidget::restoreSession() {
       QString const     key  = tab.value("key").toString();
       QJsonObject       view = tab.value("view").toObject();
       if (key == ChartPane::LIVE_KEY) {
-        pane->setTabView(key, view);
-        continue;
+        continue; // live data opens following the newest samples, not a zoom of an earlier session
       }
       m_restoreTarget = pane;
       m_restoreView   = &view;
@@ -1309,8 +1524,16 @@ QString GraphWidget::showFromServices(ExperimentRun const &run, QStringList cons
     double const start{pane->dataStart()};
     if (!std::isnan(from) && !std::isnan(to) && !std::isnan(start)) {
       pane->viewer()->setTimeRange(start + from, start + to);
+    } else {
+      pane->viewer()->setControlMode(DataViewer::ControlMode::LEAD_FULL); // no range: the whole experiment
+    }
+    if (!channels.isEmpty()) {
+      m_styleEditor->showOnly(channels);
     }
     return {};
+  }
+  if (!channels.isEmpty()) {
+    m_styleEditor->showOnly(channels);
   }
   showRun(run, false, from, to);
   return {};
@@ -1715,9 +1938,7 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
 }
 
 void GraphWidget::updateStatisticsSource() {
-  if (m_optionsDrawer && m_optionsDrawer->isOpen()) {
-    updateOptions();
-  }
+  refreshSide();
   if (!m_statistics || !m_focused) {
     return;
   }
@@ -1930,13 +2151,6 @@ QWidget *GraphWidget::buildOptions() {
   derived->addWidget(manageBtn);
   refreshDerivedList();
 
-  // the experiment shown
-  QVBoxLayout *experiment = section(tr("Experiment"), false);
-  m_detailsBtn            = new QPushButton(tr("Edit experiment details…"), page);
-  m_detailsBtn->setMinimumHeight(30 * ssf);
-  m_detailsBtn->setFocusPolicy(Qt::NoFocus);
-  experiment->addWidget(m_detailsBtn);
-  connect(m_detailsBtn, &QPushButton::clicked, this, &GraphWidget::editExperimentDetails);
   lay->addStretch();
 
   // smoothing and overlays apply to both charts when the page is split
@@ -2032,7 +2246,7 @@ void GraphWidget::onAnnotationDrawn(ChartPane *pane, double x0, double x1) {
   QString    label;
   QColor     color;
   bool const ok{annotationdialog::ask(this, QStringLiteral("%1 – %2").arg(timeOf(x0), timeOf(x1)), label, color)};
-  m_annotateBtn->setChecked(false);
+  m_panes.first()->toolbar()->setTool(ChartToolbar::Tool::INSPECT); // one annotation, then back to Inspect
   if (!ok) {
     return;
   }
@@ -2074,31 +2288,92 @@ void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> con
   QString const key   = QStringLiteral("day:") + day.toString(Qt::ISODate);
   Tab           tab{key, label, name, QStringLiteral("chart:") + key, nullptr, experiments.size() == 1 ? experiments.first().key : QString{}};
   QStringList const names = m_resHolder->states->getNames();
-  openLoading(tab, false, [names, experiments](Samples &out, QString &error) {
+  // the day's interval file: every sample received while the application was connected (idle times included)
+  QString const dayFile = deepvaccontrol::INTERVALS_DIR
+                          + utils::calculateFileName(static_cast<quint64>(QDateTime(day, QTime(12, 0)).toSecsSinceEpoch()));
+  openLoading(tab, false, [names, experiments, dayFile](Samples &out, QString &error) {
     QVector<double>          times;
     QVector<QVector<double>> states(names.size());
+    {
+      QFile file(dayFile);
+      if (file.open(QIODevice::ReadOnly)) {
+        QDataStream in(&file);
+        in.setFloatingPointPrecision(QDataStream::DoublePrecision);
+        QVariantMap              header;
+        QVector<double>          fileTimes;
+        QVector<QVector<double>> fileStates;
+        in >> header >> fileTimes >> fileStates;
+        if ((in.status() == QDataStream::Ok) && (fileStates.size() == names.size())) {
+          times  = fileTimes;
+          states = fileStates;
+        }
+      }
+    }
+    // gaps (the application closed): no line across them
+    auto breakGaps = [&names](QVector<double> &t, QVector<QVector<double>> &s) {
+      constexpr double GAP_S{30.0};
+      QVector<double>          bt;
+      QVector<QVector<double>> bs(names.size());
+      for (qsizetype i{0}; i < t.size(); ++i) {
+        if ((i > 0) && (t[i] - t[i - 1] > GAP_S)) {
+          bt.push_back((t[i] + t[i - 1]) / 2.0);
+          for (auto &column : bs) {
+            column.push_back(qQNaN());
+          }
+        }
+        bt.push_back(t[i]);
+        for (int c{0}; c < names.size(); ++c) {
+          bs[c].push_back((i < s[c].size()) ? s[c][i] : qQNaN());
+        }
+      }
+      t = std::move(bt);
+      s = std::move(bs);
+    };
+    breakGaps(times, states);
+    // experiments the file does not hold (recorded on another computer, or the file is missing): added
+    QVector<double> const fromFile = times; // sorted
+    auto covered = [&fromFile](double from, double to) {
+      auto const it = std::lower_bound(fromFile.cbegin(), fromFile.cend(), from);
+      return (it != fromFile.cend()) && (*it <= to);
+    };
     for (storage::ExperimentSpan const &experiment : experiments) {
+      if (covered(experiment.start, experiment.end)) {
+        continue;
+      }
       storage::RunSamples samples;
       if (!storage::RunStore::loadSamples(experiment.key, samples) || samples.times.isEmpty()) {
         continue;
       }
-      if (!times.isEmpty()) { // gap: no line drawn between two experiments
-        times.push_back((times.last() + samples.times.first()) / 2.0);
-        for (auto &state : states) {
-          state.push_back(qQNaN());
-        }
-      }
+      // no line drawn into or out of it
+      times.push_back(samples.times.first() - 1e-3);
       times += samples.times;
+      times.push_back(samples.times.last() + 1e-3);
       for (int i{0}; i < names.size(); ++i) {
         qsizetype const column = samples.columns.indexOf(names[i]);
+        states[i].push_back(qQNaN());
         states[i] += (column >= 0) ? samples.values[column] : QVector<double>(samples.times.size(), qQNaN());
+        states[i].push_back(qQNaN());
       }
     }
     if (times.isEmpty()) {
       error = tr("The experiments of this day could not be read.");
       return false;
     }
-    out = {times, QStringList{}, states};
+    // in time order (experiments added after the file's samples)
+    QVector<qsizetype> order(times.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&times](qsizetype a, qsizetype b) { return times[a] < times[b]; });
+    QVector<double>          sortedTimes(times.size());
+    QVector<QVector<double>> sortedStates(states.size(), QVector<double>(times.size(), qQNaN()));
+    for (qsizetype i{0}; i < order.size(); ++i) {
+      sortedTimes[i] = times[order[i]];
+      for (qsizetype c{0}; c < states.size(); ++c) {
+        if (order[i] < states[c].size()) {
+          sortedStates[c][i] = states[c][order[i]];
+        }
+      }
+    }
+    out = {sortedTimes, QStringList{}, sortedStates};
     return true;
   });
 }
@@ -2123,25 +2398,35 @@ void GraphWidget::openStored(QString const &storeKey, QString const &label, QStr
 
 void GraphWidget::handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel) {
   bool const enablePress{newLevel >= AccessManager::AccessLevel::USER_START_1};
-  m_exportToBtn->setEnabled(enablePress);
-  m_styleBtn->setEnabled(enablePress);
+  m_sideBar->setPageEnabled(QStringLiteral("export"), enablePress);
+  m_sideBar->setPageEnabled(QStringLiteral("channels"), enablePress);
   m_canAnnotate = enablePress && m_notes;
+  // the tools pinned or not, as this user left them
+  QSettings const settings(QStringLiteral("data/chart/toolbar.ini"), QSettings::IniFormat);
+  QString const   user = name.isEmpty() ? m_resHolder->users->getCurrentUserName() : name;
+  setToolbarsPinned(settings.value(QStringLiteral("pinned/%1").arg(user), false).toBool(), false);
   updateDayButton(); // annotate: also depends on the tab shown
 }
 
-void GraphWidget::exportData() {
-  Tab const *tab   = m_focused->currentTab();
-  auto const shown = viewer()->getData();
-  if (!tab || !shown || shown->getTimes().isEmpty()) {
-    (new MessageDialog(tr("Export"), tr("There is no data to export in this chart.")))->open();
+void GraphWidget::refreshExportPanel() {
+  if (m_exportForm) {
+    m_exportForm->hide();
+    m_exportForm->deleteLater();
+    m_exportForm = nullptr;
+  }
+  Tab const *tab   = m_focused ? m_focused->currentTab() : nullptr;
+  auto const shown = m_focused ? viewer()->getData() : nullptr;
+  m_exportEmpty->setVisible(!tab || !shown || shown->getTimes().isEmpty());
+  if (m_exportEmpty->isVisible()) {
     return;
   }
   QVector<double> const shownTimes = shown->getTimes();
   QDate const           day = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(shownTimes.first())).date();
   bool const comparison{static_cast<bool>(tab->comparison)};
   // a comparison is exported as shown (its own lines): no day or custom range from the recorded files
-  auto *dialog = new ExportDialog(m_resHolder, day, m_services != nullptr, !tab->storeKey.isEmpty(), !comparison, comparison, this);
-  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  auto *dialog = new ExportDialog(m_resHolder, day, m_services != nullptr, !tab->storeKey.isEmpty(), !comparison, comparison, m_exportHost, true);
+  m_exportHost->layout()->addWidget(dialog);
+  m_exportForm = dialog;
   Tab const tabCopy = *tab;
   connect(dialog, &QDialog::accepted, this, [this, dialog, tabCopy, shown, shownTimes]() {
     QString const format   = dialog->format();
@@ -2254,6 +2539,8 @@ void GraphWidget::exportData() {
     exportViewer->deleteLater();
     done(ok, filePath);
   });
-  dialog->open();
+  // a new form for the next export, once this one is written
+  connect(dialog, &QDialog::accepted, this, [this] { QTimer::singleShot(0, this, &GraphWidget::refreshExportPanel); });
+  dialog->show();
 }
 } // namespace deepvaccontrol

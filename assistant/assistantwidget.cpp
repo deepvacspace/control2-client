@@ -15,6 +15,7 @@
 #include <QVBoxLayout>
 
 #include "analysistools.h"
+#include "chambertools.h"
 #include "assistantengine.h"
 #include "analysisservices.h"
 #include "experimentlibrary.h"
@@ -41,7 +42,13 @@ QString lookupText(QString const &tool) {
     {"get_run_details", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the experiment details…")},
     {"get_events", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the events…")},
     {"plot_run", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Opening the chart…")},
-    {"generate_report", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Writing the report…")}};
+    {"generate_report", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Writing the report…")},
+    {"get_day_summary", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the day…")},
+    {"get_live_status", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Reading the chamber…")},
+    {"get_settings", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Reading the settings…")},
+    {"predict_setpoint", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Simulating with the digital twin…")},
+    {"suggest_pid", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Calculating PID coefficients…")},
+    {"export_data", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Exporting the data…")}};
   char const *text = texts.value(tool, QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantWidget", "Looking up the data…"));
   return QCoreApplication::translate("deepvaccontrol::assistant::AssistantWidget", text);
 }
@@ -161,6 +168,9 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
       m_liveBlock = -1;
     }
     setStatus(lookupText(name));
+    if (m_fromChart) {
+      emit chartExchange(lookupText(name), QString{}, false);
+    }
   });
   connect(m_engine, &AssistantEngine::partialAnswer, this, [this](QString const &text) {
     if (text.trimmed().isEmpty()) {
@@ -181,6 +191,9 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
     if (!m_renderTimer.isActive()) {
       m_renderTimer.start(); // at most ~8 redraws per second while tokens arrive
     }
+    if (m_fromChart) {
+      emit chartExchange(QString{}, text, false);
+    }
   });
   connect(m_engine, &AssistantEngine::answered, this, [this](QString const &text) {
     int const live{m_liveBlock};
@@ -191,6 +204,9 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
       render();
     } else {
       append(text);
+    }
+    if (std::exchange(m_fromChart, false)) {
+      emit chartExchange(QString{}, text, true);
     }
   });
   // the shown answer stays while a better one is looked for
@@ -208,14 +224,18 @@ AssistantWidget::AssistantWidget(ResHolder *resHolder, QWidget *parent)
     m_liveBlock = -1;
     clearNotes();
     append(QStringLiteral("<span style=\"color:#dc2626\">%1</span>").arg(tr("Error: %1").arg(error).toHtmlEscaped()));
+    if (std::exchange(m_fromChart, false)) {
+      emit chartExchange(QString{}, tr("Error: %1").arg(error), true);
+    }
   });
 
   onStateChanged(LlmSidecar::State::STOPPED, tr("Model not started"));
   if (m_sidecar->config().preload) {
     QTimer::singleShot(0, m_sidecar, &LlmSidecar::start); // load while the operator works elsewhere
   }
-  append(tr("**Assistant** — ask about recorded experiments: summaries, KPIs, stages, anomalies, comparisons, "
-            "charts and reports."));
+  append(tr("**Assistant** — ask about recorded experiments and days (summaries, KPIs, stages, anomalies, comparisons, "
+            "charts, reports, data export), the chamber now and its settings, or the digital twin (predictions, PID "
+            "suggestions)."));
 }
 
 AssistantWidget::~AssistantWidget() = default;
@@ -236,6 +256,9 @@ void AssistantWidget::setServices(AnalysisServices *analysis, std::function<void
   };
   m_tools = std::make_unique<AnalysisTools>(analysis->library(), analysis->notes(), viewer);
   m_tools->registerTools(m_registry);
+  m_chamberTools = std::make_unique<ChamberTools>(m_resHolder);
+  m_chamberTools->registerTools(m_registry);
+
   connect(analysis->library(), &ExperimentLibrary::runsChanged, this, &AssistantWidget::refreshRunCombo);
   refreshRunCombo();
 }
@@ -266,6 +289,30 @@ void AssistantWidget::refreshRunCombo() {
   }
   if (int const index = m_runCombo->findData(current); index >= 0) {
     m_runCombo->setCurrentIndex(index);
+  }
+}
+
+void AssistantWidget::askFromChart(QString const &question, QJsonObject const &view) {
+  if (question.trimmed().isEmpty()) {
+    return;
+  }
+  if (m_engine->busy() || !m_queued.isEmpty()) {
+    emit chartExchange(QString{}, tr("Still answering the previous question."), true);
+    return;
+  }
+  refreshRunCombo();
+  m_runCombo->setCurrentIndex(std::max(0, m_runCombo->findData(view.value("run").toString())));
+  m_queuedView = view;
+  m_fromChart  = true;
+  emit chartExchange(m_sidecar->state() == LlmSidecar::State::READY ? tr("Thinking…") : tr("Starting the local model…"), QString{}, false);
+  send(question);
+}
+
+void AssistantWidget::askAbout(QString const &run, QString const &question) {
+  refreshRunCombo();
+  m_runCombo->setCurrentIndex(std::max(0, m_runCombo->findData(run)));
+  if (!question.trimmed().isEmpty()) {
+    send(question);
   }
 }
 
@@ -316,10 +363,11 @@ void AssistantWidget::dispatch() {
     QTimer::singleShot(500, this, &AssistantWidget::dispatch); // wait for the experiment list
     return;
   }
-  QString const question = m_queued;
-  QString const focus    = m_queuedFocus.isEmpty() ? focusRun() : m_queuedFocus;
+  QString const     question = m_queued;
+  QString const     focus    = m_queuedFocus.isEmpty() ? focusRun() : m_queuedFocus;
+  QJsonObject const view     = std::exchange(m_queuedView, QJsonObject{});
   m_queued.clear();
-  m_engine->ask(question, focus);
+  m_engine->ask(question, focus, view);
 }
 
 void AssistantWidget::onStateChanged(LlmSidecar::State state, QString const &message) {

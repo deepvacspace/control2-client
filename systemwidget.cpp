@@ -1,4 +1,5 @@
 #include "systemwidget.h"
+#include "chamberview.h"
 
 #include <QApplication>
 #include <QColor>
@@ -141,7 +142,7 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   addBtn("get_settings");
   addBtn("delete_settings");
   addBtn("stop");
-  addBtn("confrim_alarm");
+  addBtn("confirm_alarm");
 
   cmdBtnsLay->addStretch();
   mainLay->addStretch();
@@ -261,16 +262,15 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   prepareSystemTabPage(sysListWidget);
   m_tabWidget->addTab(sysListWidget, tr("States"));
 
-  // diagram (empty for now)
+  // the chamber's diagram: every component with its live state
   auto *diagramWidget = new QWidget(this);
   {
     auto *lay = new QVBoxLayout(diagramWidget);
     lay->setContentsMargins(0, 8 * utils::ssf(), 0, 0);
-    auto *card = new QFrame(diagramWidget);
-    card->setObjectName("pageCard");
-    lay->addWidget(card);
+    lay->addWidget(new ChamberView(resHolder, diagramWidget));
   }
   prepareSystemTabPage(diagramWidget);
+  m_diagramTab = diagramWidget;
   m_tabWidget->addTab(diagramWidget, tr("Diagram"));
 
   // 1 - журнал
@@ -316,3 +316,7 @@ void SystemWidget::handleAccessChange(QString const &, AccessManager::AccessLeve
   m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_commandsTab), enableTabAll);
 }
 } // namespace deepvaccontrol
+
+void deepvaccontrol::SystemWidget::showDiagram() {
+  m_tabWidget->setCurrentWidget(m_diagramTab);
+}

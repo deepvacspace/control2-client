@@ -34,7 +34,7 @@ ForceOutSingleWidget::ForceOutSingleWidget(
   m_modeGroup->setExclusive(true);
   QStringList modes{tr("Auto"), tr("Off"), tr("On")};
   if (type == ForceType::DUTY) {
-    modes << tr("Duty");
+    modes << tr("Set");
   }
   auto *segments = new QHBoxLayout();
   segments->setSpacing(0);
@@ -75,7 +75,7 @@ ForceOutSingleWidget::ForceOutSingleWidget(
       l->setProperty("muted", true);
       return l;
     };
-    dutyLay->addWidget(muted(tr("Duty")));
+    dutyLay->addWidget(muted(tr("Set")));
     dutyLay->addWidget(duty);
     dutyLay->addWidget(muted(tr("Period, s")));
     dutyLay->addWidget(period);

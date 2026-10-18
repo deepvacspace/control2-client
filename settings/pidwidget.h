@@ -38,7 +38,6 @@ private:
   // all p-gains, then i-times, then d-times
   QList<LineEditNum *> m_fields;
   QVector<QFrame *>    m_rows; // band i (lowest range first)
-  BandScale           *m_scale{nullptr};
   SystemValue         *m_current{nullptr};
   SystemValue         *m_setpoint{nullptr};
 };
