@@ -8,6 +8,7 @@
 #include "labelplus.h"
 #include "lineeditnum.h"
 #include "lineedittime.h"
+#include "offlineadvisorstart.h"
 #include "statuslabel.h"
 #include "utils.h"
 
@@ -266,8 +267,8 @@ void Manual::sendProgram() {
     m_model->delItem(0);
   }
 
-  if (m_resHolder->aiAdvisorEnabled) {
-    utils::showAiAdvisorStartPromptAndRun(this);
+  if (m_resHolder->aiAdvisorEnabled && !offerOfflineAdvisorBeforeStart(m_resHolder, m_model, this)) {
+    return;
   }
 
   m_model->printToDebug();

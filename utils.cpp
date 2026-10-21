@@ -1,15 +1,9 @@
 #include "utils.h"
 
-#include <QAbstractButton>
 #include <QApplication>
 #include <QColor>
-#include <QCoreApplication>
-#include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QJsonObject>
-#include <QMessageBox>
-#include <QProcess>
 
 namespace deepvaccontrol::utils {
 
@@ -232,26 +226,6 @@ double calculateKey(quint64 epochSecTime) {
 QString calculateFileName(quint64 epochSecTime) {
   QDateTime dateTime{QDateTime::fromSecsSinceEpoch(utils::calculateKey(epochSecTime))};
   return dateTime.toString("yyyy-MM-dd_HH-mm-ss") + ".dat";
-}
-
-void showAiAdvisorStartPromptAndRun(QWidget *parent) {
-  QMessageBox msgBox{parent};
-  msgBox.setIcon(QMessageBox::Information);
-  msgBox.setWindowTitle(QStringLiteral("AI Advisor"));
-  msgBox.setText(QStringLiteral("The AI module will choose the best coefficients for the experiment."));
-  msgBox.setStandardButtons(QMessageBox::Ok);
-  msgBox.button(QMessageBox::Ok)->setText(QStringLiteral("Accept"));
-  msgBox.exec();
-
-  QString const advisorPath = QDir(QCoreApplication::applicationDirPath()).filePath("DeepvacAIAdvisor.exe");
-  if (!QFileInfo::exists(advisorPath)) {
-    QMessageBox::warning(parent,
-                         QStringLiteral("AI Advisor"),
-                         QStringLiteral("DeepvacAIAdvisor.exe was not found next to the application executable."));
-    return;
-  }
-
-  QProcess::startDetached(advisorPath, {}, QCoreApplication::applicationDirPath());
 }
 
 QString toSuperscript(int exp) {

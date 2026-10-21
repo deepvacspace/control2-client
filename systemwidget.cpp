@@ -1,7 +1,6 @@
 #include "systemwidget.h"
 
 #include <QApplication>
-#include <QCheckBox>
 #include <QColor>
 #include <QHBoxLayout>
 #include <QLineEdit>
@@ -192,19 +191,6 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   auto *cmdWidget = new SysCmdWidget(resHolder, this);
   prepareSystemTabPage(cmdWidget);
   m_tabWidget->addTab(cmdWidget, tr("Команды ПЛК"));
-
-  auto *aiWidget = new QWidget(this);
-  prepareSystemTabPage(aiWidget);
-  auto *aiLayout = new QHBoxLayout(aiWidget);
-  auto *aiAdvisorToggle = new QCheckBox("AI Advisor", aiWidget);
-  aiAdvisorToggle->setChecked(true);
-  resHolder->aiAdvisorEnabled = aiAdvisorToggle->isChecked();
-  connect(aiAdvisorToggle, &QCheckBox::toggled, this, [resHolder](bool checked) {
-    resHolder->aiAdvisorEnabled = checked;
-  });
-  aiLayout->addWidget(aiAdvisorToggle);
-  aiLayout->addStretch();
-  m_tabWidget->addTab(aiWidget, "AI");
 
   connect(resHolder->users, &AccessManager::userSelected, this, &SystemWidget::handleAccessChange);
   handleAccessChange(QString(), resHolder->users->getCurrentAccessLevel());
