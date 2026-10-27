@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "constants.h"
+#include "recordingfile.h"
 #include "runstore.h"
 #include "utils.h"
 
@@ -83,7 +85,7 @@ ExperimentLibrary::FileSummary summarizeFile(QString const &path) {
   summary.endsWithTerminator = pendingTerminator;
   return summary;
 }
-} // namespace
+}
 
 ExperimentLibrary::ExperimentLibrary(QString const               &intervalsDir,
                                      QString const               &actionsFile,
@@ -112,12 +114,8 @@ void ExperimentLibrary::refresh() {
   m_rescanRequested = false;
   emit scanStarted();
 
-  QDir const        dir(m_intervalsDir);
-  QStringList const fileNames = dir.entryList({"*.dat"}, QDir::Files, QDir::Name);
-  QStringList       paths;
-  for (QString const &name : fileNames) {
-    paths.push_back(dir.filePath(name));
-  }
+  // the day recordings: Parquet files, and older .dat days without one
+  QStringList const paths = recordingfile::dayFiles(m_intervalsDir, deepvaccontrol::INTERVALS_DIR);
 
   auto cache  = std::make_shared<QHash<QString, FileSummary>>(m_summaryCache);
   auto result = std::make_shared<QVector<FileSummary>>();
@@ -291,9 +289,7 @@ ExperimentRun ExperimentLibrary::makeRangeRun(double start, double end) const {
                 : QStringLiteral("%1 – %2").arg(from.toString("yyyy-MM-dd HH:mm"), to.toString("yyyy-MM-dd HH:mm"));
 
   for (QDate day = from.date(); day <= to.date(); day = day.addDays(1)) {
-    QString const path
-      = QDir(m_intervalsDir).filePath(utils::calculateFileName(QDateTime(day, QTime(12, 0)).toSecsSinceEpoch()));
-    if (QFile::exists(path)) {
+    if (QString const path = recordingfile::readPath(QDateTime(day, QTime(12, 0)).toSecsSinceEpoch()); !path.isEmpty()) {
       run.files.push_back(path);
     }
   }
@@ -500,19 +496,8 @@ QVector<ChannelInfo> ExperimentLibrary::channels(ExperimentData const &data) con
 }
 
 bool ExperimentLibrary::readIntervalFile(QString const &path, QVector<double> &times, QVector<QVector<double>> &states) {
-  QFile file(path);
-  if (!file.open(QIODevice::ReadOnly)) {
-    return false;
-  }
-
-  // same layout as DataHolder::writeData
-  QDataStream in(&file);
-  in.setFloatingPointPrecision(QDataStream::DoublePrecision);
-  QVariantMap header;
-  in >> header;
-  in >> times;
-  in >> states;
-  return QDataStream::Ok == in.status();
+  // a Parquet day (columns in the order of the value list) or an older .dat day
+  return recordingfile::read(path, times, states);
 }
 
 QString ExperimentLibrary::formatDuration(double sec) {
@@ -535,4 +520,4 @@ QVector<ExperimentRun> ExperimentLibrary::chronological() const {
   return all;
 }
 
-} // namespace deepvaccontrol
+}

@@ -5,6 +5,7 @@
 
 #include "constants.h"
 #include "dataholder.h"
+#include "recordingfile.h"
 #include "resholder.h"
 #include "stringpathprovider.h"
 
@@ -16,9 +17,7 @@ DataManager::DataManager(ResHolder *resHolder, quint16 numberOfStates, quint32 i
 DataManager::~DataManager() {
   if (m_intervalToAdd && m_intervalToAdd->isDirty()) {
     m_intervalToAdd->addNaN();
-    StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(m_intervalToAdd->getIntervalKey()),
-                            m_resHolder->logger);
-    m_intervalToAdd->saveToFile(&path);
+    m_intervalToAdd->save();
   }
 }
 
@@ -32,9 +31,7 @@ bool DataManager::addPoint(double epochSecTime, QVector<double> const &pointVect
       m_resHolder->logger->stream(Logger::Level::INFO) << "Data from another interval, lets create/open it";
 
       // commit holder data
-      StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(m_intervalToAdd->getIntervalKey()),
-                              m_resHolder->logger);
-      m_intervalToAdd->saveToFile(&path);
+      m_intervalToAdd->save();
 
       needAnotherInterval = true;
     }
@@ -49,10 +46,12 @@ bool DataManager::addPoint(double epochSecTime, QVector<double> const &pointVect
       << "...";
     m_intervalToAdd = std::make_shared<DataHolder>(m_numberOfStates, m_resHolder->logger, key);
 
-    // try to load interval from file
-    m_resHolder->logger->stream(Logger::Level::DEB) << "Trying to load data holder from file...";
-    StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(key), m_resHolder->logger);
-    m_intervalToAdd->loadFromFile(&path);
+    // the day so far, when the application ran earlier today (a Parquet day, or an older .dat one)
+    if (QString const existing = recordingfile::readPath(key); !existing.isEmpty()) {
+      m_resHolder->logger->stream(Logger::Level::DEB) << "Loading the day's recording" << existing;
+      StringPathProvider path(existing, m_resHolder->logger);
+      m_intervalToAdd->loadFromFile(&path);
+    }
 
     emit intervalToAddRecreated(key);
   }
@@ -70,9 +69,13 @@ bool DataManager::prepareIntervalToDisplay(double epochSecTime) {
   // make in memory new holder anyway (release prev)
   m_intervalToDisplay = std::make_shared<DataHolder>(m_numberOfStates, m_resHolder->logger, key);
 
-  // try to load interval from file
-  StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(key), m_resHolder->logger);
+  // the day's recording (Parquet, or an older .dat day)
+  QString const existing = recordingfile::readPath(key);
+  if (existing.isEmpty()) {
+    return false;
+  }
+  StringPathProvider path(existing, m_resHolder->logger);
   return m_intervalToDisplay->loadFromFile(&path);
 }
 
-} // namespace deepvaccontrol
+}

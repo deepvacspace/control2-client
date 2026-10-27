@@ -16,7 +16,8 @@ namespace deepvaccontrol {
 
 /**
  * @brief One recorded experiment: a continuous stretch of samples found in the
- * interval files (data/yyyy-MM-dd_HH-mm-ss.dat). It may span several day files.
+ * day recordings (data/recordings/yyyy-MM-dd.parquet, or the older data/yyyy-MM-dd_00-00-00.dat). It may span
+ * several day files.
  */
 struct ExperimentRun {
   QString     key;   // stable id used for tabs and saved notes
@@ -172,6 +173,6 @@ inline QVector<ExperimentRun> const &ExperimentLibrary::storedRuns() const {
   return m_storedRuns;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // EXPERIMENTLIBRARY_H

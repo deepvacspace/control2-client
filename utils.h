@@ -33,7 +33,6 @@ QString     fromPascalString(QByteArray &pstr);
 QByteArray  makePascalStringPair(QString const &str, float value);
 QString     binaryString(char const *adr, int size, bool isLittleEndian);
 double      calculateKey(quint64 epochSecTime);
-QString     calculateFileName(quint64 epochSecTime);
 QString toSuperscript(int exp); // Convert integer exponent to superscript string like "⁻¹²"
 QString formatScientific(double v, int frac, bool fixedWhenReadable);
 QString formatScientific(float v, int frac, bool fixedWhenReadable);
@@ -67,5 +66,5 @@ template<typename CharSized> quint16 crc16(CharSized const *data, size_t length)
   return crc;
 }
 
-} // namespace deepvaccontrol::utils
+}
 #endif // UTILS_H

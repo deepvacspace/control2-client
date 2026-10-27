@@ -11,6 +11,8 @@ constexpr inline quint8 const  AWAIT_BIT{8U}; // Flag in manual/program job
 constexpr inline quint8 const  RAMP_BIT{9U};  // Flag in manual/program job
 inline QString const           PROGS_DIR{"data/prog/"};
 inline QString const           INTERVALS_DIR{"data/"};
+// full-day recordings, one Parquet file per day (recordingfile.h); INTERVALS_DIR keeps the older .dat days
+inline QString const           RECORDINGS_DIR{"data/recordings/"};
 inline QString const           EXPORT_DIR{"export/"};
 inline QString const           SETTINGS_FILE("settings.json");
 // copy of settings.json kept each time it loads correctly; restored automatically when settings.json cannot be used
@@ -42,5 +44,5 @@ static QList<QPair<QString, QString>> statusBarStatesList() {
   };
 } // <state name, display text>
 
-} // namespace deepvaccontrol
+}
 #endif // CONSTANTS_H

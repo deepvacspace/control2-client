@@ -225,11 +225,6 @@ double calculateKey(quint64 epochSecTime) {
   return static_cast<double>(dateTime.toSecsSinceEpoch());
 }
 
-QString calculateFileName(quint64 epochSecTime) {
-  QDateTime dateTime{QDateTime::fromSecsSinceEpoch(utils::calculateKey(epochSecTime))};
-  return dateTime.toString("yyyy-MM-dd_HH-mm-ss") + ".dat";
-}
-
 QString toSuperscript(int exp) {
   constexpr static QChar s[10] = {u'⁰', u'¹', u'²', u'³', u'⁴', u'⁵', u'⁶', u'⁷', u'⁸', u'⁹'};
   if (exp == 0) {
@@ -318,4 +313,4 @@ QString formatScientificRef(float v, int frac) {
   return QString("(%1)").arg(formatScientific(v, frac, true));
 }
 
-} // namespace deepvaccontrol::utils
+}

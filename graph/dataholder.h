@@ -62,6 +62,10 @@ public:
 
   bool isDirty() const noexcept;
 
+  // Saves the day's recording (recordingfile.h); inBackground: compressed and written in a thread
+  // (the autosave), else before returning (a day change, closing).
+  void save(bool inBackground = false);
+
   DataHolder &slice(double epochSecStartTime, double epochSecEndTime);
   void        append(DataHolder const *other);
 
@@ -116,6 +120,6 @@ inline bool DataHolder::isDirty() const noexcept {
 inline bool DataHolder::inRange(double epochSecTime) const {
   return (m_intervalKey <= epochSecTime) && ((epochSecTime - m_intervalKey) < m_maxLength);
 }
-} // namespace deepvaccontrol
+}
 
 #endif

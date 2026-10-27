@@ -17,6 +17,7 @@
 #include "confdialog.h"
 #include "connectiondialog.h"
 #include "constants.h"
+#include "recordingfile.h"
 #include "messagedialog.h"
 #include "programmodel.h"
 #include "settingsdiff.h"
@@ -195,6 +196,13 @@ void App::runtimeSetups() {
 
   // Load states
   m_states.addWithVariantList(settingMapVariant["states"].toList());
+  // the day recordings name their columns after them (recordingfile.h)
+  QVector<recordingfile::Channel> recordingChannels;
+  for (QVariant const &state : settingMapVariant["states"].toList()) {
+    QVariantMap const map = state.toMap();
+    recordingChannels.push_back({map.value("name").toString(), map.value("label").toString()});
+  }
+  recordingfile::setChannels(recordingChannels);
 
   // Data manager
   m_dataManager           = new DataManager(&m_resHolder, m_states.size(), deepvaccontrol::INTERVAL_DURATION, this);
@@ -600,4 +608,4 @@ void App::requestSettingList() {
   m_gateTcp->sendTextCmd("get_settings");
 }
 
-} // namespace deepvaccontrol
+}

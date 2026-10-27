@@ -4,9 +4,11 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QThread>
 #include <QVariant>
 
 #include "constants.h"
+#include "recordingfile.h"
 #include "stringpathprovider.h"
 #include "utils.h"
 
@@ -33,6 +35,40 @@ DataHolder::DataHolder(uint16_t numberOfStates,
 
 DataHolder::~DataHolder() {
   m_autosaveTimer->stop();
+  for (auto *thread : findChildren<QThread *>()) { // background saves finish first
+    thread->wait();
+  }
+}
+
+void DataHolder::save(bool inBackground) {
+  QString const                  path = recordingfile::savePath(getIntervalKey());
+  quint64 const                  generation{recordingfile::nextGeneration()};
+  QVector<double> const          times  = m_times; // shared until the next sample: cheap
+  QVector<QVector<double>> const states = m_states;
+  m_dirty                               = false;
+  if (!inBackground) {
+    QString error;
+    if (!recordingfile::saveDay(path, generation, times, states, &error)) {
+      m_logger->stream(Logger::Level::ERR) << "Recording" << path << "not saved:" << error;
+      m_dirty = true;
+    }
+    return;
+  }
+  QThread *thread = QThread::create([this, path, generation, times, states]() {
+    QString error;
+    if (!recordingfile::saveDay(path, generation, times, states, &error)) {
+      QMetaObject::invokeMethod(
+        this,
+        [this, path, error]() {
+          m_logger->stream(Logger::Level::ERR) << "Recording" << path << "not saved:" << error;
+          m_dirty = true;
+        },
+        Qt::QueuedConnection);
+    }
+  });
+  thread->setParent(this);
+  connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+  thread->start(QThread::LowPriority);
 }
 
 void DataHolder::clean() {
@@ -105,8 +141,7 @@ QVector<double> DataHolder::getValueAtIndex(quint64 index) const {
 
 void DataHolder::autoSave() {
   if (isDirty()) {
-    StringPathProvider path(deepvaccontrol::INTERVALS_DIR + utils::calculateFileName(getIntervalKey()), m_logger);
-    saveToFile(&path);
+    save(true); // compressing a whole day takes a moment: not on the GUI thread
   }
 }
 
@@ -218,14 +253,16 @@ bool deepvaccontrol::DataHolder::writeData(QFile &file) {
   QElapsedTimer timer;
   timer.start();
 
-  QDataStream out{&file};
-  out.setFloatingPointPrecision(QDataStream::DoublePrecision);
-
-  QVariantMap header;
-  out << header;
-
-  out << m_times;
-  out << m_states;
+  // the day's Parquet file (recordingfile.h): one column per state, by name
+  QString          error;
+  QByteArray const bytes = recordingfile::write(m_times, m_states, &error);
+  if (bytes.isEmpty()) {
+    m_logger->stream(Logger::Level::ERR) << "Recording not written:" << error;
+    return false;
+  }
+  if (file.write(bytes) != bytes.size()) {
+    return false;
+  }
 
   m_logger->stream(Logger::Level::DEB)
     << QString("Data of interval %1 saved in %2 msec")
@@ -240,14 +277,14 @@ bool deepvaccontrol::DataHolder::readData(QFile &file) {
   timer.start();
 
   clean();
-  QDataStream in{&file};
-  in.setFloatingPointPrecision(QDataStream::DoublePrecision);
-
-  QVariantMap header;
-  in >> header;
-
-  in >> m_times;
-  in >> m_states;
+  // a Parquet day (columns by name, in the order of the value list) or an older .dat day
+  QString error;
+  if (!recordingfile::readBytes(file.readAll(), m_times, m_states, {}, &error)) {
+    m_logger->stream(Logger::Level::WAR) << "Recording" << file.fileName() << "not read:" << error;
+    m_times.clear();
+    m_states = QVector<QVector<double>>(m_numberOfStates);
+    return false;
+  }
 
   if (m_states.count() != m_numberOfStates) {
     m_logger->stream(Logger::Level::WAR)
@@ -268,4 +305,4 @@ bool deepvaccontrol::DataHolder::readData(QFile &file) {
   emit dataChanged();
   return true;
 }
-} // namespace deepvaccontrol
+}

@@ -14,6 +14,7 @@
 
 #include "constants.h"
 #include "dataviewer.h"
+#include "recordingfile.h"
 #include "stringpathprovider.h"
 #include "theme.h"
 #include "utils.h"
@@ -52,7 +53,7 @@ struct Format {
   char const *id;
   char const *label;
 };
-} // namespace
+}
 
 ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, bool canComparisonCsv,
                            QWidget *parent, bool embedded)
@@ -293,16 +294,13 @@ std::shared_ptr<DataHolder> ExportDialog::readInterval() const {
   QDateTime const start = from();
   QDateTime const end   = to();
 
-  // the interval files (one per day) covering the range
-  QDir const        dir(INTERVALS_DIR);
-  QStringList const files = dir.entryList(QDir::Files, QDir::Name);
+  // the day recordings covering the range
   for (QDate date = start.date(); date <= end.date(); date = date.addDays(1)) {
-    double const  key{utils::calculateKey(QDateTime(date, QTime(12, 0)).toSecsSinceEpoch())};
-    QString const name = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(key)).toString("yyyy-MM-dd_HH-mm-ss") + ".dat";
-    if (!files.contains(name)) {
+    QString const file = recordingfile::readPath(QDateTime(date, QTime(12, 0)).toSecsSinceEpoch());
+    if (file.isEmpty()) {
       continue;
     }
-    StringPathProvider path(INTERVALS_DIR + name, m_resHolder->logger);
+    StringPathProvider path(file, m_resHolder->logger);
     auto dayData = std::make_shared<DataHolder>(m_resHolder->states->size(), m_resHolder->logger, 0);
     dayData->loadFromFile(&path);
     dayData->slice(static_cast<double>(start.toSecsSinceEpoch()), static_cast<double>(end.toSecsSinceEpoch()));
@@ -311,4 +309,4 @@ std::shared_ptr<DataHolder> ExportDialog::readInterval() const {
   return interval;
 }
 
-} // namespace deepvaccontrol
+}
