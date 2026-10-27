@@ -63,6 +63,6 @@ signals:
   void rulesChanged(QString const &runKey);
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // ANALYSISNOTESSTORE_H

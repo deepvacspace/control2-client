@@ -22,7 +22,7 @@ namespace deepvaccontrol {
 AnalysisServices::AnalysisServices(ResHolder *resHolder, QObject *parent)
     : QObject{parent}
     , m_resHolder{resHolder}
-    , m_library{new ExperimentLibrary(deepvaccontrol::INTERVALS_DIR,
+    , m_library{new ExperimentLibrary(deepvaccontrol::RECORDINGS_DIR,
                                       deepvaccontrol::ACTIONS_FILE,
                                       [resHolder]() {
                                         return resHolder->settings->settingsMap()["states"].toList();
@@ -249,4 +249,4 @@ QString AnalysisServices::writeReport(ExperimentRun const &run, QVector<Experime
   return ok ? QString{} : tr("Could not write %1").arg(path);
 }
 
-} // namespace deepvaccontrol
+}

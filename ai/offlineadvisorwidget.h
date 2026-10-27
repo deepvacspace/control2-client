@@ -26,7 +26,7 @@ class AdvisorProgressDialog;
 namespace deepvaccontrol {
 class LineEditNum;
 
-// "Offline advisor" tab of the AI page, backed by the GRU checkpoint at
+// "Simulator" tab of the System page, backed by the GRU checkpoint at
 // data/model/gru_rollout.onnx. Running an experiment first searches the
 // digital twin for the best fixed PID triplet for the scenario (CEM
 // search, on a background thread behind a modal progress dialog), along
@@ -129,6 +129,6 @@ private:
   ai::AdvisorProgressDialog *m_tuneDialog{nullptr}; // progress while the digital twin searches
   ai::OfflineTuneResult  m_tuneResult;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // OFFLINEADVISORWIDGET_H

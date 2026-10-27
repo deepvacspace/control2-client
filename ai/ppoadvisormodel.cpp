@@ -16,7 +16,7 @@ namespace {
 double limit(double low, double x, double high) {
   return std::max(low, std::min(x, high));
 }
-} // namespace
+}
 
 PpoAdvisorModel::PpoAdvisorModel() : m_status{QObject::tr("Advisor model not loaded")} {}
 
@@ -190,4 +190,4 @@ std::array<double, 3> PpoAdvisorModel::decide(std::array<double, 8> const &obs) 
   return pid;
 }
 
-} // namespace deepvaccontrol
+}

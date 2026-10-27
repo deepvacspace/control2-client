@@ -42,6 +42,6 @@ private:
 
   // bool m_redrawEnabled;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // PROGRAMGRAPH_H

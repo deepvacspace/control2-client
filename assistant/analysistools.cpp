@@ -295,7 +295,7 @@ core::AlignMode alignMode(QString const &text, bool &ok) {
   ok = false;
   return core::AlignMode::START;
 }
-} // namespace
+}
 
 QVector<double> AnalysisTools::Loaded::series(QString const &name) const {
   qsizetype const index{names.indexOf(name)};
@@ -503,7 +503,7 @@ void AnalysisTools::registerTools(ToolRegistry &registry) {
                         {"to", property("string", "optional end time HH:mm")}},
                        {"date"}),
                 [this](QJsonObject const &a) { return daySummary(a); }});
-  registry.add({"get_run_details", "Run details (DUT, operator, purpose, tags), job and program, PID table, calibration, app version and integrity, as recorded.",
+  registry.add({"get_run_details", "Run details (DUT with mass and density, operator, purpose, tags), job and program, PID table, calibration, app version and integrity, as recorded.",
                 schema({{"run", run}}, {"run"}), [this](QJsonObject const &a) { return runDetails(a); }});
   registry.add({"get_events", "Events of a run: setpoint changes, ramps, PID changes, alarms, status, operator actions.",
                 schema({{"run", run}, {"type", property("string", "optional filter, e.g. alarm, setpoint, pid, operator, status")}}, {"run"}),
@@ -1668,8 +1668,9 @@ QJsonObject AnalysisTools::runDetails(QJsonObject const &args) {
   QJsonObject const &configuration = manifest.configuration;
   int const integrity{static_cast<int>(storage::RunStore::verify(loaded->run.storeKey))};
   QStringList facts{QStringLiteral("Experiment %1 %2.").arg(id, spanText(loaded->run.start, loaded->run.end)),
-                    QStringLiteral("DUT: %1. Operator: %2. Purpose: %3. Tags: %4.")
-                      .arg(orDash(manifest.metadata.dut), orDash(manifest.metadata.operatorName), orDash(manifest.metadata.purpose),
+                    QStringLiteral("DUT: %1 (mass %2, density %3). Operator: %4. Purpose: %5. Tags: %6.")
+                      .arg(orDash(manifest.metadata.dut), orDash(manifest.metadata.dutMassText()), orDash(manifest.metadata.dutDensityText()),
+                           orDash(manifest.metadata.operatorName), orDash(manifest.metadata.purpose),
                            orDash(manifest.metadata.tags.join(QStringLiteral(", ")))),
                     QStringLiteral("Job: %1; configuration %2.").arg(runrecord::jobText(configuration), runrecord::capturedText(configuration)),
                     QStringLiteral("Program as sent (planned interval durations, not how long it ran): %1.").arg(runrecord::programSummary(configuration)),
@@ -1823,4 +1824,4 @@ QJsonObject AnalysisTools::generateReport(QJsonObject const &args) {
   return result;
 }
 
-} // namespace deepvaccontrol::assistant
+}

@@ -32,8 +32,8 @@ namespace experimentreport {
 QString html(ExperimentReportData const &data, bool embedImages);
 bool    writeHtml(QString const &path, ExperimentReportData const &data);
 bool    writePdf(QString const &path, ExperimentReportData const &data);
-} // namespace experimentreport
+}
 
-} // namespace deepvaccontrol
+}
 
 #endif // EXPERIMENTREPORT_H

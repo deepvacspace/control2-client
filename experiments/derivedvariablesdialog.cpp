@@ -1,5 +1,10 @@
 #include "derivedvariablesdialog.h"
 
+#include <QScreen>
+#include <algorithm>
+
+#include <QGuiApplication>
+
 #include <QColorDialog>
 #include <QComboBox>
 #include <QGridLayout>
@@ -52,23 +57,23 @@ QString describe(DerivedVariable const &definition) {
   }
   return {};
 }
-} // namespace
+}
 
 DerivedVariablesDialog::DerivedVariablesDialog(QVector<ChannelInfo> const &channels, QString const &userName, QWidget *parent)
     : QDialog{parent}, m_channels{channels}, m_userName{userName}, m_color{QColor("#9333ea")} {
   setWindowTitle(tr("Derived variables"));
-  resize(900 * utils::ssf(), 640 * utils::ssf());
+  // as large as wanted, but never beyond the screen it opens on
+  QScreen const *screen = parent ? parent->screen() : QGuiApplication::primaryScreen();
+  QRect const    room   = screen ? screen->availableGeometry() : QRect(0, 0, 1280, 720);
+  resize(std::min(static_cast<int>(900 * utils::ssf()), room.width() * 9 / 10),
+         std::min(static_cast<int>(640 * utils::ssf()), room.height() * 9 / 10));
+  setMaximumHeight(room.height() * 95 / 100);
 
   auto *root = new QVBoxLayout(this);
-  auto *info = new QLabel(tr("Derived variables are reusable formulas: they appear as extra channels in every "
-                             "experiment that has the channels they need."),
-                          this);
-  info->setWordWrap(true);
-  root->addWidget(info);
 
   auto *listRow = new QHBoxLayout();
   m_list        = new QListWidget(this);
-  m_list->setMinimumHeight(140 * utils::ssf());
+  m_list->setMinimumHeight(80 * utils::ssf());
   m_list->setStyleSheet(QStringLiteral("QListWidget::item { height: %1px; }").arg(static_cast<int>(34 * utils::ssf())));
   auto *deleteBtn = makeButton(tr("Delete"), this);
   listRow->addWidget(m_list, 1);
@@ -248,4 +253,4 @@ void DerivedVariablesDialog::deleteSelected() {
   }
 }
 
-} // namespace deepvaccontrol
+}

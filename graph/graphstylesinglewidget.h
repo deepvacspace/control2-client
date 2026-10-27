@@ -43,5 +43,5 @@ private:
 inline QVariantMap GraphStyleSingleWidget::getStateMapVariant() const {
   return m_stateMap;
 }
-} // namespace deepvaccontrol
+}
 #endif // GRAPHSTYLESINGLEWIDGET_H

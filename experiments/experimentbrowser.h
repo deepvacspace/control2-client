@@ -47,6 +47,6 @@ private:
   QHBoxLayout       *m_buttonsLay{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // EXPERIMENTBROWSER_H

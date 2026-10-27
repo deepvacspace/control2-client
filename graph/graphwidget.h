@@ -54,14 +54,22 @@ public:
   void handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
 
 signals:
-  // the AI panel: the assistant about this experiment ("#N"; empty: the latest), with this question (may be empty)
-  void assistantRequested(QString const &run, QString const &question);
   // a question in the AI panel, with the view it is about (AssistantEngine::ask)
   void chartQuestionAsked(QString const &question, QJsonObject const &view);
+  // the AI panel: the answer being written is dropped; the conversation is forgotten; the panel is open (the model
+  // is most likely wanted soon)
+  void assistantStopRequested();
+  void assistantNewChatRequested();
+  void assistantWanted();
 
 public slots:
-  // the assistant's progress (status) and answer to the question asked in the AI panel
+  // the assistant's progress (status) and answer to the question asked in the AI panel (done with a status only: it
+  // stopped)
   void showAssistantExchange(QString const &status, QString const &answer, bool done);
+  // the answer shown is being checked against the data
+  void showAssistantChecking();
+  // the local model: "off", "loading", "ready" or "failed", and its state in words
+  void showAssistantModel(QString const &state, QString const &message);
 
 private:
   using Tab = ChartPane::Tab;
@@ -76,7 +84,6 @@ private:
   void refreshCalendar();
   // ---- the side bar (right): Channels, Options, Statistics, Actions, Info | Calendar, Export
   QWidget *buildChannelsPage();
-  QWidget *buildActionsPage();
   QWidget *buildInfoPage();
   QWidget *buildAiPage();
   // "#N" of the experiment the selected pane shows (as in the experiment list); empty: none (live, a day, a comparison)
@@ -200,6 +207,7 @@ private:
     QVector<std::shared_ptr<core::ExperimentAnalysis const>> analyses;
     QVector<ComparedRun>                                     runs;
     QString                                                  signalLabel;
+    double                                                   origin{qQNaN()}; // chart time of the alignment point
   };
   QHash<QString, ComparisonData> m_comparisonData;
   QVector<storage::DerivedVariable> m_derived;      // definitions
@@ -216,13 +224,28 @@ private:
   QLabel              *m_exportEmpty{nullptr};
   ExportDialog        *m_exportForm{nullptr};
   QWidget             *m_channelsNote{nullptr};
-  QLabel              *m_aiContext{nullptr};
   QTextBrowser        *m_aiTranscript{nullptr};
   QStringList          m_aiBlocks;      // the panel's questions and answers (markdown)
   int                  m_aiLive{-1};    // the block of the answer coming in
   QPushButton         *m_aiAskBtn{nullptr};
   QPushButton         *m_aiExplainBtn{nullptr};
-  // what the chart shows now, for the assistant: {run, from_s, to_s, from, to, channels}
+  QPushButton         *m_aiAnomaliesBtn{nullptr}; // a shown experiment's anomalies
+  QPushButton         *m_aiReportBtn{nullptr};    // and its report
+  QPushButton         *m_aiSummaryBtn{nullptr};   // the whole experiment (or comparison) summarized
+  QWidget             *m_aiHeader{nullptr};       // in the panel's header: the model's state, New chat
+  QLabel              *m_aiModelDot{nullptr};     // the local model's state
+  QLabel              *m_aiModelText{nullptr};
+  bool                 m_aiChecking{false};       // "Checking the values…" under the answer
+  bool                 m_aiAnswerShown{false};    // of the question being answered (kept when it is stopped)
+  QTimer              *m_aiDotsTimer{nullptr};    // "Assistant is thinking" with its dots appearing one by one
+  QString              m_aiStatus;
+  int                  m_aiDots{0};
+  void                 showAiStatus();
+  void                 renderAi();
+  void                 aiWelcome();
+  void                 updateAiButtons();
+  // what the chart shows now, for the assistant: an experiment {run, from_s, to_s, from, to, channels, …}, a day {day,
+  // from, to} or a comparison {compare, align, align_index, from_s, to_s, channels}
   [[nodiscard]] QJsonObject chartView() const;
   void                      askAssistant(QString const &question);
   ChartStatisticsDialog *m_statistics{nullptr};
@@ -251,6 +274,6 @@ private:
   AnalysisNotesStore  *m_notes{nullptr};
   GraphStyleEditor    *m_styleEditor;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // GRAPHWIDGET_H

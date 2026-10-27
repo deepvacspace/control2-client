@@ -174,6 +174,6 @@ private:
 
   ai::ComparisonWorker *m_comparisonWorker{nullptr};
 };
-} // namespace deepvaccontrol
+}
 
 #endif // AIADVISORWIDGET_H

@@ -13,7 +13,7 @@ namespace {
 int px(double value) {
   return qMax(1, static_cast<int>(value * utils::ssf()));
 }
-} // namespace
+}
 
 Menu::Menu(int buttonHeight, QWidget *parent)
     : QWidget{parent}
@@ -27,8 +27,7 @@ Menu::Menu(int buttonHeight, QWidget *parent)
   m_content = new QWidget(this);
   outer->addWidget(m_content);
   auto *mainlay = new QHBoxLayout(m_content);
-  // room on the left for the hide / unhide toggle
-  mainlay->setContentsMargins(px(40), px(4), px(8), px(4));
+  mainlay->setContentsMargins(px(8), px(4), px(8), px(4));
   mainlay->setSpacing(px(10));
   m_listLay->setSpacing(px(4));
   m_extraLay->setSpacing(px(10));
@@ -40,32 +39,8 @@ Menu::Menu(int buttonHeight, QWidget *parent)
   mainlay->addLayout(m_listLay, 1);
   mainlay->addWidget(separator);
   mainlay->addLayout(m_extraLay);
-  m_toggle = new QToolButton(this);
-  m_toggle->setObjectName("barToggle");
-  m_toggle->setFocusPolicy(Qt::NoFocus);
-  m_toggle->setFixedSize(px(30), px(14));
-  connect(m_toggle, &QToolButton::clicked, this, [this] { setCollapsed(!m_collapsed); });
-  setCollapsed(false);
+  setFixedHeight(px(46));
   restyle();
-}
-
-void Menu::setCollapsed(bool collapsed) {
-  m_collapsed = collapsed;
-  m_content->setVisible(!collapsed);
-  setFixedHeight(collapsed ? px(16) : px(46));
-  m_toggle->setText(collapsed ? QStringLiteral("▴") : QStringLiteral("▾"));
-  m_toggle->setToolTip(collapsed ? tr("Show the menu") : tr("Hide the menu"));
-  placeToggle();
-}
-
-void Menu::placeToggle() {
-  m_toggle->move(px(5), (height() - m_toggle->height()) / 2);
-  m_toggle->raise();
-}
-
-void Menu::resizeEvent(QResizeEvent *event) {
-  QWidget::resizeEvent(event);
-  placeToggle();
 }
 
 void Menu::addItem(QString const &name, QString const &iconKind) {
@@ -192,4 +167,4 @@ void Menu::changeEvent(QEvent *event) {
   }
 }
 
-} // namespace deepvaccontrol
+}

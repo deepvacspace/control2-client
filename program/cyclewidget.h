@@ -29,6 +29,6 @@ private:
 inline QVariantMap CycleWidget::getParams() const {
   return m_params;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // CYCLEWIDGET_H

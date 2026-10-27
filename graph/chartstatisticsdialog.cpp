@@ -142,7 +142,7 @@ QPushButton *makeButton(QString const &text, QWidget *parent) {
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
-} // namespace
+}
 
 ChartStatisticsDialog::ChartStatisticsDialog(ResHolder *resHolder, AnalysisNotesStore *notes, QWidget *parent)
     : QDialog{parent}, m_resHolder{resHolder}, m_notes{notes}, m_rangeTimer{new QTimer(this)} {
@@ -701,4 +701,4 @@ void ChartStatisticsDialog::addRule() {
   m_ruleLabelEdit->clear();
 }
 
-} // namespace deepvaccontrol
+}

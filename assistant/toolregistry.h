@@ -37,6 +37,6 @@ private:
   QVector<ToolSpec> m_tools;
 };
 
-} // namespace deepvaccontrol::assistant
+}
 
 #endif // TOOLREGISTRY_H

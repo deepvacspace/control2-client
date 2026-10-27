@@ -26,7 +26,7 @@ bool matchesType(QJsonValue const &value, QString const &type) {
   }
   return true;
 }
-} // namespace
+}
 
 void ToolRegistry::add(ToolSpec spec) {
   m_tools.push_back(std::move(spec));
@@ -95,4 +95,4 @@ QJsonObject ToolRegistry::call(QString const &name, QJsonObject const &arguments
   }
 }
 
-} // namespace deepvaccontrol::assistant
+}

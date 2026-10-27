@@ -59,7 +59,7 @@ bool GruOnnxModel::load(QString const &onnxPath, QString const &metadataPath) {
   m_envelope              = ai::ModelEnvelope{};
   m_envelope.tempMin      = -70.0;
   m_envelope.tempMax      = 100.0;
-  m_envelope.maxDurationS = 3000.0;
+  m_envelope.maxDurationS = 3600.0; // validated for experiments up to an hour
   m_envelope.tempMin      = range.value("temp_min").toDouble(m_envelope.tempMin);
   m_envelope.tempMax      = range.value("temp_max").toDouble(m_envelope.tempMax);
   m_envelope.maxDurationS = range.value("max_duration_s").toDouble(m_envelope.maxDurationS);

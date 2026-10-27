@@ -26,17 +26,11 @@ signals:
 protected:
   void paintEvent(QPaintEvent *event) override;
   void changeEvent(QEvent *event) override;
-  void resizeEvent(QResizeEvent *event) override;
 
 private:
   void                   processMenuClicked();
   void                   restyle();
-  // hides the menu, leaving a thin strip with the toggle (far left) to bring it back
-  void                   setCollapsed(bool collapsed);
-  void                   placeToggle();
   QWidget               *m_content{nullptr};
-  QToolButton           *m_toggle{nullptr};
-  bool                   m_collapsed{false};
   QVector<QToolButton *> m_buttons;
   QVector<int>           m_hidden;
   QStringList            m_iconKinds;
@@ -46,6 +40,6 @@ private:
   int                    m_prevSelected;
   int                    m_buttonHeight;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // MENU_H

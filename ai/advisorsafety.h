@@ -50,6 +50,8 @@ public:
   bool capture();
   bool isArmed() const;
   bool isPending() const;
+  // plc_settings.pids[0] as it was before the advisor (empty before capture())
+  QVariantMap const &snapshot() const { return m_snapshot; }
 
   // Manual gains of the band `temp` falls in (or the live temp_pid_idx).
   bool manualPidForBand(double temp, double &kp, double &ki, double &kd) const;
@@ -110,7 +112,7 @@ private:
 // the advisor's job may still be running -- asks whether to stop it.
 void notifyRecoveredSession(QWidget *parent, ManualPidGuard *guard, QString const &reason, bool jobMayBeRunning);
 
-} // namespace ai
-} // namespace deepvaccontrol
+}
+}
 
 #endif // ADVISORSAFETY_H

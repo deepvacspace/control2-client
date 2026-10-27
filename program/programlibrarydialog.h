@@ -22,7 +22,7 @@ namespace programlibrary {
 QVector<storage::TestProfileStep> stepsFromModel(ProgramModel const &model, QStringList const &labels);
 // loads a saved program into the model: the full program when stored, else one interval per step
 bool loadIntoModel(storage::TestProfile const &profile, ProgramModel &model, QString *error = nullptr);
-} // namespace programlibrary
+}
 
 /**
  * @brief Pick a saved program to open, or delete one.
@@ -66,6 +66,6 @@ private:
   std::optional<storage::TestProfile> m_saved;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // PROGRAMLIBRARYDIALOG_H

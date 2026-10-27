@@ -48,6 +48,6 @@ private:
   QFrame *m_browser{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // DATAANALYSISWIDGET_H

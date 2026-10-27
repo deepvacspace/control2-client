@@ -13,6 +13,6 @@ public:
 private:
   QVariantMap &m_cycleParams;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // CYCLEDIALOG_H

@@ -26,8 +26,8 @@ namespace runinsight {
 // database (manifest of runs saved there) but uses no objects of the application.
 RunInsight compute(ExperimentRun const &run, QVector<double> const &times, QVector<QVector<double>> const &states,
                    QStringList const &names, QVector<AnalysisNotesStore::Rule> const &rules, QVariantList const &alarmsConfig);
-} // namespace runinsight
+}
 
-} // namespace deepvaccontrol
+}
 
 #endif // RUNINSIGHT_H

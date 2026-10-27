@@ -19,26 +19,18 @@ class HeaderBar : public QWidget {
 public:
   explicit HeaderBar(ResHolder *resHolder, QWidget *parent = nullptr);
 
-  // hides the bar's contents, leaving a thin strip with the toggle to bring them back
-  void               setCollapsed(bool collapsed);
-  [[nodiscard]] bool isCollapsed() const;
-
 protected:
   void paintEvent(QPaintEvent *event) override;
   void changeEvent(QEvent *event) override;
-  void resizeEvent(QResizeEvent *event) override;
 
 private:
   void updateStatus();
   void updateValues();
   void updateBadges();
   void restyle();
-  void placeToggle();
 
   ResHolder *m_resHolder;
   QWidget     *m_content{nullptr};
-  QToolButton *m_toggle{nullptr};
-  bool         m_collapsed{false};
   QLabel    *m_brand{nullptr};
   QLabel    *m_statusDot{nullptr};
   QLabel    *m_status{nullptr};
@@ -52,10 +44,6 @@ private:
   bool       m_usbPresent{false};
 };
 
-inline bool HeaderBar::isCollapsed() const {
-  return m_collapsed;
 }
-
-} // namespace deepvaccontrol
 
 #endif // HEADERBAR_H

@@ -138,4 +138,4 @@ void GraphStyleSingleWidget::setCompact() {
   layout()->setSpacing(static_cast<int>(6 * ssf));
 }
 
-} // namespace deepvaccontrol
+}

@@ -52,6 +52,6 @@ inline CrosshairSyncHub *AnalysisEditorArea::syncHub() const {
   return m_syncHub;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // ANALYSISEDITORAREA_H

@@ -72,6 +72,6 @@ private:
   QStringList   m_log; // last lines of the server output, for error messages
 };
 
-} // namespace deepvaccontrol::assistant
+}
 
 #endif // LLMSIDECAR_H

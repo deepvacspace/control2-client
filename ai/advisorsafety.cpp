@@ -69,7 +69,7 @@ void logAction(ResHolder *resHolder, QString const &text) {
     resHolder->logger->stream(Logger::Level::INFO) << text;
   }
 }
-} // namespace
+}
 
 QString advisorControlDenied(ResHolder *resHolder) {
   if (!resHolder || !resHolder->users) {
@@ -404,4 +404,4 @@ void notifyRecoveredSession(QWidget *parent, ManualPidGuard *guard, QString cons
   box->open();
 }
 
-} // namespace deepvaccontrol::ai
+}

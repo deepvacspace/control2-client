@@ -21,6 +21,6 @@ struct ChartComparison {
   int             alignN{1};    // n-th setpoint change / crossing / stage
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // CHARTCOMPARISON_H

@@ -24,7 +24,8 @@ public:
   AssistantEngine(LlmClient *client, ToolRegistry const *registry, QObject *parent = nullptr);
 
   // view: the chart the question was asked from ({run "#N", from_s, to_s (s after the run start), from, to (clock),
-  // channels [names]}); "this view" questions get the KPIs and statistics of that range fetched first
+  // channels [names]}; a day: {day, from, to}; a comparison: {compare [{run, label}], align, align_index, from_s, to_s
+  // (s from the alignment point), channels}); "this view" questions get the data of what is shown fetched first
   void ask(QString const &question, QString const &focusRun = {}, QJsonObject const &view = {});
   // lets the server process the fixed part of every request (system prompt, tools) ahead of the first question
   void warmUp();
@@ -95,6 +96,6 @@ private:
   bool                m_repetitionStop{false};
 };
 
-} // namespace deepvaccontrol::assistant
+}
 
 #endif // ASSISTANTENGINE_H

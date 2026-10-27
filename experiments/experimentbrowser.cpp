@@ -101,7 +101,7 @@ QPushButton *makeButton(QString const &text, QWidget *parent) {
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
-} // namespace
+}
 
 ExperimentBrowser::ExperimentBrowser(ExperimentLibrary *library, bool canSplit, QWidget *parent)
     : QWidget{parent}, m_library{library}, m_canSplit{canSplit} {
@@ -403,4 +403,4 @@ void ExperimentBrowser::openCustomRange() {
   dialog->open();
 }
 
-} // namespace deepvaccontrol
+}

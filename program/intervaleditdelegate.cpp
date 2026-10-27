@@ -46,4 +46,4 @@ void IntervalEditDelegate::setModelData(QWidget *editor, QAbstractItemModel *mod
   }
   QItemDelegate::setModelData(editor, model, index);
 }
-} // namespace deepvaccontrol
+}

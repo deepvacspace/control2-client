@@ -10,7 +10,7 @@
 namespace deepvaccontrol {
 struct ResHolder;
 class GruOnnxModel;
-} // namespace deepvaccontrol
+}
 
 namespace deepvaccontrol::assistant {
 
@@ -47,6 +47,6 @@ private:
   double                        m_alarmTime{0.0};
 };
 
-} // namespace deepvaccontrol::assistant
+}
 
 #endif // CHAMBERTOOLS_H

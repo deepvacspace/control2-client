@@ -167,4 +167,4 @@ void GraphStyleEditor::showOnly(QStringList const &channels) {
   updateCount();
 }
 
-} // namespace deepvaccontrol
+}

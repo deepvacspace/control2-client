@@ -159,6 +159,6 @@ private:
   QCPItemTracer             *m_hoverDot{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // ANALYSISCHART_H

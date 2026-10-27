@@ -32,6 +32,6 @@ protected:
 inline bool DataExporter::readData(QFile &file) {
   return true;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // DATAEXPORTER_H

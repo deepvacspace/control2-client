@@ -83,4 +83,4 @@ void AnalysisNotesStore::notifyExternalChange() {
   emit rulesChanged(QString{});
 }
 
-} // namespace deepvaccontrol
+}

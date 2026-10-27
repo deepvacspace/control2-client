@@ -55,6 +55,6 @@ private:
   QPushButton                     *m_openDayBtn{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // CALENDARDIALOG_H

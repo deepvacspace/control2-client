@@ -70,7 +70,7 @@ int nearestIndex(QCPGraph const *graph, double key) {
   }
   return best;
 }
-} // namespace
+}
 
 AnalysisChart::AnalysisChart(QWidget *parent) : QWidget{parent}, m_plot{new QCustomPlot(this)} {
   auto *layout = new QVBoxLayout(this);
@@ -869,4 +869,4 @@ bool AnalysisChart::eventFilter(QObject *watched, QEvent *event) {
   return QWidget::eventFilter(watched, event);
 }
 
-} // namespace deepvaccontrol
+}

@@ -36,6 +36,6 @@ private:
   bool          m_cancelling{false};
 };
 
-} // namespace deepvaccontrol::ai
+}
 
 #endif // ADVISORPROGRESSDIALOG_H

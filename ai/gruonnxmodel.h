@@ -26,7 +26,7 @@ public:
   // Operating range the twin was validated for: the metadata's optional
   // "valid_range" object (temp_min, temp_max, max_duration_s, kp_min ...
   // kd_max), otherwise the chamber's validated range (-70 ... 100 degC,
-  // 20 min horizon, ChamberTwinSim's PID bounds).
+  // 1 hour horizon, ChamberTwinSim's PID bounds).
   ai::ModelEnvelope const &envelope() const;
 
   bool predictDeltaT1(QVector<float> const &windowFlat, float &deltaOut);

@@ -29,7 +29,7 @@ QString kindName(QString const &kind) {
                                              {"job", QObject::tr("job")}};
   return names.value(kind, kind);
 }
-} // namespace
+}
 
 QString jobText(QJsonObject const &configuration) {
   QJsonObject const job = configuration.value("job").toObject();
@@ -185,4 +185,4 @@ QString integrityText(int integrity) {
   }
 }
 
-} // namespace deepvaccontrol::runrecord
+}

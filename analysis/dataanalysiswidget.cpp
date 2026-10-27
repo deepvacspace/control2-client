@@ -130,4 +130,4 @@ void DataAnalysisWidget::openRun(ExperimentRun const &run, bool splitRight) {
   m_editor->addPage(new AnalysisRunPage(m_resHolder, m_library, m_notes, run), splitRight);
 }
 
-} // namespace deepvaccontrol
+}

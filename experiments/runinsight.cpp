@@ -38,4 +38,4 @@ RunInsight compute(ExperimentRun const &run, QVector<double> const &times, QVect
   return insight;
 }
 
-} // namespace deepvaccontrol::runinsight
+}

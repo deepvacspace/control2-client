@@ -9,6 +9,7 @@
 #include <cmath>
 
 #include "advisorcem.h"
+#include "pressureunits.h"
 #include "chambertwinsim.h"
 #include "experimentrecorder.h"
 #include "gatetcp.h"
@@ -109,7 +110,7 @@ double timeToStayWithin(QVector<ai::TrajectoryPoint> const &trajectory, double t
   return since;
 }
 
-} // namespace
+}
 
 ChamberTools::ChamberTools(ResHolder *resHolder, QObject *parent) : QObject{parent}, m_resHolder{resHolder} {
   if (m_resHolder && m_resHolder->tcpGate) {
@@ -190,8 +191,10 @@ QJsonObject ChamberTools::liveStatus(QJsonObject const &) {
                            : (output < -1.0)      ? QStringLiteral("cooling")
                                                   : QStringLiteral("idle"))};
   if (std::isfinite(value("pres"))) {
-    result.insert("pressure", num(value("pres")));
-    facts << QStringLiteral("Pressure %1.").arg(fmt(value("pres"), QStringLiteral("mmHg")));
+    // in Torr, whatever unit the chamber reports
+    double const torr{pressure::toTorr(value("pres"), m_resHolder->states->getSysValue("pres")->getLabel())};
+    result.insert("pressure_torr", num(torr));
+    facts << QStringLiteral("Pressure %1.").arg(fmt(torr, QStringLiteral("Torr")));
   }
 
   if (working) {
@@ -610,4 +613,4 @@ QJsonObject ChamberTools::suggestPid(QJsonObject const &args) {
   return result;
 }
 
-} // namespace deepvaccontrol::assistant
+}

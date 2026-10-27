@@ -105,6 +105,6 @@ private:
   int                      m_iterations{CEM_ITERATIONS};
 };
 
-} // namespace deepvaccontrol::ai
+}
 
 #endif // ADVISORCEM_H

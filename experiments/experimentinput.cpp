@@ -122,5 +122,5 @@ QString pidShares(core::PidContribution const &pid) {
     .arg(100.0 * pid.shareD, 0, 'f', 0);
 }
 
-} // namespace analysistext
-} // namespace deepvaccontrol
+}
+}

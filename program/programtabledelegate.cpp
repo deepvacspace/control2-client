@@ -61,4 +61,4 @@ void ProgramTableDelegate::paint(
 
   QStyledItemDelegate::paint(painter, option, index);
 }
-} // namespace deepvaccontrol
+}

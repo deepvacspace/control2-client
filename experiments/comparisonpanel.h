@@ -76,6 +76,6 @@ private:
   QTableWidget   *m_signalTable{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // COMPARISONPANEL_H

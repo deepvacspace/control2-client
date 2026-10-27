@@ -22,7 +22,7 @@ struct Candidate {
   double kd;
   double cost;
 };
-} // namespace
+}
 
 CemOptimizer::CemOptimizer(GruOnnxModel *model, std::atomic<bool> const *cancel) : m_model{model}, m_cancel{cancel} {}
 
@@ -137,17 +137,20 @@ bool CemOptimizer::rolloutPopulation(SimParams const &params, QVector<std::array
     if (m_cancel && m_cancel->load()) {
       return false;
     }
+    // the setpoint now and after this step (a ramp moves it along)
+    double const ref     = setpointAt(params, step * params.dtS);
+    double const nextRef = setpointAt(params, (step + 1) * params.dtS);
     for (int c{0}; c < n; ++c) {
       for (int k{0}; k < nSubsteps; ++k) {
         double const diffOut = diffs[c].update(currentTemp[c]);
-        auto const   terms   = pids[c].step(true, params.targetTemp, currentTemp[c], kp[c], ki[c], kd[c], diffOut);
+        auto const   terms   = pids[c].step(true, ref, currentTemp[c], kp[c], ki[c], kd[c], diffOut);
         u[c]                 = terms[0] * featureScale;
         uP[c]                = terms[1] * featureScale;
         uI[c]                = terms[2] * featureScale;
         uD[c]                = terms[3] * featureScale;
       }
 
-      QVector<float> const lastRow = buildTwinFeatureRow(featureNames, currentTemp[c], params.targetTemp,
+      QVector<float> const lastRow = buildTwinFeatureRow(featureNames, currentTemp[c], ref,
                                                            previousTemp[c], params.dtS, u[c], uP[c], uI[c], uD[c],
                                                            kp[c], ki[c], kd[c]);
       float             *base = windowFlat.data() + static_cast<qsizetype>(c) * windowSteps * nFeatures;
@@ -174,8 +177,8 @@ bool CemOptimizer::rolloutPopulation(SimParams const &params, QVector<std::array
         TrajectoryPoint point;
         point.elapsedS = (step + 1) * params.dtS;
         point.temp     = nextTemp;
-        point.tempRef  = params.targetTemp;
-        point.error    = params.targetTemp - nextTemp;
+        point.tempRef  = nextRef;
+        point.error    = nextRef - nextTemp;
         point.u        = u[c];
         point.uP       = uP[c];
         point.uI       = uI[c];
@@ -188,7 +191,7 @@ bool CemOptimizer::rolloutPopulation(SimParams const &params, QVector<std::array
         }
       }
 
-      QVector<float> const nextRow = buildTwinFeatureRow(featureNames, nextTemp, params.targetTemp, currentTemp[c],
+      QVector<float> const nextRow = buildTwinFeatureRow(featureNames, nextTemp, nextRef, currentTemp[c],
                                                            params.dtS, u[c], uP[c], uI[c], uD[c], kp[c], ki[c], kd[c]);
       float             *base = windowFlat.data() + static_cast<qsizetype>(c) * windowSteps * nFeatures;
       std::memmove(base, base + nFeatures, static_cast<size_t>(windowSteps - 1) * nFeatures * sizeof(float));
@@ -211,12 +214,16 @@ double CemOptimizer::horizonCost(QVector<TrajectoryPoint> const &trajectory, Sim
 
   QVector<double> times;
   QVector<double> temps;
+  QVector<double> refs;
   for (auto const &p : trajectory) {
     times << p.elapsedS;
     temps << p.temp;
+    refs << p.tempRef;
   }
-  core::ControlKpis const kpis =
-    core::computeKpis(times, temps, params.targetTemp, kpiOptions(qQNaN(), params.startTemp));
+  // a ramp: the error against the moving setpoint; a step: against the target
+  core::ControlKpis const kpis = (params.rampS > 0.0)
+                                   ? core::computeKpis(times, temps, refs, kpiOptions(qQNaN(), params.startTemp))
+                                   : core::computeKpis(times, temps, params.targetTemp, kpiOptions(qQNaN(), params.startTemp));
   auto orZero = [](double v) {
     return std::isfinite(v) ? v : 0.0;
   };
@@ -440,4 +447,4 @@ CemResult CemOptimizer::run(SimParams const &params, std::function<void(int, int
   return result;
 }
 
-} // namespace deepvaccontrol::ai
+}

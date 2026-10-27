@@ -51,7 +51,7 @@ double nanMin(double a, double b) { // np.minimum propagates NaN
 double nanMax(double a, double b) {
   return (std::isnan(a) || std::isnan(b)) ? qQNaN() : std::max(a, b);
 }
-} // namespace
+}
 
 struct DerivedExpression::Node {
   enum class Kind : uint8_t {
@@ -331,7 +331,7 @@ double evaluateNode(Node const &node, QHash<QString, QVector<double> const *> co
   }
   return qQNaN();
 }
-} // namespace
+}
 
 DerivedExpression::~DerivedExpression() = default;
 
@@ -475,6 +475,6 @@ bool compute(DerivedVariable const &definition, QHash<QString, QVector<double> c
   return true;
 }
 
-} // namespace derived
+}
 
-} // namespace deepvaccontrol
+}

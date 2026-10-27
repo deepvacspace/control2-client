@@ -20,6 +20,6 @@ bool ask(QWidget *parent, QString const &segmentText, QString &label, QColor &co
 // changes an annotation: its label, colour and segment (clock times); false when cancelled
 bool edit(QWidget *parent, QString &label, QColor &color, QDateTime &from, QDateTime &to);
 
-} // namespace deepvaccontrol::annotationdialog
+}
 
 #endif // ANNOTATIONDIALOG_H

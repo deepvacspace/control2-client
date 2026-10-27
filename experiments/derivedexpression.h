@@ -41,8 +41,8 @@ QStringList requiredChannels(storage::DerivedVariable const &definition);
 // computes the derived series (same length as `elapsed`, seconds since the first sample)
 bool compute(storage::DerivedVariable const &definition, QHash<QString, QVector<double> const *> const &columns,
              QVector<double> const &elapsed, QVector<double> &out, QString *error = nullptr);
-} // namespace derived
+}
 
-} // namespace deepvaccontrol
+}
 
 #endif // DERIVEDEXPRESSION_H

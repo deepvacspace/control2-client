@@ -86,4 +86,4 @@ void AdvisorProgressDialog::closeEvent(QCloseEvent *event) {
   reject();
 }
 
-} // namespace deepvaccontrol::ai
+}

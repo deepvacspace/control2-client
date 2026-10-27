@@ -52,7 +52,7 @@ ToolInfo info(ChartToolbar::Tool tool) {
 QString translated(char const *text) {
   return QCoreApplication::translate("deepvaccontrol::ChartToolbar", text);
 }
-} // namespace
+}
 
 ChartToolbar::ChartToolbar(QWidget *parent) : QFrame{parent}, m_collapseTimer{new QTimer(this)} {
   setObjectName("chartToolbar");
@@ -379,4 +379,4 @@ void ChartPad::setMode(ChartToolbar::Tool tool) {
   adjustSize();
 }
 
-} // namespace deepvaccontrol
+}

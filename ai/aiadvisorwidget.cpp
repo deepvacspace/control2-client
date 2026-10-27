@@ -1054,4 +1054,4 @@ void AiAdvisorWidget::clearMetricsTable() {
   m_pidLabel->clear();
 }
 
-} // namespace deepvaccontrol
+}

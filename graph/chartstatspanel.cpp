@@ -52,7 +52,7 @@ QLabel *caption(QString const &text, QWidget *parent) {
   label->setObjectName("sectionCaption");
   return label;
 }
-} // namespace
+}
 
 ChartStatsPanel::ChartStatsPanel(QStringList const &names, QVariantList const &styles, QWidget *parent)
     : QWidget{parent}, m_names{names}, m_styles{styles}, m_timer{new QTimer(this)} {
@@ -244,4 +244,4 @@ void ChartStatsPanel::refresh() {
                                   "RMSE are not shown; the tail MAE is the error at the end."));
 }
 
-} // namespace deepvaccontrol
+}

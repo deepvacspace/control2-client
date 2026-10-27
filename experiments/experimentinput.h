@@ -27,8 +27,8 @@ QString number(double value, int precision = 4); // "—" for NaN
 QString seconds(double seconds);                 // h:mm:ss, "—" for NaN
 QString percent(double fraction);                // 0 ... 1 -> "12.3 %"
 QString pidShares(core::PidContribution const &pid); // "9 / 91 / 0 %"
-} // namespace analysistext
+}
 
-} // namespace deepvaccontrol
+}
 
 #endif // EXPERIMENTINPUT_H

@@ -92,6 +92,6 @@ private:
   QPushButton           *closeButton;
   QVector<QPushButton *> buttons;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // INTERVALEDITDIALOG_H

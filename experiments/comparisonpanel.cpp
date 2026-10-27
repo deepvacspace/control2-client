@@ -131,7 +131,7 @@ QString htmlTable(QTableWidget const *table) {
   }
   return html + QStringLiteral("</table>");
 }
-} // namespace
+}
 
 ComparisonPanel::ComparisonPanel(QWidget *parent) : QWidget{parent} {
   auto *root = new QVBoxLayout(this);
@@ -315,6 +315,8 @@ void ComparisonPanel::fillConfiguration() {
     }
   };
   snapshotRow(tr("DUT"), [](core::RunManifest const &m) { return m.metadata.dut; });
+  snapshotRow(tr("DUT mass"), [](core::RunManifest const &m) { return m.metadata.dutMassText(); });
+  snapshotRow(tr("DUT density"), [](core::RunManifest const &m) { return m.metadata.dutDensityText(); });
   snapshotRow(tr("Purpose"), [](core::RunManifest const &m) { return m.metadata.purpose; });
   snapshotRow(tr("Operator"), [](core::RunManifest const &m) { return m.metadata.operatorName; });
   snapshotRow(tr("Job"), [](core::RunManifest const &m) { return m.configuration.contains("job") ? runrecord::jobText(m.configuration) : QString(); });
@@ -405,4 +407,4 @@ QString ComparisonPanel::html() const {
     .arg(tr("%1 of each experiment minus the first experiment, on the aligned time axis.").arg(m_signalLabel.toHtmlEscaped()), htmlTable(m_signalTable));
 }
 
-} // namespace deepvaccontrol
+}

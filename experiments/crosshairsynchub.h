@@ -44,6 +44,6 @@ inline bool CrosshairSyncHub::isEnabled() const {
   return m_enabled;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // CROSSHAIRSYNCHUB_H

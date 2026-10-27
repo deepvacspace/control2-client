@@ -133,7 +133,6 @@ public:
   // a left drag draws a box and zooms into it (the right button always does)
   void setBoxZoomMode(bool enabled);
   // the labels box starts this far right of the plot's left edge (room for the chart tools)
-  void setLegendOffset(int left);
 
   // legend as one row under the plot with the channel names only, always shown
   void setCompactLegend(bool compact);
@@ -152,6 +151,8 @@ protected:
 
 private:
   void applyStyles();
+  // axis titles with units, from the channels shown
+  void updateAxisTitles();
   void applyStyle(int index, QVariantMap const &stateVariantMap, bool shadow = false);
   void updateData();
   void updateRange();
@@ -308,6 +309,6 @@ public:
     Logger *logger, std::shared_ptr<DataHolder const> interval, QVariantList style, QWidget *parent = nullptr);
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif /* DATAVIEWER_H */

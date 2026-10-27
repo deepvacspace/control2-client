@@ -80,6 +80,6 @@ private:
   QString            m_status;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // PPOADVISORMODEL_H

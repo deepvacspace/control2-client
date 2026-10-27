@@ -12,7 +12,7 @@ namespace {
 constexpr int    POLL_MS{1000};
 constexpr qint64 LOAD_TIMEOUT_MS{300'000}; // a cold disk and a big model can take a while
 constexpr int    LOG_LINES{12};
-} // namespace
+}
 
 SidecarConfig SidecarConfig::fromVariant(QVariantMap const &map, QString const &appDir) {
   SidecarConfig config;
@@ -183,4 +183,4 @@ void LlmSidecar::poll() {
   });
 }
 
-} // namespace deepvaccontrol::assistant
+}

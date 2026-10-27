@@ -33,6 +33,6 @@ private:
   int                  m_spacing;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // FLOWLAYOUT_H

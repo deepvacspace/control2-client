@@ -31,7 +31,7 @@ QSplitter *makeSplitter(Qt::Orientation orientation) {
   splitter->setChildrenCollapsible(false);
   return splitter;
 }
-} // namespace
+}
 
 AnalysisEditorArea::AnalysisEditorArea(QWidget *parent)
     : QWidget{parent}
@@ -64,7 +64,8 @@ QTabWidget *AnalysisEditorArea::makeGroup() {
   group->tabBar()->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss")
                          .arg(28 * utils::ssf())
                          .arg(100 * utils::ssf())
-                         .arg(36 * utils::ssf()));
+                         .arg(36 * utils::ssf())
+                         .arg(static_cast<int>(20 * utils::ssf())));
   group->setMinimumSize(320 * utils::ssf(), 240 * utils::ssf());
   {
     QFont font = group->tabBar()->font();
@@ -312,4 +313,4 @@ void AnalysisEditorArea::updatePlaceholder() {
   m_stack->setCurrentIndex(pageCount() > 0 ? 1 : 0);
 }
 
-} // namespace deepvaccontrol
+}

@@ -59,7 +59,7 @@ private:
   QTimer *m_timer;
   int     m_angle{0};
 };
-} // namespace
+}
 
 ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList const &channelNames, QWidget *parent)
     : QFrame{parent}
@@ -85,7 +85,7 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   m_tabBar->setFocusPolicy(Qt::NoFocus);
   m_tabBar->setContextMenuPolicy(Qt::CustomContextMenu);
   // tall enough for a finger
-  m_tabBar->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss").arg(30 * ssf).arg(80 * ssf).arg(32 * ssf));
+  m_tabBar->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss").arg(30 * ssf).arg(80 * ssf).arg(32 * ssf).arg(static_cast<int>(20 * ssf)));
   {
     QFont font = m_tabBar->font();
     font.setPointSizeF(font.pointSizeF() * 0.85);
@@ -122,8 +122,7 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   connect(m_toolbar, &ChartToolbar::sizeChanged, this, &ChartPane::placeOverlays);
   connect(m_toolbar, &ChartToolbar::dragged, this, [this](QPoint const &delta) {
     if (!m_toolbarMoved) {
-      int const gap{static_cast<int>(6 * utils::ssf())};
-      m_toolbarOffset = QPoint(gap, gap); // from the corner it stood in
+      m_toolbarOffset = m_toolbar->pos() - this->viewer()->getPlot()->mapTo(this, QPoint(0, 0)); // from the corner it stood in
       m_toolbarMoved  = true;
     }
     m_toolbarOffset += delta;
@@ -675,27 +674,29 @@ void ChartPane::placeOverlays() {
   if (!chart || !m_toolbar) {
     return;
   }
-  // the plot area (inside the axes) of the chart shown, in the pane
+  // the plot area (inside the axes) of the chart shown, and the whole chart, in the pane
   QCustomPlot *plot  = chart->getPlot();
-  QRect const  area  = plot->axisRect()->rect();
-  QPoint const start = plot->mapTo(this, area.topLeft());
-  QPoint const end   = plot->mapTo(this, area.bottomLeft());
+  QPoint const end   = plot->mapTo(this, plot->axisRect()->rect().bottomLeft());
+  QPoint const origin = plot->mapTo(this, QPoint(0, 0));
   int const    gap{static_cast<int>(6 * utils::ssf())};
   bool const floating{m_toolbar->isVisibleTo(this) && !m_toolbar->pinned()};
+  // floating from the start: in the top left corner, over the value axis' labels (not the plot area); the chart's
+  // layout stays as it is
   if (floating) {
     m_toolbar->adjustSize();
-    QPoint at = start + (m_toolbarMoved ? m_toolbarOffset : QPoint(gap, gap));
-    // within the pane, however far it was dragged
-    at.setX(std::clamp(at.x(), 0, std::max(0, width() - m_toolbar->width())));
-    at.setY(std::clamp(at.y(), 0, std::max(0, height() - m_toolbar->height())));
+    QPoint at = origin + (m_toolbarMoved ? m_toolbarOffset : QPoint(gap, gap));
+    if (!m_toolbarMoved) { // left of the value axis' line, where the labels leave room for it
+      at.setX(std::min(at.x(), end.x() - m_toolbar->width()));
+    }
+    // anywhere on the chart (over the axes too), however far it was dragged
+    at.setX(std::clamp(at.x(), origin.x(), std::max(origin.x(), origin.x() + plot->width() - m_toolbar->width())));
+    at.setY(std::clamp(at.y(), origin.y(), std::max(origin.y(), origin.y() + plot->height() - m_toolbar->height())));
     if (m_toolbarMoved) {
-      m_toolbarOffset = at - start;
+      m_toolbarOffset = at - origin;
     }
     m_toolbar->move(at);
     m_toolbar->raise();
   }
-  // the labels box right of the floating tools' handle, while it stands in the corner
-  chart->setLegendOffset((floating && !m_toolbarMoved) ? m_toolbar->width() + gap : 0);
   if (m_pad->isVisible()) {
     m_pad->adjustSize();
     m_pad->move(end.x() + gap, end.y() - gap - m_pad->height());
@@ -703,4 +704,4 @@ void ChartPane::placeOverlays() {
   }
 }
 
-} // namespace deepvaccontrol
+}

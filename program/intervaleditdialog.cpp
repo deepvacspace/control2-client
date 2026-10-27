@@ -381,7 +381,7 @@ TempChangeSelector::TempChangeSelector(QString const &label, QWidget *parent) : 
   lay->setSpacing(0);
   setpoint = new QPushButton(tr("At maximum rate"), this);
   ramp     = new QPushButton(tr("Linear ramp"), this);
-  setpoint->setToolTip(tr("Full speed to the target, then wait until it is reached"));
+  setpoint->setToolTip(tr("Full speed to the target, then hold it"));
   ramp->setToolTip(tr("Ramp linearly over the interval"));
   auto *group = new QButtonGroup(this);
   int   index{0};
@@ -422,4 +422,4 @@ IntervalHelpWindow::IntervalHelpWindow(QWidget *parent) : QDialog(parent) {
   setWindowTitle(tr("Rate change"));
   setAttribute(Qt::WA_DeleteOnClose);
 }
-} // namespace deepvaccontrol
+}

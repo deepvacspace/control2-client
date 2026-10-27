@@ -75,4 +75,4 @@ void CycleWidget::setIntervalsCount(int i) {
   m_intervalNumber = i;
 }
 
-} // namespace deepvaccontrol
+}

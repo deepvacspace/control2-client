@@ -52,4 +52,4 @@ bool DataExporter::writeData(QFile &file) {
 
   return true;
 }
-} // namespace deepvaccontrol
+}

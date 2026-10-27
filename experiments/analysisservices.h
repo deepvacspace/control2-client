@@ -56,6 +56,6 @@ inline AnalysisNotesStore *AnalysisServices::notes() const {
   return m_notes;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // ANALYSISSERVICES_H

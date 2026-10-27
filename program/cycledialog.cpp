@@ -122,4 +122,4 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
   setModal(true);
   adjustSize();
 }
-} // namespace deepvaccontrol
+}

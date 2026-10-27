@@ -97,4 +97,4 @@ int FlowLayout::doLayout(QRect const &rect, bool testOnly) const {
   return y + rowHeight - rect.y() + margins.bottom();
 }
 
-} // namespace deepvaccontrol
+}

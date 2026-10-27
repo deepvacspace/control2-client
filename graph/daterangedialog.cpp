@@ -61,4 +61,4 @@ DateRangeDialog::DateRangeDialog(QDateTime date1, QDateTime date2, QWidget *pare
 
   connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 }
-} // namespace deepvaccontrol
+}

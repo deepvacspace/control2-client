@@ -63,4 +63,4 @@ void CrosshairSyncHub::forEachOther(AnalysisChart *source, Op op) {
   m_busy = false;
 }
 
-} // namespace deepvaccontrol
+}

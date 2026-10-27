@@ -30,7 +30,7 @@ QPushButton *link(QString const &text, QWidget *parent) {
 QDateTime toDateTime(double epoch) {
   return QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(epoch * 1000.0));
 }
-} // namespace
+}
 
 CalendarPanel::CalendarPanel(QWidget *parent) : QWidget{parent} {
   auto *lay = new QVBoxLayout(this);
@@ -177,4 +177,4 @@ void CalendarPanel::updateMonthLabel() {
   m_monthLabel->setText(QLocale(QLocale::English).toString(QDate(m_calendar->yearShown(), m_calendar->monthShown(), 1), QStringLiteral("MMMM yyyy")));
 }
 
-} // namespace deepvaccontrol
+}

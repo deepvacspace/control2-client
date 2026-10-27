@@ -87,7 +87,7 @@ QString eventType(int type) {
       return QObject::tr("Application");
   }
 }
-} // namespace
+}
 
 QString html(ExperimentReportData const &data, bool embedImages) {
   core::ExperimentAnalysis const *a        = data.analysis;
@@ -123,6 +123,8 @@ QString html(ExperimentReportData const &data, bool embedImages) {
   core::RunMetadata const &details = manifest.metadata;
   auto                     orDash  = [](QString const &value) { return value.isEmpty() ? QStringLiteral("—") : value; };
   QVector<QPair<QString, QString>> detailFacts{{QObject::tr("DUT"), orDash(details.dut)},
+                                               {QObject::tr("DUT mass"), orDash(details.dutMassText())},
+                                               {QObject::tr("DUT density"), orDash(details.dutDensityText())},
                                                {QObject::tr("Operator"), orDash(details.operatorName)},
                                                {QObject::tr("Purpose"), orDash(details.purpose)},
                                                {QObject::tr("Tags"), orDash(details.tags.join(QStringLiteral(", ")))}};
@@ -381,4 +383,4 @@ bool writePdf(QString const &path, ExperimentReportData const &data) {
   return QFile::exists(path) && (QFile(path).size() > 0);
 }
 
-} // namespace deepvaccontrol::experimentreport
+}

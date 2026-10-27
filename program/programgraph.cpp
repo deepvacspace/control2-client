@@ -99,6 +99,17 @@ void ProgramGraph::initGui() {
 
   m_plot->xAxis->grid()->setPen(QPen(Qt::transparent));
 
+  // axis titles: the intervals, and what the program sets (its temperature, in °C)
+  m_plot->xAxis->setLabel(tr("Interval"));
+  QStringList quantities;
+  for (int i{0}; i < m_paramOrder.size(); ++i) {
+    if (m_plot->graph(i)->visible()) {
+      quantities << ((m_paramOrder.at(i) == QLatin1String("temp")) ? tr("Temperature, °C")
+                                                                     : m_model->getParamListVariant().at(i).toMap().value("label").toString());
+    }
+  }
+  m_plot->yAxis->setLabel(quantities.join(QStringLiteral(" | ")));
+
   m_plot->addLayer("selectionLay");
   m_plot->layer("selectionLay")->setMode(QCPLayer::lmBuffered);
 
@@ -177,7 +188,7 @@ void ProgramGraph::calculateChartData() {
         }
       }
     }
-  } // namespace deepvaccontrol
+  } 
 }
 
 int ProgramGraph::getIntervalIndexOnPlot(QPoint onScreenPosition) {
@@ -217,4 +228,4 @@ void ProgramGraph::reDraw() {
   selectInterval(m_model->getSelectedInterval());
 }
 
-} // namespace deepvaccontrol
+}

@@ -13,6 +13,7 @@
 #include <cmath>
 
 #include "constants.h"
+#include "pressureunits.h"
 #include "theme.h"
 #include "utils.h"
 
@@ -42,11 +43,8 @@ QString unitOf(QString const &name, SystemValue const *value) {
     return QStringLiteral(" %");
   }
   if (name == QLatin1String("pres")) {
-    // "Pressure, mbar" -> mbar; mmHg when the label has no unit
-    QString const label = value->getLabel();
-    qsizetype const comma = label.lastIndexOf(',');
-    QString const unit = (comma >= 0) ? label.mid(comma + 1).trimmed() : QString{};
-    return QStringLiteral(" ") + (unit.isEmpty() ? QObject::tr("mmHg") : unit);
+    Q_UNUSED(value)
+    return QStringLiteral(" Torr"); // converted from the chamber's unit (pressure::toTorr)
   }
   return {};
 }
@@ -66,7 +64,7 @@ QColor statusColor(HardwareStatus::HardwareStatusEnum status) {
       return c.off;
   }
 }
-} // namespace
+}
 
 HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
   setFixedHeight(px(38));
@@ -77,13 +75,6 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   auto *lay = new QHBoxLayout(m_content);
   lay->setContentsMargins(px(14), 0, px(14), 0);
   lay->setSpacing(px(10));
-
-  // hide / unhide toggle in the middle of the bar (positioned in placeToggle)
-  m_toggle = new QToolButton(this);
-  m_toggle->setObjectName("barToggle");
-  m_toggle->setFocusPolicy(Qt::NoFocus);
-  m_toggle->setFixedSize(px(34), px(11));
-  connect(m_toggle, &QToolButton::clicked, this, [this] { setCollapsed(!m_collapsed); });
 
   m_brand = new QLabel(QStringLiteral("Deepvac Control"), m_content);
   m_brand->setObjectName("headerBrand");
@@ -137,6 +128,7 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   }
   connect(m_resHolder->states, &SystemValueList::ValuesUpdated, this, &HeaderBar::updateValues);
   connect(m_resHolder->status, &StatusManager::appStateChanged, this, &HeaderBar::updateBadges);
+  connect(m_resHolder->status, &StatusManager::appStateChanged, this, &HeaderBar::updateValues);
   connect(m_resHolder->status, &StatusManager::opcStateChanged, this, [this](int state) {
     m_opcState = state;
     updateBadges();
@@ -154,7 +146,7 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
     label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed); // badges keep their height
   }
   restyle();
-  setCollapsed(false);
+  setFixedHeight(px(38));
 }
 
 void HeaderBar::restyle() {
@@ -184,14 +176,6 @@ void HeaderBar::restyle() {
   QFont clockFont = font();
   clockFont.setPointSizeF(font().pointSizeF() * 1.15);
   m_clock->setFont(clockFont);
-  m_toggle->setStyleSheet(QStringLiteral("QToolButton#barToggle { color: %1; background: %2; border: %3px solid %4; border-top: none; "
-                                  "border-bottom-left-radius: %5px; border-bottom-right-radius: %5px; font-size: 8pt; "
-                                  "font-weight: bold; padding: 0; } QToolButton#barToggle:hover { color: %6; border-color: %7; }")
-                     .arg(c.muted.name(), c.panel.name())
-                     .arg(px(1))
-                     .arg(c.border.name())
-                     .arg(px(4))
-                     .arg(c.text.name(), c.accent.name()));
   updateStatus();
   updateValues();
   updateBadges();
@@ -218,20 +202,33 @@ void HeaderBar::updateStatus() {
 void HeaderBar::updateValues() {
   theme::Colors const &c = theme::colors();
   QStringList          parts;
+  // not connected: the values are not the chamber's (zeros or the last ones received), a dash instead (with its unit)
+  StatusManager::AppState const appState{m_resHolder->status->getAppState()};
+  bool const online{(StatusManager::AppState::ONLINE == appState) || (StatusManager::AppState::DUMMY == appState)};
+  auto state = [this](QString const &name) -> SystemValue const * {
+    return m_resHolder->states->contains(name) ? m_resHolder->states->getSysValue(name) : nullptr;
+  };
   for (auto const &[name, label] : statusBarStatesList()) {
-    if (!m_resHolder->states->contains(name)) {
-      continue;
+    bool const         isPressure{name == QLatin1String("pres")};
+    SystemValue const *value = state(name);
+    if (!value && !isPressure) {
+      continue; // pressure is always shown (a dash without a gauge), as on Home
     }
-    SystemValue const *value = m_resHolder->states->getSysValue(name);
-    QString const      unit  = unitOf(name, value);
-    QString            part  = QStringLiteral("<span style='font-weight:bold; font-size:%1pt; color:%2'>%3%4</span>")
+    QString const unit = unitOf(name, value);
+    // pressure in Torr, whatever unit the chamber reports; a dash when there is none
+    auto shown = [&](SystemValue const *shownValue) {
+      if (!online || !shownValue) {
+        return QStringLiteral("—");
+      }
+      return isPressure ? pressure::text(pressure::toTorr(shownValue->getValue(), value ? value->getLabel() : QString{})) : number(shownValue);
+    };
+    QString part = QStringLiteral("<span style='font-weight:bold; font-size:%1pt; color:%2'>%3%4</span>")
                      .arg(font().pointSizeF() * 1.3)
-                     .arg(c.text.name(), number(value), unit);
-    if (m_resHolder->states->contains(name + "_ref")) {
+                     .arg(c.text.name(), shown(value), unit);
+    SystemValue const *setpoint = state(name + "_ref");
+    if (setpoint || isPressure) {
       // the pressure setpoint with its unit too
-      part += QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>[%2%3]</span>")
-                .arg(c.muted.name(), number(m_resHolder->states->getSysValue(name + "_ref")),
-                     (name == QLatin1String("pres")) ? unit : QString{});
+      part += QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>[%2%3]</span>").arg(c.muted.name(), shown(setpoint), isPressure ? unit : QString{});
     }
     parts << part;
   }
@@ -260,24 +257,6 @@ void HeaderBar::updateBadges() {
   badge(m_opc, opcText, (m_opcState == 0) ? c.ready : (m_opcState == -1 ? c.danger : c.off));
 }
 
-void HeaderBar::setCollapsed(bool collapsed) {
-  m_collapsed = collapsed;
-  m_content->setVisible(!collapsed);
-  setFixedHeight(collapsed ? px(16) : px(38));
-  m_toggle->setText(collapsed ? QStringLiteral("▾") : QStringLiteral("▴"));
-  m_toggle->setToolTip(collapsed ? tr("Show the header") : tr("Hide the header"));
-  placeToggle();
-}
-
-void HeaderBar::placeToggle() {
-  m_toggle->move((width() - m_toggle->width()) / 2, 0); // hangs from the top edge, clear of the readings
-  m_toggle->raise();
-}
-
-void HeaderBar::resizeEvent(QResizeEvent *event) {
-  QWidget::resizeEvent(event);
-  placeToggle();
-}
 
 void HeaderBar::paintEvent(QPaintEvent *) {
   theme::Colors const &c = theme::colors();
@@ -294,4 +273,4 @@ void HeaderBar::changeEvent(QEvent *event) {
   }
 }
 
-} // namespace deepvaccontrol
+}

@@ -149,7 +149,7 @@ private:
   QToolButton        *m_addBtn{nullptr};
   ChartToolbar::Tool  m_tool{ChartToolbar::Tool::INSPECT};
   bool                m_padShown{false};
-  // the floating tools moved by the user: where, from the plot area's top left corner
+  // the floating tools moved by the user: where, from the chart's top left corner
   bool                m_toolbarMoved{false};
   QPoint              m_toolbarOffset;
   QMetaObject::Connection m_replotConnection; // the overlays follow the plot's area
@@ -177,6 +177,6 @@ inline int ChartPane::count() const {
   return static_cast<int>(m_tabs.size());
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // CHARTPANE_H

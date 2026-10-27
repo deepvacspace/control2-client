@@ -124,7 +124,7 @@ QListWidget *checkList(QWidget *parent) {
   touch::enableScrolling(list);
   return list;
 }
-} // namespace
+}
 
 ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *library, QVector<OpenTab> const &openTabs,
                                    ChartComparison const &initial, QString const &checkedTab, QWidget *parent)
@@ -319,4 +319,4 @@ ChartComparison ComparisonDialog::comparison() const {
   return chosen;
 }
 
-} // namespace deepvaccontrol
+}

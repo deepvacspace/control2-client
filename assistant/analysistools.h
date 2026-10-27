@@ -89,6 +89,6 @@ private:
   QStringList               m_cacheOrder; // most recent last
 };
 
-} // namespace deepvaccontrol::assistant
+}
 
 #endif // ANALYSISTOOLS_H

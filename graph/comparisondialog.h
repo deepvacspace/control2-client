@@ -49,6 +49,6 @@ private:
   QVector<ExperimentRun> m_added;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // COMPARISONDIALOG_H

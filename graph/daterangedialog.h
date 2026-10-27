@@ -12,6 +12,6 @@ public:
 signals:
   void dateSelected(QDateTime, QDateTime);
 };
-} // namespace deepvaccontrol
+}
 
 #endif // DATERANGEDIALOG_H

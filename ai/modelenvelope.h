@@ -33,6 +33,6 @@ struct ModelEnvelope {
   QString describe() const;
 };
 
-} // namespace deepvaccontrol::ai
+}
 
 #endif // MODELENVELOPE_H

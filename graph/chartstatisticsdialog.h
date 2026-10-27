@@ -102,6 +102,6 @@ private:
   QPushButton           *m_removeRuleBtn{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // CHARTSTATISTICSDIALOG_H

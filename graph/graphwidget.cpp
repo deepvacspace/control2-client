@@ -14,6 +14,7 @@
 #include "hardwarestatus.h"
 #include "derivedexpression.h"
 #include "derivedvariablesdialog.h"
+#include "recordingfile.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
@@ -116,7 +117,7 @@ ChartComparison comparisonFromJson(QJsonObject const &json) {
 QString startText(double epochSec) {
   return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epochSec)).toString("yyyy-MM-dd HH:mm");
 }
-} // namespace
+}
 
 GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_styleEditor{nullptr} {
@@ -200,9 +201,9 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_sideBar->addPage(QStringLiteral("channels"), tr("Channels"), QStringLiteral("channels"), buildChannelsPage(), false, false);
   m_sideBar->addPage(QStringLiteral("options"), tr("Options"), QStringLiteral("manual"), buildOptions());
   m_sideBar->addPage(QStringLiteral("statistics"), tr("Statistics"), QStringLiteral("stats"), m_statsPanel);
-  m_sideBar->addPage(QStringLiteral("actions"), tr("Actions"), QStringLiteral("layers"), buildActionsPage());
   m_sideBar->addPage(QStringLiteral("info"), tr("Info"), QStringLiteral("info"), buildInfoPage());
   m_sideBar->addPage(QStringLiteral("ai"), tr("Assistant"), QStringLiteral("ai"), buildAiPage());
+  m_sideBar->setHeaderWidget(QStringLiteral("ai"), m_aiHeader);
   m_sideBar->addPage(QStringLiteral("calendar"), tr("Calendar"), QStringLiteral("calendar"), m_calendarPanel, true);
   m_sideBar->addPage(QStringLiteral("export"), tr("Export"), QStringLiteral("export"), m_exportHost, true);
   mainLay->addWidget(m_sideBar, 0, 1);
@@ -667,11 +668,8 @@ void GraphWidget::refreshSide() {
     if (m_services) {
       m_services->ensureScanned(); // the experiment's number comes with the list (runsChanged)
     }
-    QString const run = runReference();
-    m_aiContext->setText(!run.isEmpty() ? tr("About experiment %1 and the range shown; the assistant can also move the chart.").arg(run)
-                                        : QString{});
-    m_aiContext->setVisible(false); // no description: the panel is about the chart shown
-    m_aiExplainBtn->setEnabled((m_aiLive < 0) && (!run.isEmpty() || !chartView().isEmpty()));
+    emit assistantWanted();
+    updateAiButtons();
   } else if (key == QLatin1String("statistics")) {
     m_statsPanel->setSource(viewer(), comparison);
   } else if (key == QLatin1String("export")) {
@@ -715,38 +713,6 @@ QWidget *GraphWidget::buildChannelsPage() {
   return page;
 }
 
-QWidget *GraphWidget::buildActionsPage() {
-  double const ssf{utils::ssf()};
-  auto        *page = new QWidget();
-  auto        *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(0, 0, 8 * ssf, 0);
-  lay->setSpacing(2 * ssf);
-  auto caption = [page, lay, ssf](QString const &text) {
-    auto *label = new QLabel(text.toUpper(), page);
-    label->setObjectName("sectionCaption");
-    lay->addSpacing(6 * ssf);
-    lay->addWidget(label);
-  };
-  // a tick box per toggle, kept in step with it both ways
-  auto bind = [this, page, lay, ssf](QAction *action) {
-    auto *check = new QCheckBox(action->text(), page);
-    check->setToolTip(action->toolTip());
-    check->setChecked(action->isChecked());
-    check->setMinimumHeight(32 * ssf);
-    check->setFocusPolicy(Qt::NoFocus);
-    connect(check, &QCheckBox::toggled, action, &QAction::setChecked);
-    connect(action, &QAction::toggled, check, &QCheckBox::setChecked);
-    lay->addWidget(check);
-  };
-  caption(tr("Markers"));
-  bind(m_eventsAct);
-  bind(m_anomaliesAct);
-  bind(m_stagesAct);
-  bind(m_setpointAct);
-  lay->addStretch();
-  return page;
-}
-
 QString GraphWidget::runReference() const {
   Tab const *tab = m_focused ? m_focused->currentTab() : nullptr;
   if (!tab || tab->comparison || !m_library || (tab->key == ChartPane::LIVE_KEY)) {
@@ -759,7 +725,8 @@ QString GraphWidget::runReference() const {
       return QStringLiteral("#%1").arg(i + 1);
     }
   }
-  return {};
+  // not in the list yet (it is still being read): the experiment's database key, which the assistant resolves too
+  return tab->storeKey;
 }
 
 QJsonObject GraphWidget::chartView() const {
@@ -768,6 +735,42 @@ QJsonObject GraphWidget::chartView() const {
     return {};
   }
   auto clock = [](double t) { return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(t))).toString("yyyy-MM-dd HH:mm:ss"); };
+  if (Tab const *tab = m_focused->currentTab(); tab && tab->comparison) {
+    // a comparison: its experiments (the assistant's numbers of the saved ones), their alignment and the part shown
+    QJsonArray members;
+    for (ChartComparison::Member const &member : tab->comparison->members) {
+      QString ref;
+      if (m_library && (member.key != ChartPane::LIVE_KEY) && !member.key.startsWith(QLatin1String("day:"))) {
+        QVector<ExperimentRun> const all = m_library->chronological();
+        for (int i{0}; i < all.size(); ++i) {
+          if ((all[i].key == member.run.key) || (!member.run.storeKey.isEmpty() && (all[i].storeKey == member.run.storeKey))) {
+            ref = QStringLiteral("#%1").arg(i + 1);
+            break;
+          }
+        }
+        if (ref.isEmpty()) {
+          ref = member.run.storeKey;
+        }
+      }
+      members.push_back(QJsonObject{{"run", ref}, {"label", member.label.isEmpty() ? member.run.title : member.label}});
+    }
+    static char const *const ALIGNS[]{"start", "setpoint_change", "target_crossing", "stage"};
+    int const          mode{std::clamp(tab->comparison->alignMode, 0, 3)};
+    QCPRange const     view   = viewer()->getPlot()->xAxis->range();
+    double             origin = m_comparisonData.value(tab->key).origin;
+    if (!std::isfinite(origin)) {
+      origin = m_focused->dataStart();
+    }
+    QJsonObject result{{"compare", members},
+                       {"align", ALIGNS[mode]},
+                       {"align_index", tab->comparison->alignN},
+                       {"channels", QJsonArray::fromStringList(tab->comparison->channels)}};
+    if (std::isfinite(origin)) {
+      result.insert("from_s", view.lower - origin);
+      result.insert("to_s", view.upper - origin);
+    }
+    return result;
+  }
   if (run.isEmpty()) {
     // the live data or a recorded day: the day and the part of it shown
     Tab const *tab = m_focused->currentTab();
@@ -794,9 +797,17 @@ QJsonObject GraphWidget::chartView() const {
   QStringList const names = m_resHolder->states->getNames();
   QCustomPlot      *plot  = viewer()->getPlot();
   QStringList       channels;
+  QStringList       offScale; // drawn, but all above or below the values shown
+  QCPRange const    values = plot->yAxis->range();
   for (int i{0}; (i < plot->graphCount()) && (i < names.size()); ++i) {
-    if (plot->graph(i)->visible()) {
-      channels << names[i];
+    if (!plot->graph(i)->visible()) {
+      continue;
+    }
+    channels << names[i];
+    bool           found{false};
+    QCPRange const range = plot->graph(i)->getValueRange(found, QCP::sdBoth, QCPRange(view.lower, view.upper));
+    if (found && (plot->graph(i)->valueAxis() == plot->yAxis) && ((range.lower > values.upper) || (range.upper < values.lower))) {
+      offScale << names[i];
     }
   }
   auto const       data  = viewer()->getData();
@@ -807,34 +818,141 @@ QJsonObject GraphWidget::chartView() const {
                      {"to_s", std::max(0.0, view.upper - start)},
                      {"from", clock(view.lower)},
                      {"to", clock(view.upper)},
-                     {"channels", QJsonArray::fromStringList(channels)}};
+                     {"channels", QJsonArray::fromStringList(channels)},
+                     {"values_from", values.lower},
+                     {"values_to", values.upper},
+                     {"off_scale", QJsonArray::fromStringList(offScale)}};
 }
 
 void GraphWidget::askAssistant(QString const &question) {
-  if (question.trimmed().isEmpty()) {
+  if (question.trimmed().isEmpty() || (m_aiLive >= 0)) {
     return;
   }
+  m_aiChecking    = false;
+  m_aiAnswerShown = false;
   m_aiBlocks << QStringLiteral("**%1**").arg(question.trimmed().toHtmlEscaped());
-  m_aiBlocks << QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg(tr("Thinking…"));
-  m_aiLive = static_cast<int>(m_aiBlocks.size()) - 1;
-  m_aiTranscript->setMarkdown(m_aiBlocks.join(QStringLiteral("\n\n")));
-  m_aiAskBtn->setEnabled(false);
-  m_aiExplainBtn->setEnabled(false);
+  m_aiBlocks << QString{};
+  m_aiLive   = static_cast<int>(m_aiBlocks.size()) - 1;
+  m_aiStatus = tr("Assistant is thinking");
+  m_aiDots   = 1;
+  showAiStatus();
+  m_aiDotsTimer->start();
+  updateAiButtons();
   emit chartQuestionAsked(question, chartView());
+}
+
+void GraphWidget::showAiStatus() {
+  if ((m_aiLive < 0) || (m_aiLive >= m_aiBlocks.size())) {
+    m_aiDotsTimer->stop();
+    return;
+  }
+  // the dots appear one by one; their room is kept so the text does not move
+  QString const dots = QString(m_aiDots, QLatin1Char('.')) + QString(3 - m_aiDots, QChar(0x2007));
+  m_aiBlocks[m_aiLive] = QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg((m_aiStatus + dots).toHtmlEscaped());
+  renderAi();
+}
+
+void GraphWidget::renderAi() {
+  QString text = m_aiBlocks.join(QStringLiteral("\n\n"));
+  if (m_aiChecking) { // under the answer while a better one is looked for
+    text += QStringLiteral("\n\n<span style=\"color:#64748b\">%1</span>").arg(tr("Checking the values against the experiment data…").toHtmlEscaped());
+  }
+  m_aiTranscript->setMarkdown(text);
+  m_aiTranscript->verticalScrollBar()->setValue(m_aiTranscript->verticalScrollBar()->maximum());
+}
+
+void GraphWidget::aiWelcome() {
+  m_aiBlocks = {tr("**Assistant** — %1")
+                  .arg(tr("Ask about recorded experiments and days, the chamber and its settings, or the digital twin. I can help "
+                          "with summaries, KPIs, stages, anomalies, comparisons, charts, reports, data export, predictions and "
+                          "PID suggestions."))};
+  m_aiChecking = false;
+  renderAi();
+}
+
+void GraphWidget::showAssistantChecking() {
+  if (m_aiLive >= 0) {
+    m_aiChecking = true;
+    renderAi();
+  }
+}
+
+void GraphWidget::showAssistantModel(QString const &state, QString const &message) {
+  if (!m_aiModelDot) {
+    return;
+  }
+  static QHash<QString, std::pair<char const *, char const *>> const looks{
+    {"ready", {"#16a34a", QT_TR_NOOP("Model ready")}},
+    {"loading", {"#d97706", QT_TR_NOOP("Loading model")}},
+    {"failed", {"#dc2626", QT_TR_NOOP("Model failed")}},
+    {"off", {"#94a3b8", QT_TR_NOOP("Model not started")}}};
+  auto const look = looks.value(state, looks.value(QStringLiteral("off")));
+  m_aiModelDot->setStyleSheet(QStringLiteral("color: %1; font-size: 14pt;").arg(QLatin1String(look.first)));
+  m_aiModelText->setText(tr(look.second));
+  for (QLabel *label : {m_aiModelDot, m_aiModelText}) {
+    label->setToolTip(tr("Local model: %1").arg(message));
+  }
+}
+
+void GraphWidget::updateAiButtons() {
+  if (!m_aiExplainBtn) {
+    return;
+  }
+  bool const        idle{m_aiLive < 0};
+  bool const        experiment{!runReference().isEmpty()}; // one experiment shown (not a day or the live data)
+  QJsonObject const view = chartView();
+  bool const        experiments{experiment || view.contains(QLatin1String("compare"))}; // or a comparison
+  m_aiExplainBtn->setEnabled(idle && (experiment || !view.isEmpty()));
+  for (QPushButton *button : {m_aiSummaryBtn, m_aiAnomaliesBtn, m_aiReportBtn}) {
+    button->setEnabled(idle && experiments);
+  }
+  // Send turns into Stop while the answer is written
+  m_aiAskBtn->setText(idle ? tr("Send") : tr("Stop"));
+  m_aiAskBtn->setObjectName(idle ? QStringLiteral("primaryButton") : QString{});
+  m_aiAskBtn->style()->unpolish(m_aiAskBtn);
+  m_aiAskBtn->style()->polish(m_aiAskBtn);
 }
 
 void GraphWidget::showAssistantExchange(QString const &status, QString const &answer, bool done) {
   if ((m_aiLive < 0) || (m_aiLive >= m_aiBlocks.size())) {
     return;
   }
-  m_aiBlocks[m_aiLive] = answer.isEmpty() ? QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg(status.toHtmlEscaped()) : answer;
-  if (done) {
+  if (answer.isEmpty() && done) {
+    // stopped: the status says so
+    m_aiDotsTimer->stop();
+    m_aiChecking = false;
+    if (!std::exchange(m_aiAnswerShown, false)) { // an answer shown stays
+      m_aiBlocks[m_aiLive] = QStringLiteral("<span style=\"color:#64748b\">%1</span>").arg(status.toHtmlEscaped());
+    }
     m_aiLive = -1;
-    m_aiAskBtn->setEnabled(true);
-    m_aiExplainBtn->setEnabled(true);
+    updateAiButtons();
+    renderAi();
+    return;
   }
-  m_aiTranscript->setMarkdown(m_aiBlocks.join(QStringLiteral("\n\n")));
-  m_aiTranscript->verticalScrollBar()->setValue(m_aiTranscript->verticalScrollBar()->maximum());
+  if (answer.isEmpty()) {
+    // what it is doing, its dots animated
+    QString text = status;
+    while (text.endsWith(QChar(0x2026)) || text.endsWith(QLatin1Char('.'))) {
+      text.chop(1);
+    }
+    m_aiStatus = text;
+    showAiStatus();
+    if (!m_aiDotsTimer->isActive()) {
+      m_aiDotsTimer->start();
+    }
+    return;
+  }
+  m_aiDotsTimer->stop();
+  m_aiAnswerShown = !done;
+  // a list or heading starts on its own line
+  static QRegularExpression const block(QStringLiteral("^\\s*(?:[-*+]\\s|#|\\d+[.)]\\s|\\|)"));
+  m_aiBlocks[m_aiLive] = tr("**Assistant** — %1").arg(block.match(answer).hasMatch() ? QStringLiteral("\n\n") + answer : answer);
+  if (done) {
+    m_aiLive     = -1;
+    m_aiChecking = false;
+    updateAiButtons();
+  }
+  renderAi();
 }
 
 QWidget *GraphWidget::buildAiPage() {
@@ -843,16 +961,46 @@ QWidget *GraphWidget::buildAiPage() {
   auto        *lay  = new QVBoxLayout(page);
   lay->setContentsMargins(0, 0, 8 * ssf, 0);
   lay->setSpacing(8 * ssf);
-  m_aiContext = new QLabel(page);
-  m_aiContext->setProperty("muted", true);
-  m_aiContext->setWordWrap(true);
-  lay->addWidget(m_aiContext);
-  // what the visible range shows, in a few sentences
-  m_aiExplainBtn = new QPushButton(tr("Explain this view"), page);
+  // in the panel's header: the local model's state, and a new conversation
+  m_aiHeader     = new QWidget();
+  auto *modelRow = new QHBoxLayout(m_aiHeader);
+  modelRow->setContentsMargins(0, 0, 0, 0);
+  modelRow->setSpacing(4 * ssf);
+  m_aiModelDot = new QLabel(QStringLiteral("●"), m_aiHeader);
+  m_aiModelText = new QLabel(m_aiHeader);
+  m_aiModelText->setProperty("muted", true);
+  auto *newChatBtn = new QPushButton(tr("New chat"), m_aiHeader);
+  newChatBtn->setToolTip(tr("Forget this conversation and start a new one"));
+  newChatBtn->setFixedHeight(26 * ssf);
+  newChatBtn->setFocusPolicy(Qt::NoFocus);
+  modelRow->addWidget(m_aiModelDot);
+  modelRow->addWidget(m_aiModelText);
+  modelRow->addSpacing(4 * ssf);
+  modelRow->addWidget(newChatBtn);
+  showAssistantModel(QStringLiteral("off"), tr("Model not started"));
+  // what is shown explained; the whole experiment (or comparison) summarized, its anomalies and its report
+  m_aiExplainBtn = new QPushButton(tr("Explain view"), page);
   m_aiExplainBtn->setObjectName("primaryButton");
-  m_aiExplainBtn->setMinimumHeight(32 * ssf);
-  m_aiExplainBtn->setFocusPolicy(Qt::NoFocus);
-  lay->addWidget(m_aiExplainBtn);
+  m_aiSummaryBtn = new QPushButton(tr("Summarize"), page);
+  m_aiSummaryBtn->setToolTip(tr("The whole experiment: configuration, main KPIs, stages and anything abnormal"));
+  m_aiAnomaliesBtn = new QPushButton(tr("Anomalies"), page);
+  m_aiAnomaliesBtn->setToolTip(tr("The anomalies detected in this experiment"));
+  m_aiReportBtn = new QPushButton(tr("Report"), page);
+  m_aiReportBtn->setToolTip(tr("Write an HTML report of this experiment"));
+  // the four in one row: as narrow as their words
+  auto *quickRow = new QHBoxLayout();
+  quickRow->setSpacing(6 * ssf);
+  for (QPushButton *button : {m_aiExplainBtn, m_aiSummaryBtn, m_aiAnomaliesBtn, m_aiReportBtn}) {
+    button->setMinimumHeight(32 * ssf);
+    button->setMinimumWidth(0);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setStyleSheet(QStringLiteral("padding-left: %1px; padding-right: %1px;").arg(static_cast<int>(4 * ssf)));
+  }
+  quickRow->addWidget(m_aiExplainBtn, 1);
+  quickRow->addWidget(m_aiSummaryBtn, 1);
+  quickRow->addWidget(m_aiAnomaliesBtn, 1);
+  quickRow->addWidget(m_aiReportBtn, 1);
+  lay->addLayout(quickRow);
   // the questions and answers of this panel
   m_aiTranscript = new QTextBrowser(page);
   m_aiTranscript->setObjectName("statsList");
@@ -860,37 +1008,71 @@ QWidget *GraphWidget::buildAiPage() {
   m_aiTranscript->setMinimumHeight(220 * ssf);
   touch::enableScrolling(m_aiTranscript);
   lay->addWidget(m_aiTranscript, 1);
+  // the question and its Send button side by side
+  auto *row      = new QHBoxLayout();
+  row->setSpacing(8 * ssf);
   auto *question = new LineEditScreen(page, VirtualKeyboard::EN);
   question->setPlaceholderText(tr("Ask, or tell the chart: \"zoom to the second hold\"…"));
   question->setMinimumHeight(32 * ssf);
   question->setProperty("soft", true);
-  lay->addWidget(question);
-  auto *row = new QHBoxLayout();
-  row->setSpacing(8 * ssf);
-  m_aiAskBtn = new QPushButton(tr("Ask"), page);
+  m_aiAskBtn = new QPushButton(tr("Send"), page);
   m_aiAskBtn->setMinimumHeight(32 * ssf);
+  m_aiAskBtn->setMinimumWidth(80 * ssf);
   m_aiAskBtn->setFocusPolicy(Qt::NoFocus);
-  auto *openBtn = new QPushButton(tr("Open the assistant"), page);
-  openBtn->setMinimumHeight(32 * ssf);
-  openBtn->setFocusPolicy(Qt::NoFocus);
-  row->addWidget(m_aiAskBtn, 1);
-  row->addWidget(openBtn, 1);
+  row->addWidget(question, 1);
+  row->addWidget(m_aiAskBtn);
   lay->addLayout(row);
+  m_aiDotsTimer = new QTimer(page);
+  m_aiDotsTimer->setInterval(400);
+  connect(m_aiDotsTimer, &QTimer::timeout, this, [this] {
+    m_aiDots = (m_aiDots % 3) + 1;
+    showAiStatus();
+  });
   auto ask = [this, question] {
+    if (m_aiLive >= 0) {
+      emit assistantStopRequested(); // the button is Stop while the answer is written
+      return;
+    }
     QString const text = question->text();
     question->clear();
     askAssistant(text);
   };
   connect(m_aiAskBtn, &QPushButton::clicked, this, ask);
-  connect(question, &QLineEdit::returnPressed, this, ask);
-  connect(m_aiExplainBtn, &QPushButton::clicked, this, [this] {
-    if (chartView().contains(QLatin1String("day"))) { // a day: its experiments and what happened between them
+  connect(question, &QLineEdit::returnPressed, this, [this, ask] {
+    if (m_aiLive < 0) {
+      ask();
+    }
+  });
+  connect(newChatBtn, &QPushButton::clicked, this, [this] {
+    emit assistantNewChatRequested();
+    m_aiDotsTimer->stop();
+    m_aiLive = -1;
+    aiWelcome();
+    updateAiButtons();
+  });
+  // the questions are sent to the model in English; a comparison shown gets its own
+  auto comparisonShown = [this] { return chartView().contains(QLatin1String("compare")); };
+  connect(m_aiExplainBtn, &QPushButton::clicked, this, [this, comparisonShown] {
+    if (comparisonShown()) {
+      askAssistant(tr("Explain this comparison in this view: how the experiments differ, which one followed the setpoint better, and anything unusual."));
+    } else if (chartView().contains(QLatin1String("day"))) { // a day: its experiments and what happened between them
       askAssistant(tr("Explain what happened on this day: the experiments, and what the chamber did between them."));
     } else {
       askAssistant(tr("Explain what happens in this view: the setpoint and how well the temperature followed it, and anything unusual."));
     }
   });
-  connect(openBtn, &QPushButton::clicked, this, [this] { emit assistantRequested(runReference(), QString{}); });
+  connect(m_aiSummaryBtn, &QPushButton::clicked, this, [this, comparisonShown] {
+    askAssistant(comparisonShown() ? tr("Summarize this comparison: how the experiments differ and which one controlled better.")
+                                   : tr("Summarize this experiment: configuration, main KPIs, stages and anything abnormal."));
+  });
+  connect(m_aiAnomaliesBtn, &QPushButton::clicked, this, [this, comparisonShown] {
+    askAssistant(comparisonShown() ? tr("Which anomalies were detected in these experiments and how serious are they?")
+                                   : tr("Which anomalies were detected in this experiment and how serious are they?"));
+  });
+  connect(m_aiReportBtn, &QPushButton::clicked, this, [this, comparisonShown] {
+    askAssistant(comparisonShown() ? tr("Generate an HTML report of this comparison.") : tr("Generate an HTML report of this experiment."));
+  });
+  aiWelcome();
   return page;
 }
 
@@ -1116,12 +1298,17 @@ void GraphWidget::refreshInfo() {
         }
       }
     }
-    if (!run.storeKey.isEmpty()) {
-      if (auto const manifest = storage::RunStore::manifest(run.storeKey)) {
-        rows += row(tr("DUT"), manifest->metadata.dut);
-        rows += row(tr("Purpose"), manifest->metadata.purpose);
-        rows += row(tr("Operator"), manifest->metadata.operatorName);
-      }
+    // the details of a saved experiment, always listed ("—" when not filled in); the tab knows its database key
+    // even before the experiment list is read
+    QString const storeKey = !run.storeKey.isEmpty() ? run.storeKey : tab->storeKey;
+    if (!storeKey.isEmpty()) {
+      auto const manifest = storage::RunStore::manifest(storeKey);
+      auto       detail   = [](QString const &value) { return value.trimmed().isEmpty() ? QStringLiteral("—") : value; };
+      rows += row(tr("DUT"), detail(manifest ? manifest->metadata.dut : QString{}));
+      rows += row(tr("DUT mass"), detail(manifest ? manifest->metadata.dutMassText() : QString{}));
+      rows += row(tr("DUT density"), detail(manifest ? manifest->metadata.dutDensityText() : QString{}));
+      rows += row(tr("Purpose"), detail(manifest ? manifest->metadata.purpose : QString{}));
+      rows += row(tr("Operator"), detail(manifest ? manifest->metadata.operatorName : QString{}));
     }
     rows += row(tr("Chamber"), run.chamber);
   }
@@ -1617,6 +1804,7 @@ void GraphWidget::styleComparison(DataViewer *chart, ChartComparison const &comp
       styles.push_back(QVariantMap{{"label", (comparison.channels.size() == 1) ? comparison.members[k].label
                                                                               : QStringLiteral("%1 · %2").arg(comparison.members[k].label, label)},
                                    {"name", comparison.channels[c]},
+                                   {"axis_label", label}, // the axis title: the channel, not the experiment
                                    {"color", palette[k % palette.size()].name()},
                                    {"pen", (c % 5) + 1},
                                    {"width", 2},
@@ -1716,7 +1904,7 @@ double typicalPeriod(QVector<double> const &times) {
   std::nth_element(steps.begin(), steps.begin() + steps.size() / 2, steps.end());
   return steps[steps.size() / 2];
 }
-} // namespace
+}
 
 void GraphWidget::computeComparison(QString const &key, ChartComparison const &comparison) {
   QStringList const names = m_resHolder->states->getNames();
@@ -1747,6 +1935,7 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
     QVector<double>          setpoint; // the first experiment's setpoint on the grid
     QVector<std::shared_ptr<core::ExperimentAnalysis const>> analyses; // of the experiments read
     QVector<ComparedRun>     runs;
+    double                   origin{qQNaN()}; // chart time of the alignment point
   };
   auto     result = std::make_shared<Result>();
   QThread *thread = QThread::create([inputs, names, comparison, result]() mutable {
@@ -1853,6 +2042,7 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
     }
     qsizetype const count{static_cast<qsizetype>(std::floor((tMax - tMin) / step)) + 1};
     double const    base{inputs[reference].times.first()}; // the reference experiment's clock
+    result->origin = base + (((mode != core::AlignMode::START) && std::isfinite(referenceAnchor)) ? referenceAnchor : 0.0);
     result->times.resize(count);
     for (qsizetype i{0}; i < count; ++i) {
       result->times[i] = base + tMin + static_cast<double>(i) * step;
@@ -1921,7 +2111,8 @@ void GraphWidget::computeComparison(QString const &key, ChartComparison const &c
     QString const      signal = (tab && tab->comparison) ? tab->comparison->channels.value(0) : QString{};
     qsizetype const    signalIndex{names.indexOf(signal)};
     m_comparisonData.insert(key, {result->analyses, result->runs,
-                                  ((signalIndex >= 0) && (signalIndex < styles.size())) ? styles[signalIndex].toMap()["label"].toString() : signal});
+                                  ((signalIndex >= 0) && (signalIndex < styles.size())) ? styles[signalIndex].toMap()["label"].toString() : signal,
+                                  result->origin});
     if (tab && tab->ownViewer) {
       tab->ownViewer->setSetpointSeries(result->times, result->setpoint);
       tab->ownViewer->setSetpointLine(m_setpointAct->isChecked());
@@ -2118,6 +2309,23 @@ QWidget *GraphWidget::buildOptions() {
   axis[0]->setChecked(true);
   m_relativeRadio = axis[1];
 
+  // markers on the chart: each toggle kept in step with its action both ways
+  QVBoxLayout *markers = section(tr("Markers"), true);
+  {
+    QVector<QAction *> const actions{m_eventsAct, m_anomaliesAct, m_stagesAct, m_setpointAct};
+    QStringList              labels;
+    for (QAction *action : actions) {
+      labels << action->text();
+    }
+    QVector<QPushButton *> const toggles = segments(markers, labels, false);
+    for (int i{0}; i < actions.size(); ++i) {
+      toggles[i]->setToolTip(actions[i]->toolTip());
+      toggles[i]->setChecked(actions[i]->isChecked());
+      connect(toggles[i], &QPushButton::toggled, actions[i], &QAction::setChecked);
+      connect(actions[i], &QAction::toggled, toggles[i], &QPushButton::setChecked);
+    }
+  }
+
   // reference lines of one channel, chamber temperature unless chosen otherwise
   QVBoxLayout *overlays = section(tr("Reference lines"), true);
   m_overlayChannel      = new QComboBox(page);
@@ -2288,25 +2496,17 @@ void GraphWidget::showDay(QDate const &day, QVector<storage::ExperimentSpan> con
   QString const key   = QStringLiteral("day:") + day.toString(Qt::ISODate);
   Tab           tab{key, label, name, QStringLiteral("chart:") + key, nullptr, experiments.size() == 1 ? experiments.first().key : QString{}};
   QStringList const names = m_resHolder->states->getNames();
-  // the day's interval file: every sample received while the application was connected (idle times included)
-  QString const dayFile = deepvaccontrol::INTERVALS_DIR
-                          + utils::calculateFileName(static_cast<quint64>(QDateTime(day, QTime(12, 0)).toSecsSinceEpoch()));
+  // the day's recording: every sample received while the application was connected (idle times included)
+  QString const dayFile = recordingfile::readPath(static_cast<double>(QDateTime(day, QTime(12, 0)).toSecsSinceEpoch()));
   openLoading(tab, false, [names, experiments, dayFile](Samples &out, QString &error) {
     QVector<double>          times;
     QVector<QVector<double>> states(names.size());
-    {
-      QFile file(dayFile);
-      if (file.open(QIODevice::ReadOnly)) {
-        QDataStream in(&file);
-        in.setFloatingPointPrecision(QDataStream::DoublePrecision);
-        QVariantMap              header;
-        QVector<double>          fileTimes;
-        QVector<QVector<double>> fileStates;
-        in >> header >> fileTimes >> fileStates;
-        if ((in.status() == QDataStream::Ok) && (fileStates.size() == names.size())) {
-          times  = fileTimes;
-          states = fileStates;
-        }
+    if (!dayFile.isEmpty()) {
+      QVector<double>          fileTimes;
+      QVector<QVector<double>> fileStates;
+      if (recordingfile::read(dayFile, fileTimes, fileStates, names) && (fileStates.size() == names.size())) {
+        times  = fileTimes;
+        states = fileStates;
       }
     }
     // gaps (the application closed): no line across them
@@ -2543,4 +2743,4 @@ void GraphWidget::refreshExportPanel() {
   connect(dialog, &QDialog::accepted, this, [this] { QTimer::singleShot(0, this, &GraphWidget::refreshExportPanel); });
   dialog->show();
 }
-} // namespace deepvaccontrol
+}

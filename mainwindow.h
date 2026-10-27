@@ -3,7 +3,6 @@
 
 #include <QMainWindow>
 
-#include "aiwidget.h"
 #include "dataanalysiswidget.h"
 #include "flasher.h"
 #include "graphwidget.h"
@@ -41,9 +40,7 @@ private:
   SettingsWidget *m_settingsWidget;
   GraphWidget        *m_graphWidget;
   DataAnalysisWidget *m_dataAnalysisWidget;
-  AiWidget       *m_aiWidget;
   HeaderBar      *m_headerBar{nullptr};
-  bool            m_headerWasCollapsed{false}; // before the chart page hid it
   Flasher        *m_flasher;
   bool            m_windowMode;
 
@@ -52,6 +49,6 @@ protected:
   // void resizeEvent(QResizeEvent *event) override;
   void closeEvent(QCloseEvent *event) override;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // MAINWINDOW_H

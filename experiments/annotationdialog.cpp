@@ -153,7 +153,7 @@ public:
   QLineEdit    *labelEdit{nullptr};
   QButtonGroup *group{nullptr};
 };
-} // namespace
+}
 
 QComboBox *makeColorCombo(QWidget *parent, int height) {
   auto *combo = new QComboBox(parent);
@@ -203,4 +203,4 @@ bool edit(QWidget *parent, QString &label, QColor &color, QDateTime &from, QDate
   return true;
 }
 
-} // namespace deepvaccontrol::annotationdialog
+}

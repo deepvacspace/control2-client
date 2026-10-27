@@ -76,6 +76,6 @@ private:
   QPointer<QNetworkReply> m_pending;
 };
 
-} // namespace deepvaccontrol::assistant
+}
 
 #endif // LLMCLIENT_H

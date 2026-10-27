@@ -31,6 +31,6 @@ private:
 protected:
   void hideEvent(QHideEvent *event) override;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // GRAPHSTYLEEDITOR_H

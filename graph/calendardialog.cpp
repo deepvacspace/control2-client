@@ -19,7 +19,7 @@ QString durationText(double seconds) {
     .arg((total / 60) % 60, 2, 10, QLatin1Char('0'))
     .arg(total % 60, 2, 10, QLatin1Char('0'));
 }
-} // namespace
+}
 
 CalendarCustomWidget::CalendarCustomWidget(QMap<QDate, int> const &counts, QWidget *parent)
     : QCalendarWidget(parent), m_counts{counts} {
@@ -224,4 +224,4 @@ void CalendarDialog::openSelected() {
   accept();
 }
 
-} // namespace deepvaccontrol
+}

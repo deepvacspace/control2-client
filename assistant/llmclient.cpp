@@ -40,7 +40,7 @@ QJsonObject parseArguments(QJsonValue const &value, QString &error) {
   }
   return doc.object();
 }
-} // namespace
+}
 
 LlmClient::LlmClient(QObject *parent) : QObject{parent}, m_network{new QNetworkAccessManager(this)} {
   // never go through a system proxy: the server is on this machine
@@ -299,4 +299,4 @@ void LlmClient::checkHealth(std::function<void(bool, QString const &)> done) {
   });
 }
 
-} // namespace deepvaccontrol::assistant
+}

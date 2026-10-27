@@ -58,6 +58,6 @@ private:
   std::atomic<bool> m_cancel{false};
 };
 
-} // namespace deepvaccontrol::ai
+}
 
 #endif // OFFLINETUNEWORKER_H

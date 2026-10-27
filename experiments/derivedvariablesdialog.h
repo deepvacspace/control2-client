@@ -58,6 +58,6 @@ inline bool DerivedVariablesDialog::changed() const {
   return m_changed;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // DERIVEDVARIABLESDIALOG_H

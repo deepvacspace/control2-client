@@ -309,4 +309,4 @@ bool ProgramModel::setProgramVariant(QVariantMap const &loadedProgramVariant) {
 
   return result;
 }
-} // namespace deepvaccontrol
+}

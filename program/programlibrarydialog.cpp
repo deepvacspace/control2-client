@@ -4,8 +4,10 @@
 #include <QHeaderView>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QGuiApplication>
 #include <QListWidget>
 #include <QPushButton>
+#include <QScreen>
 #include <QStandardItem>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -26,9 +28,19 @@ using storage::TestProfilesStore;
 using storage::TestProfileStep;
 
 namespace {
+// as large as wanted, but never beyond the screen it opens on
+void fitToScreen(QDialog *dialog, QWidget *parent, int width, int height) {
+  QScreen const *screen = parent ? parent->screen() : QGuiApplication::primaryScreen();
+  QRect const    room   = screen ? screen->availableGeometry() : QRect(0, 0, 1280, 720);
+  dialog->resize(std::min(static_cast<int>(width * utils::ssf()), room.width() * 9 / 10),
+                 std::min(static_cast<int>(height * utils::ssf()), room.height() * 85 / 100));
+  dialog->setMaximumSize(room.width() * 95 / 100, room.height() * 90 / 100);
+}
+
 QPushButton *makeButton(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
   button->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  button->setMinimumWidth(110 * utils::ssf());
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
@@ -43,7 +55,7 @@ QString setpointsText(TestProfileStep const &step) {
   }
   return parts.isEmpty() ? QObject::tr("other channels") : parts.join(", ");
 }
-} // namespace
+}
 
 namespace programlibrary {
 
@@ -117,18 +129,17 @@ bool loadIntoModel(TestProfile const &profile, ProgramModel &model, QString *err
   return model.setProgramVariant(program);
 }
 
-} // namespace programlibrary
+}
 
 // ---------------------------------------------------------------- open
 
 ProgramLibraryDialog::ProgramLibraryDialog(QWidget *parent) : QDialog{parent} {
   setWindowTitle(tr("Program library"));
-  resize(900 * utils::ssf(), 560 * utils::ssf());
+  fitToScreen(this, parent, 900, 560);
 
   auto *root = new QVBoxLayout(this);
   auto *body = new QHBoxLayout();
   m_list     = new QListWidget(this);
-  m_list->setStyleSheet(QStringLiteral("QListWidget::item { height: %1px; }").arg(static_cast<int>(36 * utils::ssf())));
   m_preview = new QLabel(this);
   m_preview->setWordWrap(true);
   m_preview->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -188,6 +199,7 @@ void ProgramLibraryDialog::refresh() {
                                      m_list);
     item->setData(Qt::UserRole, profile.id);
     item->setData(Qt::UserRole + 1, profile.name);
+    item->setSizeHint(QSize(0, static_cast<int>(36 * utils::ssf()))); // tall enough to tap (a style sheet height overlaps rows)
   }
   if (m_list->count() > 0) {
     m_list->setCurrentRow(0);
@@ -229,7 +241,7 @@ ProgramSaveDialog::ProgramSaveDialog(ProgramModel const &model, QString const &n
                                      QString const &userName, QWidget *parent)
     : QDialog{parent}, m_model{model}, m_userName{userName} {
   setWindowTitle(tr("Save to library"));
-  resize(820 * utils::ssf(), 560 * utils::ssf());
+  fitToScreen(this, parent, 820, 560);
 
   auto *root    = new QVBoxLayout(this);
   auto *nameRow = new QHBoxLayout();
@@ -308,4 +320,4 @@ void ProgramSaveDialog::save(bool replaceExisting) {
   accept();
 }
 
-} // namespace deepvaccontrol
+}

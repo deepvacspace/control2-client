@@ -11,7 +11,7 @@ namespace {
 double limitValue(double low, double x, double high) {
   return std::max(low, std::min(x, high));
 }
-} // namespace
+}
 
 QVector<float> buildTwinFeatureRow(QStringList const &featureNames, double temp, double tempRef,
                                     double previousTemp, double dtS, double u, double uP, double uI, double uD,
@@ -170,11 +170,14 @@ bool ChamberTwinSim::stepOnce(TrajectoryPoint &pointOut, QString *errorOut) {
   double const dt        = std::max(m_params.dtS, period);
   int const    nSubsteps = std::max(1, static_cast<int>(std::llround(dt / period)));
 
+  // the setpoint now and after this step (a ramp moves it along)
+  double const ref     = setpointAt(m_params, m_step * m_params.dtS);
+  double const nextRef = setpointAt(m_params, (m_step + 1) * m_params.dtS);
   double u{0.0}, uP{0.0}, uI{0.0}, uD{0.0};
   for (int k{0}; k < nSubsteps; ++k) {
     double const diffOut = m_diff.update(m_currentTemp); // temp_mode == "hold"
     auto const terms =
-      m_pid.step(true, m_params.targetTemp, m_currentTemp, m_params.kp, m_params.ki, m_params.kd, diffOut);
+      m_pid.step(true, ref, m_currentTemp, m_params.kp, m_params.ki, m_params.kd, diffOut);
     u  = terms[0] * featureScale;
     uP = terms[1] * featureScale;
     uI = terms[2] * featureScale;
@@ -184,7 +187,7 @@ bool ChamberTwinSim::stepOnce(TrajectoryPoint &pointOut, QString *errorOut) {
   // predict_next(): patch the last window row with this step's live terms,
   // then run the plant model on the patched window.
   QVector<float>      predictWindow = m_featureWindow;
-  QVector<float> const lastRow      = buildTwinFeatureRow(m_featureNames, m_currentTemp, m_params.targetTemp,
+  QVector<float> const lastRow      = buildTwinFeatureRow(m_featureNames, m_currentTemp, ref,
                                                             m_previousTemp, m_params.dtS, u, uP, uI, uD, m_params.kp,
                                                             m_params.ki, m_params.kd);
   std::copy(lastRow.begin(), lastRow.end(), predictWindow.end() - m_nFeatures);
@@ -214,14 +217,14 @@ bool ChamberTwinSim::stepOnce(TrajectoryPoint &pointOut, QString *errorOut) {
   // Roll the window forward: drop the oldest row, append the realized
   // next-step row (matches np.roll(pred_window, -1) then overwriting [-1]).
   QVector<float> const nextRow =
-    buildTwinFeatureRow(m_featureNames, nextTemp, m_params.targetTemp, m_currentTemp, m_params.dtS, u, uP, uI, uD,
+    buildTwinFeatureRow(m_featureNames, nextTemp, nextRef, m_currentTemp, m_params.dtS, u, uP, uI, uD,
                          m_params.kp, m_params.ki, m_params.kd);
   m_featureWindow = predictWindow.mid(m_nFeatures) + nextRow;
 
   pointOut.elapsedS  = (m_step + 1) * m_params.dtS;
   pointOut.temp      = nextTemp;
-  pointOut.tempRef   = m_params.targetTemp;
-  pointOut.error     = m_params.targetTemp - nextTemp;
+  pointOut.tempRef   = nextRef;
+  pointOut.error     = nextRef - nextTemp;
   pointOut.u         = u;
   pointOut.uP        = uP;
   pointOut.uI        = uI;
@@ -344,4 +347,4 @@ SimMetrics ChamberTwinSim::metrics() const {
   return metricsFromKpis(kpis, m_valid, m_invalidReason);
 }
 
-} // namespace deepvaccontrol::ai
+}

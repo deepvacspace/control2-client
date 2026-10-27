@@ -115,7 +115,7 @@ QString formatValue(double value) {
   }
   return QString::number(value, 'f', absValue >= 100 ? 1 : 3);
 }
-} // namespace
+}
 
 DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     : QWidget(parent)
@@ -326,6 +326,7 @@ void DataViewer::setStyles(QVariantList const &stateListVariant) {
   }
   m_stateListVariant = stateListVariant;
   applyStyles();
+  updateAxisTitles(); // also before there are lines (applyStyles needs them)
   rebuildDecorations(); // bands and overlays follow the visible channels
 }
 
@@ -532,16 +533,6 @@ void DataViewer::setRegions(QVector<Region> const &regions) {
 void DataViewer::setAnnotateMode(bool enabled) {
   m_annotateMode = enabled;
   m_plot->setCursor((m_annotateMode || m_boxZoomMode) ? Qt::CrossCursor : Qt::ArrowCursor);
-}
-
-void DataViewer::setLegendOffset(int left) {
-  QCPLayoutInset *inset = m_plot->axisRect()->insetLayout();
-  if (inset->margins().left() == left) {
-    return;
-  }
-  inset->setAutoMargins(QCP::msNone);
-  inset->setMargins(QMargins(left, 0, 0, 0));
-  m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void DataViewer::setBoxZoomMode(bool enabled) {
@@ -885,6 +876,53 @@ void DataViewer::applyLineStyle(QCPGraph *graph) const {
                                    : QCPScatterStyle(QCPScatterStyle::ssNone));
 }
 
+void DataViewer::updateAxisTitles() {
+  m_plot->xAxis->setLabel(m_relativeTime ? tr("Time from start, h:mm:ss") : tr("Time, hh:mm:ss"));
+  for (QCPAxis *axis : {m_plot->yAxis, m_plot->yAxis2}) {
+    // the visible channels on this axis: "Name, unit" in their labels
+    QStringList names;
+    QStringList units;
+    // (before any data, e.g. the live chart while nothing is received: from the styles)
+    for (int i{0}; i < m_stateListVariant.size(); ++i) {
+      bool const      drawn{i < m_plot->graphCount()};
+      QCPAxis const  *valueAxis = drawn ? m_plot->graph(i)->valueAxis() : (m_logAxisDataIndexes.contains(i) ? m_plot->yAxis2 : m_plot->yAxis);
+      bool const      visible{drawn ? m_plot->graph(i)->visible() : m_stateListVariant[i].toMap().value("visible").toBool()};
+      if ((valueAxis != axis) || !visible) {
+        continue;
+      }
+      // "axis_label": what the line measures, when its label names something else (a comparison's experiment)
+      QString const   label = m_stateListVariant[i].toMap().value(QStringLiteral("axis_label"), channelLabel(i)).toString();
+      qsizetype const comma = label.lastIndexOf(QLatin1Char(','));
+      QString const   name  = (comma > 0) ? label.left(comma).trimmed() : label.trimmed();
+      QString const   unit  = (comma > 0) ? label.mid(comma + 1).trimmed() : QString{};
+      names << name;
+      if (!unit.isEmpty() && !units.contains(unit)) {
+        units << unit;
+      }
+    }
+    QString title;
+    if (names.size() == 1) {
+      title = units.isEmpty() ? names.first() : QStringLiteral("%1, %2").arg(names.first(), units.first());
+    } else if (!names.isEmpty()) {
+      // several channels: the words their names start with ("Temperature …"), and the unit(s)
+      QStringList common = names.first().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+      for (QString const &name : std::as_const(names)) {
+        QStringList const words = name.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        int               same{0};
+        while ((same < common.size()) && (same < words.size()) && (common[same] == words[same])) {
+          ++same;
+        }
+        common = common.mid(0, same);
+      }
+      QString const quantity = common.join(QLatin1Char(' '));
+      QString const unitText = units.join(QStringLiteral(" | "));
+      title = (units.size() <= 1) && !quantity.isEmpty() ? (unitText.isEmpty() ? quantity : QStringLiteral("%1, %2").arg(quantity, unitText))
+                                                         : unitText;
+    }
+    axis->setLabel(title);
+  }
+}
+
 void DataViewer::applyStyles() {
   quint16 statesCount{static_cast<quint16>(m_stateListVariant.size())};
 
@@ -930,6 +968,7 @@ void DataViewer::applyStyle(int index, QVariantMap const &stateVariantMap, bool 
   m_plot->graph(index)->setVisible(visibility);
   m_plot->graph(index)->setPen(pen);
   applyLineStyle(m_plot->graph(index)); // points take the line's colour
+  updateAxisTitles();
 
   if (!shadow) {
     m_plot->replot();
@@ -1027,6 +1066,7 @@ void DataViewer::updateSetpointLine() {
 void DataViewer::setRelativeTime(bool relative) {
   m_relativeTime = relative;
   m_plot->xAxis->setTicker(relative ? m_elapsedTicker : m_clockTicker);
+  updateAxisTitles();
   updateTimeOrigin();
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
@@ -1054,6 +1094,7 @@ void DataViewer::clear(QString const &text) {
   setExtraSeries({});
   rebuildDecorations();
   updateSetpointLine();
+  updateAxisTitles();
   updateTextItem(text);
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
@@ -1487,4 +1528,4 @@ DataViewerDialog::DataViewerDialog(
   setAttribute(Qt::WA_DeleteOnClose);
 }
 
-} // namespace deepvaccontrol
+}

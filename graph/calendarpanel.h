@@ -46,6 +46,6 @@ private:
   QListWidget                     *m_list{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // CALENDARPANEL_H

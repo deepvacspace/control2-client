@@ -48,7 +48,7 @@ QString formatPid(double kp, double ki, double kd) {
 
 constexpr qint64 TELEMETRY_TIMEOUT_MS{10'000}; // no telemetry for this long aborts the run
 
-} // namespace
+}
 
 OfflineAdvisorWidget::OfflineAdvisorWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder} {
@@ -129,7 +129,7 @@ QFrame *advisorCard(QWidget *parent, QString const &title) {
   }
   return card;
 }
-} // namespace
+}
 
 void OfflineAdvisorWidget::initGui() {
   double const ssf{utils::ssf()};
@@ -185,8 +185,10 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   m_durationEdit   = addField(tr("Duration, s"), 1, 100000, 0, ai::DEFAULT_DURATION_S);
   m_startTempEdit->setToolTip(tr("The chamber temperature now; change it to plan from another start"));
 
-  auto *buttons = new QVBoxLayout();
-  buttons->addStretch();
+  row->addStretch();
+  lay->addLayout(row);
+
+  // the actions, with the status and progress beside them (one row with the fields does not fit a 1920 px screen)
   auto *buttonRow = new QHBoxLayout();
   buttonRow->setSpacing(8 * ssf);
   m_runBtn = new QPushButton(tr("Run experiment"), frame);
@@ -203,9 +205,6 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
     button->setMinimumWidth(static_cast<int>(130 * ssf));
     buttonRow->addWidget(button);
   }
-  buttons->addLayout(buttonRow);
-  row->addSpacing(6 * ssf);
-  row->addLayout(buttons);
 
   // status and progress take the rest of the row
   auto *statusBox = new QVBoxLayout();
@@ -219,9 +218,9 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   m_progressBar->setFixedHeight(static_cast<int>(8 * ssf));
   m_progressBar->setTextVisible(false);
   statusBox->addWidget(m_progressBar);
-  row->addSpacing(10 * ssf);
-  row->addLayout(statusBox, 1);
-  lay->addLayout(row);
+  buttonRow->addSpacing(10 * ssf);
+  buttonRow->addLayout(statusBox, 1);
+  lay->addLayout(buttonRow);
 
   connect(m_runBtn, &QPushButton::clicked, this, &OfflineAdvisorWidget::runExperiment);
   connect(m_simulateBtn, &QPushButton::clicked, this, &OfflineAdvisorWidget::simulate);
@@ -948,4 +947,4 @@ void OfflineAdvisorWidget::clearMetricsTable() {
   m_pidLabel->clear();
 }
 
-} // namespace deepvaccontrol
+}

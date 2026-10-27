@@ -223,6 +223,6 @@ inline AnalysisChart *AnalysisRunPage::chart() const {
   return m_chart;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // ANALYSISRUNPAGE_H

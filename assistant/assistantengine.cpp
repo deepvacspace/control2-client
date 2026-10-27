@@ -29,7 +29,7 @@ QString withoutMarks(QString text) {
 QString compact(QJsonObject const &object) {
   return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }
-} // namespace
+}
 
 AssistantEngine::AssistantEngine(LlmClient *client, ToolRegistry const *registry, QObject *parent)
     : QObject{parent}, m_client{client}, m_registry{registry} {
@@ -342,8 +342,10 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun, QJso
     return;
   }
   QString content = question.trimmed();
-  if (!focusRun.isEmpty()) {
-    content = tr("%1\n(Experiment selected in the app: %2. The question may name another experiment.)").arg(content, focusRun);
+  // a day shown on the chart: not about the experiment selected elsewhere in the app
+  QString const focus = view.contains(QLatin1String("day")) ? QString{} : focusRun;
+  if (!focus.isEmpty()) {
+    content = tr("%1\n(Experiment selected in the app: %2. The question may name another experiment.)").arg(content, focus);
   }
   // routing aid for small models: a question naming several runs is answered with one compare_runs call
   QStringList const runs = mentionedRuns(question);
@@ -362,6 +364,13 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun, QJso
                  .arg(std::round(view.value("to_s").toDouble()))
                  .arg(view.value("from").toString(), view.value("to").toString(),
                       channels.isEmpty() ? QString{} : QStringLiteral("; lines shown: %1").arg(channels.join(QStringLiteral(", "))));
+    // the values in sight, and the lines drawn outside them (the user does not see those)
+    if (view.contains(QLatin1String("values_from"))) {
+      content += QStringLiteral("\n(Values in sight: %1 to %2.").arg(view.value("values_from").toDouble(), 0, 'g', 4).arg(view.value("values_to").toDouble(), 0, 'g', 4);
+      QStringList const offScale = view.value("off_scale").toVariant().toStringList();
+      content += offScale.isEmpty() ? QStringLiteral(")")
+                                    : QStringLiteral(" Outside them, so not seen on the chart: %1; say so if they matter.)").arg(offScale.join(QStringLiteral(", ")));
+    }
   }
   // a day shown (the live data or a recorded day): its experiments and what happened between them
   QString const viewDay = view.value("day").toString();
@@ -369,6 +378,35 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun, QJso
     content += QStringLiteral("\n(Chart shown in the app: everything recorded on %1, visible from %2 to %3. 'This day', 'today', "
                               "'this view' and 'here' mean it; call get_day_summary with date %1.)")
                  .arg(viewDay, view.value("from").toString(), view.value("to").toString());
+  }
+  // a comparison shown: its experiments, how they are aligned and the part of the aligned time in sight
+  QJsonArray const compared = view.value("compare").toArray();
+  if (!compared.isEmpty()) {
+    QStringList members;
+    QStringList saved;
+    for (QJsonValue const &value : compared) {
+      QJsonObject const member = value.toObject();
+      QString const     ref    = member.value("run").toString();
+      QString const     label  = member.value("label").toString();
+      members << (ref.isEmpty() ? QStringLiteral("'%1' (not a saved experiment)").arg(label) : QStringLiteral("%1 ('%2')").arg(ref, label));
+      if (!ref.isEmpty()) {
+        saved << ref;
+      }
+    }
+    QString const align = view.value("align").toString();
+    QString const at    = (align == QLatin1String("start")) || align.isEmpty()
+                            ? QStringLiteral("their start")
+                            : QStringLiteral("%1 %2").arg(QString(align).replace(QLatin1Char('_'), QLatin1Char(' '))).arg(view.value("align_index").toInt(1));
+    QStringList const channels = view.value("channels").toVariant().toStringList();
+    content += QStringLiteral("\n(Chart shown in the app: a comparison of %1; the first is the reference. The curves are aligned at %2; "
+                              "visible from %3 s to %4 s on the aligned time axis (0 s = the alignment point)%5. 'This view', 'this "
+                              "comparison', 'these experiments' and 'here' mean it.%6)")
+                 .arg(members.join(QStringLiteral(", ")), at)
+                 .arg(std::round(view.value("from_s").toDouble()))
+                 .arg(std::round(view.value("to_s").toDouble()))
+                 .arg(channels.isEmpty() ? QString{} : QStringLiteral("; lines: %1").arg(channels.join(QStringLiteral(", "))),
+                      saved.size() >= 2 ? QStringLiteral(" For more, call compare_runs with runs %1 and align %2.").arg(saved.join(QStringLiteral(", ")), align)
+                                        : QString{});
   }
   static QRegularExpression const showVerbs(
     QStringLiteral("\\b(?:show|plot|display|open|graph|chart|zoom|go to|jump|focus|fit|hide|add|remove|muestra|mostrar|muéstrame|"
@@ -379,7 +417,7 @@ void AssistantEngine::ask(QString const &question, QString const &focusRun, QJso
   }
   m_history.push_back(QJsonObject{{"role", "user"}, {"content", content}});
   trimHistory();
-  prefetch(question, viewRun.isEmpty() ? focusRun : viewRun, view);
+  prefetch(question, viewRun.isEmpty() ? focus : viewRun, view);
   m_round     = 0;
   m_cancelled = false;
   m_corrected = false; // evidence is kept: follow-up questions are checked against everything fetched so far
@@ -499,6 +537,34 @@ void AssistantEngine::prefetch(QString const &question, QString const &focusRun,
     calls.push_back({QStringLiteral("plot_run"), command});
   } else if (runs.size() >= 2) {
     calls.push_back({QStringLiteral("compare_runs"), QJsonObject{{"runs", QJsonArray::fromStringList(runs.mid(0, 5))}}});
+  } else if (!view.value("compare").toArray().isEmpty() && runs.isEmpty()) {
+    // a comparison shown: its saved experiments as aligned on the chart (or their anomalies, or its report)
+    QStringList saved;
+    for (QJsonValue const &value : view.value("compare").toArray()) {
+      if (QString const ref = value.toObject().value("run").toString(); !ref.isEmpty() && (saved.size() < 5)) {
+        saved << ref;
+      }
+    }
+    static QRegularExpression const aboutAnomalies(QStringLiteral("\\banomal\\w*"), QRegularExpression::CaseInsensitiveOption);
+    static QRegularExpression const aboutReport(QStringLiteral("\\breport\\b"), QRegularExpression::CaseInsensitiveOption);
+    if (saved.size() == 1) {
+      calls.push_back({QStringLiteral("get_run_summary"), QJsonObject{{"run", saved.first()}}});
+    } else if ((saved.size() >= 2) && aboutAnomalies.match(question).hasMatch()) {
+      for (QString const &ref : saved) {
+        calls.push_back({QStringLiteral("get_anomalies"), QJsonObject{{"run", ref}}});
+      }
+    } else if ((saved.size() >= 2) && aboutReport.match(question).hasMatch()) {
+      calls.push_back({QStringLiteral("generate_report"),
+                       QJsonObject{{"run", saved.first()}, {"compare_with", QJsonArray::fromStringList(saved.mid(1))}}});
+    } else if (saved.size() >= 2) {
+      QJsonObject arguments{{"runs", QJsonArray::fromStringList(saved)},
+                            {"align", view.value("align").toString(QStringLiteral("start"))},
+                            {"align_index", view.value("align_index").toInt(1)}};
+      if (QString const channel = view.value("channels").toArray().at(0).toString(); !channel.isEmpty()) {
+        arguments.insert("channel", channel);
+      }
+      calls.push_back({QStringLiteral("compare_runs"), arguments});
+    }
   } else if (view.value("run").toString().isEmpty() && !view.value("day").toString().isEmpty() && runs.isEmpty()) {
     // a day shown: what happened in its visible part
     calls.push_back({QStringLiteral("get_day_summary"), QJsonObject{{"date", view.value("day")},
@@ -606,4 +672,4 @@ void AssistantEngine::finish() {
   emit busyChanged(false);
 }
 
-} // namespace deepvaccontrol::assistant
+}

@@ -33,6 +33,6 @@ QColor  eventColor(QString const &type);
 
 QString integrityText(int integrity); // RunStore::Integrity as text
 
-} // namespace deepvaccontrol::runrecord
+}
 
 #endif // RUNRECORD_H

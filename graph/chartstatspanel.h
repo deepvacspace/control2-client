@@ -54,6 +54,6 @@ private:
   QMetaObject::Connection m_dataConnection;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // CHARTSTATSPANEL_H

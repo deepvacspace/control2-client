@@ -67,6 +67,6 @@ public:
   // visible channels only, `columns` per row (hidden ones after them, so they leave no gaps)
   void compactLayout(int columns);
 };
-} // namespace deepvaccontrol
+}
 
 #endif /* DATAVIEWERLEGEND_H */

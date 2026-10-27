@@ -134,6 +134,6 @@ inline void ProgramModel::emitModelUpdated() {
 inline ProgramModel::ProgType ProgramModel::getProgType() const {
   return m_progType;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // PROGRAMMODEL_H

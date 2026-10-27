@@ -256,4 +256,4 @@ void DataViewerLegend::updateTimePosition() {
 
   m_timeValue->setMargins(QMargins(36 * utils::ssf(), 2, 0, 2));
 }
-} // namespace deepvaccontrol
+}

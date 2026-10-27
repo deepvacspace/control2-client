@@ -65,6 +65,6 @@ private:
   QString        m_filePath;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // EXPORTDIALOG_H
