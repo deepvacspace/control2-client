@@ -199,7 +199,7 @@ QIcon lineIcon(QColor const &color, Qt::PenStyle style, int width) {
   painter.drawLine(QPointF(2 * ssf, 7 * ssf), QPointF(78 * ssf, 7 * ssf));
   return QIcon(pix);
 }
-} // namespace
+}
 
 AnalysisRunPage::AnalysisRunPage(ResHolder          *resHolder,
                                  ExperimentLibrary  *library,
@@ -1143,6 +1143,11 @@ void AnalysisRunPage::refreshStats() {
   if (!details.dut.isEmpty()) {
     about << tr("DUT %1").arg(details.dut);
   }
+  for (QString const &fact : {details.dutMassText(), details.dutDensityText()}) {
+    if (!fact.isEmpty()) {
+      about << fact;
+    }
+  }
   if (!details.purpose.isEmpty()) {
     about << tr("Purpose %1").arg(details.purpose);
   }
@@ -1341,7 +1346,7 @@ QTableWidget *makeTable(QStringList const &headers, int stretchColumn, QWidget *
   table->setMinimumHeight(90 * utils::ssf());
   return table;
 }
-} // namespace
+}
 
 int AnalysisRunPage::channelIndex(QString const &name) const {
   for (int i{0}; i < m_channels.size(); ++i) {
@@ -2415,11 +2420,13 @@ QString AnalysisRunPage::recordHtml() const {
     html += QStringLiteral("<p>%1</p>").arg(esc(tr("Not saved in the experiment database: no manifest. Save it (Export ▾) to keep its record.")));
   }
   core::RunMetadata const &details = m_manifest.metadata;
-  html += QStringLiteral("<h4>%1</h4><p>%2: %3<br>%4: %5<br>%6: %7<br>%8: %9</p>")
-            .arg(tr("Experiment details"), tr("DUT"), esc(details.dut.isEmpty() ? QStringLiteral("—") : details.dut), tr("Operator"),
-                 esc(details.operatorName.isEmpty() ? QStringLiteral("—") : details.operatorName), tr("Purpose"),
-                 esc(details.purpose.isEmpty() ? QStringLiteral("—") : details.purpose), tr("Tags"),
-                 esc(details.tags.isEmpty() ? QStringLiteral("—") : details.tags.join(QStringLiteral(", "))));
+  auto dash = [](QString const &value) { return value.isEmpty() ? QStringLiteral("—") : value; };
+  html += QStringLiteral("<h4>%1</h4><p>%2: %3<br>%4: %5<br>%6: %7<br>").arg(tr("Experiment details"), tr("DUT"), esc(dash(details.dut)),
+                                                                                tr("DUT mass"), esc(dash(details.dutMassText())), tr("DUT density"),
+                                                                                esc(dash(details.dutDensityText())));
+  html += QStringLiteral("%1: %2<br>%3: %4<br>%5: %6</p>")
+            .arg(tr("Operator"), esc(dash(details.operatorName)), tr("Purpose"), esc(dash(details.purpose)), tr("Tags"),
+                 esc(dash(details.tags.join(QStringLiteral(", ")))));
   if (!details.notes.isEmpty()) {
     html += QStringLiteral("<p>%1</p>").arg(esc(details.notes));
   }
@@ -2538,4 +2545,4 @@ void AnalysisRunPage::handleAccessChange(QString const &name, AccessManager::Acc
   }
 }
 
-} // namespace deepvaccontrol
+}

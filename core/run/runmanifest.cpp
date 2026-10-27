@@ -1,5 +1,7 @@
 #include "runmanifest.h"
 
+#include <QLocale>
+
 #include <QCryptographicHash>
 #include <QRegularExpression>
 #include <algorithm>
@@ -28,7 +30,7 @@ QString degrees(double value) {
   return QString::number(std::round(value * 100.0) / 100.0, 'g', 8);
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------- channels
 
@@ -302,11 +304,34 @@ QVector<RunEvent> detectEvents(QVector<double> const &times, QHash<QString, QVec
 // ---------------------------------------------------------------- metadata and manifest
 
 bool RunMetadata::isEmpty() const {
-  return dut.isEmpty() && operatorName.isEmpty() && purpose.isEmpty() && tags.isEmpty() && notes.isEmpty();
+  return dut.isEmpty() && std::isnan(dutMassKg) && std::isnan(dutDensityKgM3) && operatorName.isEmpty() && purpose.isEmpty()
+         && tags.isEmpty() && notes.isEmpty();
 }
 
 QJsonObject RunMetadata::toJson() const {
-  return QJsonObject{{"dut", dut}, {"operator", operatorName}, {"purpose", purpose}, {"tags", QJsonArray::fromStringList(tags)}, {"notes", notes}};
+  QJsonObject json{{"dut", dut}, {"operator", operatorName}, {"purpose", purpose}, {"tags", QJsonArray::fromStringList(tags)}, {"notes", notes}};
+  // only when given
+  if (std::isfinite(dutMassKg)) {
+    json.insert("dut_mass_kg", dutMassKg);
+  }
+  if (std::isfinite(dutDensityKgM3)) {
+    json.insert("dut_density_kg_m3", dutDensityKgM3);
+  }
+  return json;
+}
+
+QString RunMetadata::dutMassText() const {
+  return std::isfinite(dutMassKg) ? QStringLiteral("%1 kg").arg(QLocale::c().toString(dutMassKg, 'g', 6)) : QString{};
+}
+
+QString RunMetadata::dutDensityText() const {
+  return std::isfinite(dutDensityKgM3) ? QStringLiteral("%1 kg/m³").arg(QLocale::c().toString(dutDensityKgM3, 'g', 6)) : QString{};
+}
+
+double RunMetadata::parseNumber(QString const &text) {
+  bool         ok{false};
+  double const value = QString(text).trimmed().replace(QLatin1Char(','), QLatin1Char('.')).toDouble(&ok);
+  return (ok && std::isfinite(value)) ? value : std::numeric_limits<double>::quiet_NaN();
 }
 
 QString RunMetadata::searchText() const {
@@ -316,6 +341,8 @@ QString RunMetadata::searchText() const {
 RunMetadata RunMetadata::fromJson(QJsonObject const &json) {
   RunMetadata metadata;
   metadata.dut          = json.value("dut").toString();
+  metadata.dutMassKg      = json.value("dut_mass_kg").toDouble(std::numeric_limits<double>::quiet_NaN());
+  metadata.dutDensityKgM3 = json.value("dut_density_kg_m3").toDouble(std::numeric_limits<double>::quiet_NaN());
   metadata.operatorName = json.value("operator").toString();
   metadata.purpose      = json.value("purpose").toString();
   metadata.notes        = json.value("notes").toString();
@@ -389,4 +416,4 @@ QString sha256Hex(QByteArray const &data) {
   return QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
 }
 
-} // namespace deepvaccontrol::core
+}

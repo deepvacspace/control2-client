@@ -14,7 +14,7 @@ namespace deepvaccontrol {
 
 struct ResHolder;
 
-// Run details (DUT, operator, purpose, tags, notes) of the next run or of a saved one.
+// Run details (DUT with its mass and density, operator, purpose, tags, notes) of the next run or of a saved one.
 class RunDetailsDialog : public QDialog {
   Q_OBJECT
 public:
@@ -25,6 +25,8 @@ public:
 
 private:
   QLineEdit      *m_dut{nullptr};
+  QLineEdit      *m_mass{nullptr};    // kg
+  QLineEdit      *m_density{nullptr}; // kg/m³
   QLineEdit      *m_operator{nullptr};
   QLineEdit      *m_purpose{nullptr};
   QLineEdit      *m_tags{nullptr};
@@ -61,6 +63,8 @@ private:
 
   ResHolder *m_resHolder;
   QLineEdit *m_dut{nullptr};
+  QLineEdit *m_mass{nullptr};
+  QLineEdit *m_density{nullptr};
   QLineEdit *m_operator{nullptr};
   QLineEdit *m_purpose{nullptr};
   QTimer    *m_storeTimer{nullptr};
@@ -68,6 +72,6 @@ private:
   bool       m_loading{false};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // RUNDETAILSDIALOG_H

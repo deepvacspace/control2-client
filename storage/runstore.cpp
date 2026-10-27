@@ -296,7 +296,7 @@ QString insertRun(ScopedDb &db, StoredRun const &run, QStringList const &columns
   }
   return run.key;
 }
-} // namespace
+}
 
 namespace {
 bool ensureJournal(ScopedDb &db) {
@@ -309,7 +309,7 @@ bool ensureJournal(ScopedDb &db) {
   db.exec("CREATE INDEX IF NOT EXISTS idx_live_samples_job ON live_samples(job_id, t)");
   return true;
 }
-} // namespace
+}
 
 QVector<ExperimentSpan> RunStore::spans(QString *error) {
   ScopedDb db(RUNS_DB);
@@ -737,6 +737,8 @@ QJsonObject RunStore::metadataJson(StoredRun const &run) {
                      // control-app extensions: integrity and run details
                      {"sha256", text(run.manifest.samplesSha256)},
                      {"dut", text(run.manifest.metadata.dut)},
+                     {"dut_mass_kg", number(run.manifest.metadata.dutMassKg)},
+                     {"dut_density_kg_m3", number(run.manifest.metadata.dutDensityKgM3)},
                      {"operator", text(run.manifest.metadata.operatorName)},
                      {"purpose", text(run.manifest.metadata.purpose)},
                      {"tags", QJsonArray::fromStringList(run.manifest.metadata.tags)}};
@@ -907,4 +909,4 @@ QJsonObject RunStore::bundle(QString const &key, QString *error) {
   return manifestJson;
 }
 
-} // namespace deepvaccontrol::storage
+}

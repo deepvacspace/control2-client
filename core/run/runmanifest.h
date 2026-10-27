@@ -44,7 +44,7 @@ inline constexpr char TIMER[]{"timer"};
 inline constexpr char BITMASK[]{"bitmask"};                   // digital inputs / outputs
 inline constexpr char ALARM[]{"alarm"};                       // alarm words
 inline constexpr char OTHER[]{"other"};
-} // namespace channelrole
+}
 
 struct ChannelMeta {
   QString name;     // state name as recorded ("temp")
@@ -84,7 +84,7 @@ inline constexpr char OPERATOR_ACTION[]{"operator_action"};
 inline constexpr char PLC_COMMAND[]{"plc_command"};
 inline constexpr char APP_ERROR[]{"error"};
 inline constexpr char USER_CHANGE[]{"user_change"};
-} // namespace eventtype
+}
 
 struct RunEvent {
   double      time{0.0}; // epoch s, ms resolution
@@ -110,6 +110,8 @@ QString            statusName(int statusCondition); // status_condition value ->
 
 struct RunMetadata {
   QString     dut;      // device under test
+  double      dutMassKg{std::numeric_limits<double>::quiet_NaN()};      // NaN: not given
+  double      dutDensityKgM3{std::numeric_limits<double>::quiet_NaN()}; // kg/m³
   QString     operatorName;
   QString     purpose;
   QStringList tags;
@@ -118,6 +120,11 @@ struct RunMetadata {
   [[nodiscard]] bool        isEmpty() const;
   [[nodiscard]] QJsonObject toJson() const;
   [[nodiscard]] QString     searchText() const; // all fields, for searching
+  // "12.5 kg", "2700 kg/m³"; empty when not given
+  [[nodiscard]] QString     dutMassText() const;
+  [[nodiscard]] QString     dutDensityText() const;
+  // a number typed by the user ("12,5" too); NaN when empty or not a number
+  static double             parseNumber(QString const &text);
   static RunMetadata        fromJson(QJsonObject const &json);
 };
 
@@ -152,6 +159,6 @@ struct RunManifest {
 QString sha256Hex(QByteArray const &data);
 void    sortEvents(QVector<RunEvent> &events);
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_RUN_RUNMANIFEST_H
