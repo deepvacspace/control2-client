@@ -9,6 +9,8 @@
 #include "resholder.h"
 #include "stopbutton.h"
 
+class QStackedWidget;
+
 namespace deepvaccontrol {
 class ChamberView;
 class HomeTrend;
@@ -21,7 +23,6 @@ public:
   explicit Head(ResHolder *resHolder, QWidget *parent = nullptr);
 
 signals:
-  void diagramRequested(); // the compact diagram was tapped
 
 public:
 
@@ -30,6 +31,7 @@ public:
 
 protected:
   void changeEvent(QEvent *event) override;
+  bool eventFilter(QObject *watched, QEvent *event) override; // keeps the Chart / Diagram switch in its corner
 
 private:
   void       handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
@@ -38,20 +40,23 @@ private:
   void       updateGui();
   ResHolder *m_resHolder;
 
-  ChamberView *m_chamber{nullptr}; // compact: the components; the full diagram is in System > Diagram
-  HomeTrend   *m_trend{nullptr};
+  // the left side: the chart (last 2 hours, or the running experiment) or the chamber's diagram
+  QStackedWidget *m_leftStack{nullptr};
+  HomeTrend      *m_trend{nullptr};
+  ChamberView    *m_diagram{nullptr};
+  QPushButton    *m_viewSwitch{nullptr}; // "Diagram" / "Chart": the other view, in the top right corner of either
   QLabel      *m_statusDot{nullptr};
   QLabel      *m_statusText{nullptr};
   QLabel      *m_tempValue{nullptr};
   QLabel      *m_tempUnit{nullptr};
-  QVector<QWidget *> m_presWidgets; // caption and reading, shown when the chamber has a pressure gauge
-  QLabel      *m_presValue{nullptr};
+  QLabel      *m_presValue{nullptr}; // in Torr; a dash without a gauge or a connection
   QLabel      *m_presUnit{nullptr};
-  QLabel      *m_coolingLabel{nullptr};
-  QLabel      *m_heatingLabel{nullptr};
-  QLabel      *m_setpointValue{nullptr};
+  QLabel      *m_setpointValue{nullptr}; // temperature
   QLabel      *m_outputValue{nullptr};
   ControlBar  *m_outputBar{nullptr};
+  QLabel      *m_presSetpointValue{nullptr}; // pressure
+  QLabel      *m_presOutputValue{nullptr};
+  ControlBar  *m_presOutputBar{nullptr};
   QLabel      *m_curWorkTimeLabel{nullptr};
   QLabel      *m_intervalLabel{nullptr};
   QLabel      *m_cycleLabel{nullptr};
@@ -63,6 +68,6 @@ private:
 
   AccessManager::AccessLevel m_accessLevel;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // HEAD_H

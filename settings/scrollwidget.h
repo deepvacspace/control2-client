@@ -14,6 +14,6 @@ public:
 private:
   QWidget *m_marginWidget;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SCROLLWIDGET_H

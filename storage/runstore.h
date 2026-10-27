@@ -136,6 +136,6 @@ public:
   static QJsonObject                      bundle(QString const &key, QString *error = nullptr);
 };
 
-} // namespace deepvaccontrol::storage
+}
 
 #endif // RUNSTORE_H

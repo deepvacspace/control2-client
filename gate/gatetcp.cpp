@@ -511,4 +511,4 @@ bool GateTcp::parseUserMsg(QByteArray data) {
   return true;
 }
 
-} // namespace deepvaccontrol
+}

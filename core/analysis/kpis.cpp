@@ -27,7 +27,7 @@ double crossingTime(QVector<double> const &t, QVector<double> const &v, QVector<
   }
   return NaN;
 }
-} // namespace
+}
 
 ControlKpis computeKpis(QVector<double> const &times, QVector<double> const &value, QVector<double> const &reference,
                         KpiOptions const &options) {
@@ -190,4 +190,4 @@ double controlCost(ControlKpis const &kpis, bool invalid, CostWeights const &wei
   return cost;
 }
 
-} // namespace deepvaccontrol::core
+}

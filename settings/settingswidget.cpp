@@ -199,4 +199,4 @@ void SettingsWidget::commitSettings() {
     m_resHolder->tcpGate->sendSettingMap(pairs);
   }
 }
-} // namespace deepvaccontrol
+}

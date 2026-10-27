@@ -16,6 +16,6 @@ QVariantMap          updatePidValuesFromMap(QMap<QString, float> const &map, QVa
 
 QMap<QString, float> calibrationVariantToStringMap(QVariantMap const &calibrationVariantMap);
 QVariantMap          updateCalibrationValuesFromMap(QMap<QString, float> const &map, QVariantMap calibrationVariantMap);
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSTRANSFORMER_H

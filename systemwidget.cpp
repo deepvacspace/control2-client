@@ -1,5 +1,9 @@
 #include "systemwidget.h"
+
+#include <QScrollArea>
+#include "chamberindicators.h"
 #include "chamberview.h"
+#include "controloutput.h"
 
 #include <QApplication>
 #include <QColor>
@@ -17,6 +21,7 @@
 #include "confdialog.h"
 #include "constants.h"
 #include "forceoutlistwidget.h"
+#include "offlineadvisorwidget.h"
 #include "syslistwidget.h"
 #include "theme.h"
 namespace deepvaccontrol {
@@ -27,7 +32,8 @@ QString systemTabStyleSheet() {
   QString styleSheet = utils::readStyleFromFile(":/styles/tabBar.qss")
                          .arg(40 * utils::ssf())
                          .arg(100 * utils::ssf())
-                         .arg(100 * utils::ssf());
+                         .arg(100 * utils::ssf())
+                         .arg(static_cast<int>(20 * utils::ssf()));
 
   QPalette const palette  = QApplication::palette();
   QColor const   tabColor = palette.color(QPalette::Button);
@@ -56,7 +62,7 @@ void prepareSystemTabPage(QWidget *widget) {
   widget->setObjectName(SYSTEM_TAB_PAGE_OBJECT_NAME);
 }
 
-} // namespace
+}
 
 namespace {
 // a card filling the tab, with a title and an optional muted note
@@ -84,7 +90,7 @@ QFrame *tabCard(QWidget *page, QString const &title, QString const &note) {
   lay->addLayout(header);
   return card;
 }
-} // namespace
+}
 
 SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   double const ssf{utils::ssf()};
@@ -265,13 +271,40 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   // the chamber's diagram: every component with its live state
   auto *diagramWidget = new QWidget(this);
   {
-    auto *lay = new QVBoxLayout(diagramWidget);
+    // the drawing, and beside it every component with its state now and a display-only Fitted switch
+    auto *lay = new QHBoxLayout(diagramWidget);
     lay->setContentsMargins(0, 8 * utils::ssf(), 0, 0);
-    lay->addWidget(new ChamberView(resHolder, diagramWidget));
+    lay->setSpacing(12 * utils::ssf());
+    auto *view    = new ChamberView(resHolder, diagramWidget);
+    m_chamberView = view;
+    // under the drawing: the temperature and pressure control outputs
+    auto *drawing = new QVBoxLayout();
+    drawing->setSpacing(10 * utils::ssf());
+    drawing->addWidget(view, 1);
+    auto *gauges = new QHBoxLayout();
+    gauges->setSpacing(10 * utils::ssf());
+    gauges->addWidget(new ControlOutputGauge(resHolder, ControlOutputGauge::Kind::TEMPERATURE, diagramWidget), 1);
+    gauges->addWidget(new ControlOutputGauge(resHolder, ControlOutputGauge::Kind::PRESSURE, diagramWidget), 1);
+    drawing->addLayout(gauges);
+    lay->addLayout(drawing, 1);
+    auto *scroll = new QScrollArea(diagramWidget);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setFixedWidth(static_cast<int>(400 * utils::ssf()));
+    scroll->setWidget(new ChamberIndicators(resHolder, view, scroll));
+    scroll->viewport()->setAutoFillBackground(false);
+    scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
+    lay->addWidget(scroll);
   }
   prepareSystemTabPage(diagramWidget);
   m_diagramTab = diagramWidget;
   m_tabWidget->addTab(diagramWidget, tr("Diagram"));
+
+  // the AI Advisor (PID coefficients searched with the digital twin) and the simulation of any P / I / D
+  auto *simulatorWidget = new OfflineAdvisorWidget(resHolder, this);
+  prepareSystemTabPage(simulatorWidget);
+  m_tabWidget->addTab(simulatorWidget, tr("Simulator"));
 
   // 1 - журнал
   auto *actionWidget = new ActionWidget(resHolder->actions, this);
@@ -315,8 +348,5 @@ void SystemWidget::handleAccessChange(QString const &, AccessManager::AccessLeve
   m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_outputsTab), enableTabAll);
   m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_commandsTab), enableTabAll);
 }
-} // namespace deepvaccontrol
-
-void deepvaccontrol::SystemWidget::showDiagram() {
-  m_tabWidget->setCurrentWidget(m_diagramTab);
 }
+

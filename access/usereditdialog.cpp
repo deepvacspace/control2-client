@@ -160,4 +160,4 @@ QString UserEditDialog::generateNewName() {
   return QString(tr("User %1")).arg(i);
 }
 
-} // namespace deepvaccontrol
+}

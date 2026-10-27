@@ -109,4 +109,4 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
   setWindowTitle(tr("Different settings"));
   setMinimumSize(410, 450);
 }
-} // namespace deepvaccontrol
+}

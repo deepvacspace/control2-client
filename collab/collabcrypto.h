@@ -28,6 +28,6 @@ public:
   static QString collabDir();
 };
 
-} // namespace deepvaccontrol::collab
+}
 
 #endif // COLLABCRYPTO_H

@@ -119,7 +119,7 @@ bool insertSteps(ScopedDb &db, qint64 profileId, QVector<TestProfileStep> const 
 bool isUniqueViolation(QString const &error) {
   return error.contains("UNIQUE", Qt::CaseInsensitive);
 }
-} // namespace
+}
 
 double TestProfile::totalDurationS() const {
   double total{0.0};
@@ -392,4 +392,4 @@ bool TestProfilesStore::upsertFromRemote(QJsonObject const &item, QString *error
   return ok;
 }
 
-} // namespace deepvaccontrol::storage
+}

@@ -102,4 +102,4 @@ void ForceOutListWidget::sendForceOutMsg(int count, QByteArray data) {
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::FORCE_OUT, data);
 }
 
-} // namespace deepvaccontrol
+}

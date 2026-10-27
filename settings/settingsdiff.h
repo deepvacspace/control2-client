@@ -14,6 +14,6 @@ private:
   QMap<QString, float> m_local;
   QMap<QString, float> m_plc;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSDIFF_H

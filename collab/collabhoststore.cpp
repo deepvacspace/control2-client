@@ -43,7 +43,7 @@ bool ensureSchema(ScopedDb &db) {
 QString compactJson(QJsonObject const &object) {
   return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
 }
-} // namespace
+}
 
 QString CollabHostStore::registerPeer(QByteArray const &publicKey, QString const &displayName) {
   QString const keyHash = CollabCrypto::keyHash(publicKey);
@@ -159,4 +159,4 @@ bool CollabHostStore::runData(QString const &uid, QJsonObject &metadata, QByteAr
   return true;
 }
 
-} // namespace deepvaccontrol::collab
+}

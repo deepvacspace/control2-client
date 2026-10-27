@@ -46,6 +46,6 @@ public:
   static bool                           validate(DerivedVariable const &definition, QString *error);
 };
 
-} // namespace deepvaccontrol::storage
+}
 
 #endif // DERIVEDVARIABLESSTORE_H

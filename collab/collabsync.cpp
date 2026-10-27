@@ -385,7 +385,7 @@ void syncTestProfiles(Context &ctx) {
     }
   }
 }
-} // namespace
+}
 
 QString SyncResult::summary() const {
   static QMap<QString, QString> const names{{"annotation", QObject::tr("Annotations")},
@@ -470,4 +470,4 @@ QString CollabSync::downloadRun(Connection const &connection, QString const &uid
   return RunStore::importShared(metadata, samples, error);
 }
 
-} // namespace deepvaccontrol::collab
+}

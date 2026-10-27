@@ -131,4 +131,4 @@ CalibrationWidget::CalibrationWidget(
     m_calibModel.selectIndex(0, /*force*/ true);
   }
 }
-} // namespace deepvaccontrol
+}

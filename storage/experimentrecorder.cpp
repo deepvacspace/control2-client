@@ -55,7 +55,7 @@ QStringList pidTableChanges(QJsonArray const &before, QJsonArray const &after, Q
   }
   return changes;
 }
-} // namespace
+}
 
 ExperimentRecorder::ExperimentRecorder(ResHolder *resHolder, QObject *parent) : QObject{parent}, m_resHolder{resHolder} {
   m_journalTimer = new QTimer(this);
@@ -416,4 +416,4 @@ void ExperimentRecorder::saveAsync(RunStore::NewRun run, QString const &journalI
   thread->start(QThread::LowPriority);
 }
 
-} // namespace deepvaccontrol
+}

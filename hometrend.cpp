@@ -19,9 +19,9 @@
 
 namespace deepvaccontrol {
 namespace {
-constexpr double IDLE_WINDOW_S{30.0 * 60.0}; // shown with no job
+constexpr double IDLE_WINDOW_S{2.0 * 3600.0}; // shown with no job
 constexpr int    REFRESH_MS{2000};
-} // namespace
+}
 
 HomeTrend::HomeTrend(ResHolder *resHolder, QWidget *parent)
     : QFrame{parent}, m_resHolder{resHolder}, m_plot{new QCustomPlot(this)}, m_timer{new QTimer(this)} {
@@ -30,17 +30,9 @@ HomeTrend::HomeTrend(ResHolder *resHolder, QWidget *parent)
   auto        *lay = new QVBoxLayout(this);
   lay->setContentsMargins(14 * ssf, 12 * ssf, 14 * ssf, 10 * ssf);
   lay->setSpacing(4 * ssf);
-  auto *head = new QHBoxLayout();
-  m_head     = head;
-  head->setSpacing(12 * ssf);
-  m_title    = new QLabel(this);
+  m_title = new QLabel(this);
   m_title->setObjectName("cardTitle");
-  m_span = new QLabel(this);
-  m_span->setProperty("muted", true);
-  head->addWidget(m_title);
-  head->addStretch();
-  head->addWidget(m_span);
-  lay->addLayout(head);
+  lay->addWidget(m_title);
   lay->addWidget(m_plot, 1);
 
   QSharedPointer<QCPAxisTickerDateTime> ticker(new QCPAxisTickerDateTime);
@@ -52,15 +44,12 @@ HomeTrend::HomeTrend(ResHolder *resHolder, QWidget *parent)
   m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignTop | Qt::AlignLeft);
   m_plot->setMinimumHeight(static_cast<int>(160 * ssf));
   m_plot->setInteractions({}); // a glance, not a tool: the Chart page is for exploring
+  m_plot->xAxis->setLabel(tr("Time"));
+  m_plot->yAxis->setLabel(tr("Temperature, °C"));
   restyle();
 
   m_timer->setInterval(REFRESH_MS);
   connect(m_timer, &QTimer::timeout, this, &HomeTrend::refresh);
-}
-
-void HomeTrend::addHeaderWidget(QWidget *widget) {
-  widget->setParent(this);
-  m_head->insertWidget(1, widget, 0, Qt::AlignVCenter); // right after the title
 }
 
 void HomeTrend::restyle() {
@@ -71,6 +60,7 @@ void HomeTrend::restyle() {
     axis->setTickPen(QPen(c.border));
     axis->setSubTickPen(QPen(c.border));
     axis->setTickLabelColor(c.muted);
+    axis->setLabelColor(c.muted);
     axis->grid()->setPen(QPen(c.border, 1, Qt::DotLine));
   }
   m_plot->graph(0)->setPen(QPen(c.muted, 1.6 * utils::ssf(), Qt::DashLine));
@@ -100,9 +90,7 @@ void HomeTrend::refresh() {
   bool const   running{online && std::isfinite(jobStart)};
   double const now{QDateTime::currentMSecsSinceEpoch() / 1000.0};
   double const from{running ? jobStart : now - IDLE_WINDOW_S};
-  m_title->setText(running ? tr("Current experiment") : tr("Last 30 minutes"));
-  m_span->setText(running ? tr("since %1").arg(QDateTime::fromSecsSinceEpoch(static_cast<qint64>(jobStart)).toString("HH:mm"))
-                          : (online ? tr("no experiment running") : tr("not connected")));
+  m_title->setText(running ? tr("Current experiment") : tr("Last 2 hours"));
 
   QVector<double> times, temp, ref;
   auto const      data = m_resHolder->dataManager ? m_resHolder->dataManager->getIntervalToAdd() : nullptr;
@@ -129,7 +117,9 @@ void HomeTrend::refresh() {
   m_plot->xAxis->setRange(from, std::max(now, from + 60.0));
   // seconds on the axis while the span is short
   if (auto ticker = m_plot->xAxis->ticker().dynamicCast<QCPAxisTickerDateTime>()) {
-    ticker->setDateTimeFormat((m_plot->xAxis->range().size() < 600.0) ? QStringLiteral("HH:mm:ss") : QStringLiteral("HH:mm"));
+    bool const seconds{m_plot->xAxis->range().size() < 600.0};
+    ticker->setDateTimeFormat(seconds ? QStringLiteral("HH:mm:ss") : QStringLiteral("HH:mm"));
+    m_plot->xAxis->setLabel(seconds ? tr("Time, hh:mm:ss") : tr("Time, hh:mm"));
   }
   bool found{false};
   QCPRange values = m_plot->graph(1)->getValueRange(found);
@@ -148,4 +138,4 @@ void HomeTrend::refresh() {
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
-} // namespace deepvaccontrol
+}

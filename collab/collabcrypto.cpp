@@ -108,7 +108,7 @@ bool createHostIdentity(QByteArray &certPem, QByteArray &keyPem) {
   return ok;
 }
 #endif
-} // namespace
+}
 
 bool CollabCrypto::available() {
 #ifdef DEEPVACCONTROL_HAVE_OPENSSL
@@ -254,4 +254,4 @@ QString CollabCrypto::keyHash(QByteArray const &publicRaw) {
   return QString::fromLatin1(QCryptographicHash::hash(publicRaw, QCryptographicHash::Sha256).toBase64(QByteArray::Base64UrlEncoding));
 }
 
-} // namespace deepvaccontrol::collab
+}

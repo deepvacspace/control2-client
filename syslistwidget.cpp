@@ -21,7 +21,7 @@ std::pair<QString, QString> nameAndUnit(QString const &label) {
   }
   return {label.left(comma).trimmed(), label.mid(comma + 1).trimmed()};
 }
-} // namespace
+}
 
 SysListWidget::SysListWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_states{resHolder->states} {
@@ -36,19 +36,28 @@ SysListWidget::SysListWidget(ResHolder *resHolder, QWidget *parent)
     auto *lay = new QVBoxLayout(card);
     lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
     lay->setSpacing(6 * ssf);
-    auto *label = new QLabel(title, card);
-    label->setProperty("muted", true);
-    lay->addWidget(label);
+    if (!title.isEmpty()) {
+      auto *label = new QLabel(title, card);
+      label->setProperty("muted", true);
+      lay->addWidget(label);
+    }
     return card;
   };
 
-  // ---- every value the PLC sends
-  auto *valuesCard = makeCard(tr("PLC values"));
+  // ---- every value the PLC sends: all of them in sight, without scrolling (a smaller font, compact rows)
+  auto *valuesCard = makeCard({});
   m_table          = new QTableWidget(valuesCard);
+  {
+    QFont small = m_table->font();
+    small.setPointSizeF(small.pointSizeF() * 0.85);
+    m_table->setFont(small);
+    m_table->horizontalHeader()->setFont(small);
+  }
   m_table->setColumnCount(3);
   m_table->setHorizontalHeaderLabels({tr("Value"), tr("Current"), tr("Unit")});
   m_table->verticalHeader()->setVisible(false);
-  m_table->verticalHeader()->setDefaultSectionSize(24 * ssf);
+  m_table->verticalHeader()->setMinimumSectionSize(1);
+  m_table->verticalHeader()->setDefaultSectionSize(15 * ssf);
   m_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
   m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
   m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -131,4 +140,4 @@ void SysListWidget::updateList() {
                                   .arg(QColor(color.red(), color.green(), color.blue(), on ? 40 : 0).name(QColor::HexArgb)));
   }
 }
-} // namespace deepvaccontrol
+}

@@ -74,4 +74,4 @@ void AlarmDialog::closeEvent(QCloseEvent *event) {
   // Proceed with the regular close event
   event->accept();
 }
-} // namespace deepvaccontrol
+}

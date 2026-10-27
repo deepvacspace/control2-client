@@ -124,7 +124,7 @@ void removeShared(QString const &table, QString const &kind, qint64 id, bool tom
   }
   db.exec(QStringLiteral("DELETE FROM %1 WHERE id = ?").arg(table), {id});
 }
-} // namespace
+}
 
 QVector<AnnotationRow> AnnotationsDb::annotationsBetween(double start, double end, QString const &runKey) {
   ScopedDb db(ANNOTATIONS_DB);
@@ -315,4 +315,4 @@ void AnnotationsDb::migrateJsonNotes(QString const &jsonPath) {
   QFile::rename(jsonPath, jsonPath + ".migrated");
 }
 
-} // namespace deepvaccontrol::storage
+}

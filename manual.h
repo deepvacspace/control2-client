@@ -17,7 +17,6 @@ public:
   explicit Manual(ResHolder *resHolder, QWidget *parent = nullptr);
 
 protected:
-  void showEvent(QShowEvent *event) override;
 
 private:
   void handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
@@ -38,7 +37,6 @@ private:
   QPushButton *m_startBtn;
   QPushButton *m_startDelayedBtn;
   StopButton  *m_stopBtn;
-  QWidget     *m_advisorNote{nullptr}; // shown while the AI Advisor offer is enabled (Settings -> AI)
 
   AccessManager::AccessLevel m_accessLevel;
 
@@ -58,11 +56,12 @@ public:
   bool isEnabled() const {
     return !m_enableChkBox || m_enableChkBox->isChecked();
   }
+  QCheckBox *enableBox() const { return m_enableChkBox; }
 
 private:
   SystemValueList *m_modelSysValuesList;
   SystemValue     *m_currentVal;
-  QCheckBox       *m_enableChkBox{nullptr}; // only when the temperature can be switched off (chamber with pressure)
+  QCheckBox       *m_enableChkBox{nullptr}; // temperature controlled or not (null: always controlled)
 };
 
 class CommonSetWidget : public QGroupBox {
@@ -75,11 +74,13 @@ public:
                            QString const   &title,
                            QString const   &unit,
                            QWidget         *parent = nullptr);
+  QCheckBox *enableBox() const { return m_tick; }
 
 private:
   SystemValueList *m_modelSysValuesList;
   SystemValue     *m_currentVal;
+  QCheckBox       *m_tick{nullptr}; // the quantity controlled or not
 };
-} // namespace deepvaccontrol
+}
 
 #endif // MANUAL_H

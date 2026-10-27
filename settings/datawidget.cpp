@@ -40,7 +40,7 @@ QString describe(QString const &fileName) {
                                             {storage::SHARED_RUNS_DB, QObject::tr("Experiments shared by other computers (list)")}};
   return names.value(fileName, fileName);
 }
-} // namespace
+}
 
 DataWidget::DataWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
   auto *lay = new QVBoxLayout(this);
@@ -142,4 +142,4 @@ void DataWidget::restoreSelected() {
   confirm->open();
 }
 
-} // namespace deepvaccontrol
+}

@@ -32,6 +32,6 @@ private:
   QTableWidget    *m_table{nullptr};
   QVector<Output>  m_outputs;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SYSLISTWIDGET_H

@@ -58,7 +58,7 @@ QVector<QPair<DerivedVariable::Type, QString>> const &typeKeys() {
     {DerivedVariable::Type::Custom, "custom"}};
   return keys;
 }
-} // namespace
+}
 
 QString DerivedVariable::typeKey(Type type) {
   for (auto const &[candidate, key] : typeKeys()) {
@@ -166,4 +166,4 @@ bool DerivedVariablesStore::remove(qint64 id) {
   return db.exec("DELETE FROM derived_variables WHERE id = ?", {id});
 }
 
-} // namespace deepvaccontrol::storage
+}

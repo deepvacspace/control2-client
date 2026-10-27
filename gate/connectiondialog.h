@@ -36,6 +36,6 @@ private:
 protected:
   void closeEvent(QCloseEvent *);
 };
-} // namespace deepvaccontrol
+}
 
 #endif // CONNECTIONDIALOG_H

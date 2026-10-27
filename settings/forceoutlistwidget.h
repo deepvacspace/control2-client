@@ -21,6 +21,6 @@ private:
 
   QList<ForceOutSingleWidget *> m_outWidgets;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // FORCEOUTLISTWIDGET_H

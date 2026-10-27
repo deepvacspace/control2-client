@@ -39,6 +39,6 @@ public:
   static bool        runData(QString const &uid, QJsonObject &metadata, QByteArray &compressedSamples);
 };
 
-} // namespace deepvaccontrol::collab
+}
 
 #endif // COLLABHOSTSTORE_H

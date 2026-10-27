@@ -55,6 +55,6 @@ private:
   QString      m_error;
 };
 
-} // namespace deepvaccontrol::storage
+}
 
 #endif // SQLITEDB_H

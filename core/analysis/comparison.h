@@ -66,6 +66,6 @@ struct SignalComparison {
 SignalComparison compareSignals(QVector<double> const &timesA, QVector<double> const &valuesA, double offsetA,
                                 QVector<double> const &timesB, QVector<double> const &valuesB, double offsetB);
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_COMPARISON_H

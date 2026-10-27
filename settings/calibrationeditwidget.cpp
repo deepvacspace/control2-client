@@ -181,4 +181,4 @@ void CalibrationEditWidget::handleSizeChanged(int newSize) {
   m_delBtn->setEnabled(0 != newSize);
   m_addBtn->setEnabled(newSize < m_model->getPoints());
 }
-} // namespace deepvaccontrol
+}

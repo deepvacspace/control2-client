@@ -40,7 +40,7 @@ bool replaceFile(QString const &from, QString const &to) {
   return 0 == std::rename(QFile::encodeName(from).constData(), QFile::encodeName(to).constData());
 #endif
 }
-} // namespace
+}
 
 
 bool FileHandler::saveToFile(PathProvider *pathProvider, QWidget *parent, QString const &filter) {
@@ -139,4 +139,4 @@ bool FileHandler::loadFromFileImpl(QString const &filePath, Logger *logger) {
   return true;
 }
 
-} // namespace deepvaccontrol
+}

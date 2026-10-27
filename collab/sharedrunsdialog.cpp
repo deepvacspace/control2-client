@@ -94,4 +94,4 @@ void SharedRunsDialog::refresh() {
   m_downloadBtn->setEnabled(false);
 }
 
-} // namespace deepvaccontrol
+}

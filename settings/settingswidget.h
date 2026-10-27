@@ -34,6 +34,6 @@ private:
   QList<PidWidget *>         m_pidWidgets;
   QList<CalibrationWidget *> m_calibWidgets;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSWIDGET_H

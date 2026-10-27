@@ -84,6 +84,6 @@ inline bool StatusManager::getStatesIdentical() const {
 inline bool StatusManager::getSettingsListIdentical() const {
   return m_settingsListIdentical;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // STATUSMANAGER_H

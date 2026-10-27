@@ -38,6 +38,6 @@ RunAnalysis analyseRun(QVector<double> const &times, QVector<double> const &valu
 
 QJsonObject kpisToJson(ControlKpis const &kpis);
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_RUNANALYSIS_H

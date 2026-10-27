@@ -33,7 +33,7 @@ QVector<double> filledReference(QVector<double> const &reference, qsizetype n) {
   }
   return filled;
 }
-} // namespace
+}
 
 QString Segment::kindName(Kind kind) {
   switch (kind) {
@@ -218,4 +218,4 @@ QVector<Segment> segmentExperiment(QVector<double> const &times, QVector<double>
   return merged;
 }
 
-} // namespace deepvaccontrol::core
+}

@@ -45,6 +45,6 @@ public:
   static QString downloadRun(Connection const &connection, QString const &uid, QString *error = nullptr);
 };
 
-} // namespace deepvaccontrol::collab
+}
 
 #endif // COLLABSYNC_H

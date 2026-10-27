@@ -109,4 +109,4 @@ QVariantMap SystemValue::toVariant() const {
   return ret;
 }
 
-} // namespace deepvaccontrol
+}

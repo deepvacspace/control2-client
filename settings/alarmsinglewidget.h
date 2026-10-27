@@ -56,6 +56,6 @@ inline bool AlarmSingleWidget::getPosition() const {
 inline bool AlarmSingleWidget::getActive() const {
   return off ? !off->isChecked() : false;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // ALARMSINGLEWIDGET_H

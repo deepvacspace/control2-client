@@ -109,6 +109,6 @@ private:
   quint32 m_userData;
   bool    m_isSciNotation;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SYSTEMVALUE_H

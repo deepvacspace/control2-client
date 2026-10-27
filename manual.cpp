@@ -1,8 +1,10 @@
 #include "manual.h"
+#include "pressureunits.h"
 
 #include <QFrame>
 #include <QGridLayout>
 #include <QLabel>
+#include <QToolTip>
 #include <QVBoxLayout>
 
 #include "constants.h"
@@ -121,13 +123,12 @@ void Manual::initGui() {
   QList<QPair<QString, QString>> paramOrder;
   paramOrder.push_back({"temp", tr("Temperature, °C")});
   paramOrder.push_back({"hum", tr("Relative humidity, %")});
-  paramOrder.push_back({"pres", tr("Pressure, mmHg")});
+  paramOrder.push_back({"pres", tr("Pressure, Torr")});
   paramOrder.push_back({"solar", tr("Solar lamp")});
 
-  bool tempAlwaysEnable{true};
-  if (m_modelSysValuesList->contains("pres")) {
-    tempAlwaysEnable = false; // temperature and pressure are alternatives: each one is ticked
-  }
+  // temperature, pressure or both: each one is ticked (see below: never neither)
+  QCheckBox *tempTick{nullptr};
+  QCheckBox *presTick{nullptr};
 
   // temperature and pressure side by side, each one half of the card
   auto *pairLay = new QHBoxLayout();
@@ -157,13 +158,20 @@ void Manual::initGui() {
                                   m_modelSysValuesList,
                                   m_resHolder->states->getSysValue(name),
                                   false /*speedUnitIsHour*/,
-                                  tempAlwaysEnable /*alwaysEnable*/,
+                                  false /*alwaysEnable*/,
                                   this);
+      tempTick = static_cast<TempSetWidget *>(newItem)->enableBox();
     } else {
       // pressure is shown (disabled) also when the chamber has no pressure sensor
       SystemValue *current = m_resHolder->states->contains(name) ? m_resHolder->states->getSysValue(name) : nullptr;
-      newItem = new CommonSetWidget(indexInSysValModel, available ? m_modelSysValuesList : nullptr, current, label,
-                                    unit.isEmpty() && (name == "pres") ? tr("mmHg") : unit, this);
+      // pressure in Torr: the chamber's unit when it reports another one (the setpoint is sent in it, unconverted)
+      if ((name == "pres") && current && !pressure::isTorr(current->getLabel())) {
+        unit = current->getLabel().mid(current->getLabel().lastIndexOf(',') + 1).trimmed();
+      }
+      newItem = new CommonSetWidget(indexInSysValModel, available ? m_modelSysValuesList : nullptr, current, label, unit, this);
+      if ((name == "pres") && available) {
+        presTick = static_cast<CommonSetWidget *>(newItem)->enableBox();
+      }
     }
 
     m_stateWidgets.insert(paramCount, newItem);
@@ -181,6 +189,30 @@ void Manual::initGui() {
     ++paramCount;
   }
 
+  // never neither: unticking the last of temperature and pressure is undone (without pressure, temperature stays on)
+  if (tempTick) {
+    auto ticked = [](QCheckBox *tick) { return tick && tick->isChecked(); };
+    if (!ticked(tempTick) && !ticked(presTick)) {
+      tempTick->setChecked(true);
+    }
+    for (QCheckBox *tick : {tempTick, presTick}) {
+      if (!tick) {
+        continue;
+      }
+      QCheckBox *other = (tick == tempTick) ? presTick : tempTick;
+      bool const hasPressure{presTick != nullptr};
+      connect(tick, &QCheckBox::toggled, this, [this, tick, other, ticked, hasPressure](bool checked) {
+        if (!checked && !ticked(other)) {
+          tick->setChecked(true);
+          QToolTip::showText(tick->mapToGlobal(QPoint(0, tick->height())),
+                             hasPressure ? tr("Temperature, pressure or both: one of them stays controlled")
+                                        : tr("Temperature control stays on: this chamber has no pressure control"),
+                             tick);
+        }
+      });
+    }
+  }
+
   controlLay->addSpacing(10 * ssf);
   auto *divider = new QFrame(controlCard);
   divider->setObjectName("cardDivider");
@@ -196,16 +228,6 @@ void Manual::initGui() {
   controlLay->addLayout(buttonsLay);
   controlLay->addSpacing(10 * ssf);
 
-  // what Start will do first when the AI Advisor offer is enabled
-  m_advisorNote = new QFrame(controlCard);
-  m_advisorNote->setObjectName("advisorNote");
-  auto *noteLay = new QVBoxLayout(m_advisorNote);
-  noteLay->setContentsMargins(12 * ssf, 8 * ssf, 12 * ssf, 8 * ssf);
-  noteLay->setSpacing(2 * ssf);
-  auto *noteTitle = new QLabel(tr("AI Advisor enabled"), m_advisorNote);
-  noteTitle->setObjectName("advisorNoteTitle");
-  noteLay->addWidget(noteTitle);
-  controlLay->addWidget(m_advisorNote);
   controlLay->addStretch();
 
   // ---- right: details recorded with the next runs
@@ -244,11 +266,6 @@ void Manual::initGui() {
     });
     delaySelectDialog->open();
   });
-}
-
-void Manual::showEvent(QShowEvent *event) {
-  QWidget::showEvent(event);
-  m_advisorNote->setVisible(m_resHolder->aiAdvisorEnabled);
 }
 
 void Manual::updateGui() {
@@ -406,7 +423,7 @@ QWidget *columnHeading(QString const &title, QCheckBox **tick, QWidget *parent) 
   label->setObjectName("cardTitle");
   return label;
 }
-} // namespace
+}
 
 TempSetWidget::TempSetWidget(quint32          index,
                              SystemValueList *manualModel,
@@ -509,6 +526,7 @@ CommonSetWidget::CommonSetWidget(quint32          index,
   mainLay->setSpacing(4 * ssf);
   QCheckBox *tick{nullptr};
   mainLay->addWidget(columnHeading(title, &tick, this));
+  m_tick = tick;
   mainLay->addSpacing(6 * ssf);
 
   auto *content    = new QWidget(this);
@@ -558,4 +576,4 @@ CommonSetWidget::CommonSetWidget(quint32          index,
   });
 }
 
-} // namespace deepvaccontrol
+}

@@ -26,7 +26,7 @@ void prune(QDir const &dir) {
     QFile::remove(backups[i].absoluteFilePath());
   }
 }
-} // namespace
+}
 
 QStringList BackupService::databases() {
   return QDir(dataDir()).entryList({"*.sqlite3"}, QDir::Files, QDir::Name);
@@ -105,4 +105,4 @@ bool BackupService::restore(QString const &fileName, QString const &backupPath, 
   return true;
 }
 
-} // namespace deepvaccontrol::storage
+}

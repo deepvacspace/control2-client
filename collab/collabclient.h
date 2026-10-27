@@ -53,6 +53,6 @@ inline Connection const &CollabClient::connection() const {
   return m_connection;
 }
 
-} // namespace deepvaccontrol::collab
+}
 
 #endif // COLLABCLIENT_H

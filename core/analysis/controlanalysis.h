@@ -60,6 +60,6 @@ struct PidContribution {
 PidContribution analysePidContribution(QVector<double> const &p, QVector<double> const &i, QVector<double> const &d, int first,
                                        int last);
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_CONTROLANALYSIS_H

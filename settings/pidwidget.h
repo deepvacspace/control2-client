@@ -41,6 +41,6 @@ private:
   SystemValue         *m_current{nullptr};
   SystemValue         *m_setpoint{nullptr};
 };
-} // namespace deepvaccontrol
+}
 
 #endif // PIDWIDGET_H

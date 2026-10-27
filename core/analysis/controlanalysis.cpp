@@ -21,7 +21,7 @@ QVector<double> sampleDurations(QVector<double> const &times, int first, int las
   }
   return durations;
 }
-} // namespace
+}
 
 SaturationStats analyseSaturation(QVector<double> const &times, QVector<double> const &u, QVector<double> const &integral,
                                   int first, int last, SaturationOptions const &options, QVector<SaturationEpisode> *episodes) {
@@ -140,4 +140,4 @@ PidContribution analysePidContribution(QVector<double> const &p, QVector<double>
   return contribution;
 }
 
-} // namespace deepvaccontrol::core
+}

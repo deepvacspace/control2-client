@@ -270,4 +270,4 @@ void SettingsManager::applySettingsFromPairs(QMap<QString, float> const &plcPair
   pullSystemValues(); // reinit system values
 }
 
-} // namespace deepvaccontrol
+}

@@ -97,6 +97,6 @@ inline SystemValueList &SettingsManager::plcSettingsSystemValueList() {
 inline QMap<quint32, QString> const &SettingsManager::getAlarmsMap() const {
   return m_alarmsMap;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSMANAGER_H

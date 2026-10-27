@@ -23,6 +23,6 @@ private:
   ActionManager *m_actionManager;
   QTableWidget  *m_table;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // ACTIONWIDGET_H

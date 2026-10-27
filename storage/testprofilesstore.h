@@ -61,6 +61,6 @@ public:
   static QJsonObject toJson(TestProfile const &profile);
 };
 
-} // namespace deepvaccontrol::storage
+}
 
 #endif // TESTPROFILESSTORE_H

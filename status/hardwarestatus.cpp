@@ -97,4 +97,4 @@ void HardwareStatus::onSystemValueChanged(float value) {
 // Status::WorkStatus Status::getWorkStatus() const {
 //   return m_workStatus;
 // }
-} // namespace deepvaccontrol
+}

@@ -39,6 +39,6 @@ double firstSteadyTime(QVector<SteadyInterval> const &steady, double from, doubl
 // part of [from, to] covered by steady intervals, 0 ... 1 (NaN for an empty range)
 double steadyFraction(QVector<SteadyInterval> const &steady, double from, double to);
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_STEADYSTATE_H

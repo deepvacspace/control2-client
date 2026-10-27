@@ -84,6 +84,6 @@ constexpr int EXPERIMENT_ANALYSIS_VERSION{2};
 
 ExperimentAnalysis analyseExperiment(ExperimentInput const &input, ExperimentOptions const &options = {});
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_EXPERIMENTANALYSIS_H

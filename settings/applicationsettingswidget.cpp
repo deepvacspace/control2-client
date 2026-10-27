@@ -30,7 +30,7 @@ QVariantMap tempParam(QVariantMap const &settings) {
   }
   return {};
 }
-} // namespace
+}
 
 ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder} {
@@ -161,7 +161,7 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
     group->setExclusive(true);
     group->button(m_resHolder->aiAdvisorEnabled ? 1 : 0)->setChecked(true);
     connect(group, &QButtonGroup::idClicked, this, [this](int id) { m_resHolder->aiAdvisorEnabled = (id == 1); });
-    addRow(tr("AI Advisor"), tr("Before a job starts, offer to search suitable PID parameters with the AI Advisor."), advisor, QString());
+    addRow(tr("AI Advisor"), tr("Before a job starts, offer to find the best settings with the AI Advisor."), advisor, QString());
   }
   listLay->addStretch(1);
 
@@ -227,4 +227,4 @@ void ApplicationSettingsWidget::save() {
     ->open();
 }
 
-} // namespace deepvaccontrol
+}

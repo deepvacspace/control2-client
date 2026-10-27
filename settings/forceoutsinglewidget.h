@@ -52,6 +52,6 @@ private:
 
   uint plcType = 0; // 0 auto (released), 1 off, 2 on, 3 duty cycle
 };
-} // namespace deepvaccontrol
+}
 
 #endif // FORCEOUTSINGLEWIDGET_H

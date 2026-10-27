@@ -33,6 +33,6 @@ public:
     dialog->open();
   }
 };
-} // namespace deepvaccontrol
+}
 
 #endif // CALENDARDIALOGPATHPROVIDER_H

@@ -27,6 +27,6 @@ public:
   static bool restore(QString const &fileName, QString const &backupPath, QString *error = nullptr);
 };
 
-} // namespace deepvaccontrol::storage
+}
 
 #endif // BACKUPSERVICE_H

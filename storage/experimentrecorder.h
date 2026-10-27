@@ -111,6 +111,6 @@ private:
   QTimer           *m_journalTimer{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // EXPERIMENTRECORDER_H

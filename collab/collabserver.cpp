@@ -200,7 +200,7 @@ QByteArray reason(int status) {
       return "Internal Server Error";
   }
 }
-} // namespace
+}
 
 CollabServer::CollabServer(QObject *parent) : QObject{parent}, m_server{new QSslServer(this)} {
   connect(m_server, &QSslServer::pendingConnectionAvailable, this, &CollabServer::onNewConnection);
@@ -476,4 +476,4 @@ void CollabServer::send(QSslSocket *socket, int status, QByteArray const &json) 
   socket->disconnectFromHost(); // after the pending data is written
 }
 
-} // namespace deepvaccontrol::collab
+}

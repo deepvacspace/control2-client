@@ -113,4 +113,4 @@ void ScopedDb::rollback() {
   m_db.rollback();
 }
 
-} // namespace deepvaccontrol::storage
+}

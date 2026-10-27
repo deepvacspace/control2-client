@@ -18,7 +18,7 @@ struct Anomaly {
     GAP,         // missing data
     OSCILLATION, // the value keeps crossing the reference
     NOT_REACHED, // a setpoint the value never settled at
-    SATURATION   // controller output at its limit for a long time
+    SATURATION   // controller output at its limit for a long time (information: normal on big steps)
   };
   enum class Severity : uint8_t {
     INFO,
@@ -75,6 +75,6 @@ QVector<Anomaly> detectOscillation(QVector<double> const &times, QVector<double>
 QVector<Anomaly> detectUnreachedSetpoints(RunAnalysis const &analysis, AnomalyOptions const &options = {});
 QVector<Anomaly> detectLongSaturation(QVector<SaturationEpisode> const &episodes, AnomalyOptions const &options = {});
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_ANOMALIES_H

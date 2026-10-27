@@ -25,7 +25,7 @@ QVector<int> setpointChanges(ExperimentAnalysis const &analysis, double toleranc
 QString text(double value, int precision = 4) {
   return std::isfinite(value) ? QString::number(value, 'g', precision) : QStringLiteral("—");
 }
-} // namespace
+}
 
 double alignmentAnchor(ExperimentAnalysis const &analysis, QVector<double> const &times, QVector<double> const &value,
                        QVector<double> const &reference, AlignMode mode, int n) {
@@ -98,7 +98,7 @@ QVector<KpiComparisonRow> compareKpis(QVector<ExperimentAnalysis const *> const 
                                                                 a.run.stages.isEmpty() ? a.config.durationS : a.run.stages.last().segment.end)
                                        : NaN;
      }},
-    {"saturation", "Output saturated", "%", Better::LOWER,
+    {"saturation", "Output saturated", "%", Better::NONE, // full heating / cooling is normal, neither better nor worse
      [](ExperimentAnalysis const &a) { return 100.0 * a.saturation.fraction; }},
     {"windup", "Integrator windup", "s", Better::LOWER, [](ExperimentAnalysis const &a) { return a.saturation.windupS; }},
     {"share_p", "P share", "%", Better::NONE, [](ExperimentAnalysis const &a) { return 100.0 * a.pid.shareP; }},
@@ -245,4 +245,4 @@ SignalComparison compareSignals(QVector<double> const &timesA, QVector<double> c
   return result;
 }
 
-} // namespace deepvaccontrol::core
+}

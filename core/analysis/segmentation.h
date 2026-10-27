@@ -54,6 +54,6 @@ QVector<Segment> segmentExperiment(QVector<double> const &times, QVector<double>
                                    QVector<double> const &interval, QVector<double> const &cycle,
                                    SegmentationOptions const &options = {});
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_SEGMENTATION_H

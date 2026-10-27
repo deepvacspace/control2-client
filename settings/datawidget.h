@@ -30,6 +30,6 @@ private:
   QTreeWidget *m_tree{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // DATAWIDGET_H

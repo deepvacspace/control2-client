@@ -114,4 +114,4 @@ void ConnectionDialog::setServerId(QString const &serverId) {
 void ConnectionDialog::closeEvent(QCloseEvent *) {
   emit finished(0); // QDialog::Rejected == close dialog
 }
-} // namespace deepvaccontrol
+}

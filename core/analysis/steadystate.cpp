@@ -112,4 +112,4 @@ double steadyFraction(QVector<SteadyInterval> const &steady, double from, double
   return std::clamp(covered / (to - from), 0.0, 1.0);
 }
 
-} // namespace deepvaccontrol::core
+}

@@ -15,6 +15,6 @@ public:
 private:
   ResHolder *m_resHolder;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSLISTWIDGET_H

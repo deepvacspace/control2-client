@@ -22,7 +22,7 @@ ControlKpis kpisOver(QVector<double> const &times, QVector<double> const &value,
   options.startTimeS      = NaN;
   return computeKpis(t, v, reference.mid(first, count), options);
 }
-} // namespace
+}
 
 RunAnalysis analyseRun(QVector<double> const &times, QVector<double> const &value, QVector<double> const &reference,
                        QVector<double> const &interval, QVector<double> const &cycle, KpiOptions const &kpiOptions,
@@ -119,4 +119,4 @@ QJsonObject RunAnalysis::toJson() const {
   return QJsonObject{{"kpis", run}, {"stages", stageArray}};
 }
 
-} // namespace deepvaccontrol::core
+}

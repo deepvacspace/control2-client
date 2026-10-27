@@ -213,4 +213,4 @@ void PidWidget::updateActiveBand() {
   }
   Q_UNUSED(temperature)
 }
-} // namespace deepvaccontrol
+}

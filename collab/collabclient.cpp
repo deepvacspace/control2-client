@@ -22,7 +22,7 @@ void setError(QString *error, QString const &text) {
     *error = text;
   }
 }
-} // namespace
+}
 
 CollabClient::CollabClient(Connection connection) : m_connection{std::move(connection)} {
   CollabCrypto::loadOrCreateDeviceKey(m_privateKey, m_publicKey);
@@ -151,4 +151,4 @@ bool CollabClient::send(QByteArray const &method, QString const &url, QByteArray
   return ok;
 }
 
-} // namespace deepvaccontrol::collab
+}

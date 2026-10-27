@@ -85,4 +85,4 @@ AlarmListWidget::AlarmListWidget(ResHolder *resHolder, QWidget *parent) : QWidge
 
   cardLay->addStretch(1);
 }
-} // namespace deepvaccontrol
+}

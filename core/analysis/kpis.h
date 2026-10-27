@@ -70,6 +70,6 @@ struct CostWeights {
 };
 double controlCost(ControlKpis const &kpis, bool invalid = false, CostWeights const &weights = {});
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_KPIS_H

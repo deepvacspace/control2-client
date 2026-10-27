@@ -38,4 +38,4 @@ StateVis::StateVis(QString const &name, SystemValue *x, SystemValue *r, SystemVa
   setMinimumWidth((x->isSciNotation() ? 270 : 180) * (1 + (sf - 1) * 0.25) * utils::ssf());
   setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 }
-} // namespace deepvaccontrol
+}

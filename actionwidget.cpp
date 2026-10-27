@@ -144,4 +144,4 @@ void ActionWidget::addElements(QVariantList const &newElements, bool addToBottom
     m_table->setItem(row, 2, messageItem);
   }
 }
-} // namespace deepvaccontrol
+}

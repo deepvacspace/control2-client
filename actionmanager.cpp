@@ -55,4 +55,4 @@ bool ActionManager::readData(QFile &file) {
   }
   return false;
 }
-} // namespace deepvaccontrol
+}

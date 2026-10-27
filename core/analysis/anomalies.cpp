@@ -19,7 +19,7 @@ double typicalPeriod(QVector<double> const &times) {
   }
   return steps.isEmpty() ? NaN : percentile(steps, 0.5);
 }
-} // namespace
+}
 
 QString Anomaly::kindName(Kind kind) {
   switch (kind) {
@@ -319,7 +319,7 @@ QVector<Anomaly> detectLongSaturation(QVector<SaturationEpisode> const &episodes
     }
     Anomaly anomaly;
     anomaly.kind     = Anomaly::Kind::SATURATION;
-    anomaly.severity = Anomaly::Severity::WARNING;
+    anomaly.severity = Anomaly::Severity::INFO; // full heating or cooling is normal (a big step, a fast ramp): noted, not a warning
     anomaly.channel  = QStringLiteral("temp_u");
     anomaly.start    = episode.start;
     anomaly.end      = episode.end;
@@ -331,4 +331,4 @@ QVector<Anomaly> detectLongSaturation(QVector<SaturationEpisode> const &episodes
   return found;
 }
 
-} // namespace deepvaccontrol::core
+}

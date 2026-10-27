@@ -113,4 +113,4 @@ SettingsListWidget::SettingsListWidget(ResHolder *resHolder, QWidget *parent) : 
   scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
   cardLay->addWidget(scroll, 1);
 }
-} // namespace deepvaccontrol
+}

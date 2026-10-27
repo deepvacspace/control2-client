@@ -81,6 +81,6 @@ private:
   QString               m_lastSyncSummary;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // COLLABMANAGER_H

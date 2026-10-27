@@ -38,6 +38,6 @@ private:
 public:
   bool eventFilter(QObject *watched, QEvent *event) override;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // STATUSBAR_H

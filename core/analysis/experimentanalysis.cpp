@@ -53,7 +53,7 @@ QJsonObject pidJson(PidContribution const &p) {
                      {"mean_abs_p", number(p.meanAbsP)}, {"mean_abs_i", number(p.meanAbsI)}, {"mean_abs_d", number(p.meanAbsD)},
                      {"dominant", p.dominant()}};
 }
-} // namespace
+}
 
 int ExperimentAnalysis::anomalyCount(Anomaly::Severity atLeast) const {
   return static_cast<int>(std::count_if(anomalies.cbegin(), anomalies.cend(),
@@ -281,4 +281,4 @@ QJsonObject ExperimentAnalysis::toJson() const {
   return json;
 }
 
-} // namespace deepvaccontrol::core
+}

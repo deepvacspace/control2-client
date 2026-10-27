@@ -26,6 +26,6 @@ SeriesStats computeStats(QVector<double> const &times, QVector<double> const &va
 // q in [0, 1], linear interpolation between order statistics (numpy's default)
 double percentile(QVector<double> values, double q);
 
-} // namespace deepvaccontrol::core
+}
 
 #endif // CORE_ANALYSIS_SERIESSTATS_H

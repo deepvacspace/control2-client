@@ -64,6 +64,6 @@ private:
   int                         m_joinCodeFailures{0};
 };
 
-} // namespace deepvaccontrol::collab
+}
 
 #endif // COLLABSERVER_H

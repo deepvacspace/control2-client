@@ -161,4 +161,4 @@ QByteArray ForceOutSingleWidget::getRawData() const {
   }
   return result;
 }
-} // namespace deepvaccontrol
+}

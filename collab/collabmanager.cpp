@@ -254,4 +254,4 @@ void CollabManager::downloadRun(QString const &uid) {
     });
 }
 
-} // namespace deepvaccontrol
+}

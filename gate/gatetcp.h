@@ -142,6 +142,6 @@ private:
   ConnectionDialog *m_connectionDialog;
   quint8            m_sendPacketCount;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // GATETCP_H

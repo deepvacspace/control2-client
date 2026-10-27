@@ -102,4 +102,4 @@ void CalibrationModel::removePoint(int index) {
   selectIndex(index, /*force*/ true);
 }
 
-} // namespace deepvaccontrol
+}

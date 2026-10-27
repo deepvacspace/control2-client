@@ -24,6 +24,6 @@ private:
   QTimer m_timer;
   int    m_elapsedTime{0}; // Время с момента старта анимации
 };
-} // namespace deepvaccontrol
+}
 
 #endif // FLASHER_H

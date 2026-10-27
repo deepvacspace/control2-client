@@ -33,4 +33,4 @@ QByteArray StreamBuffer::getPackage() {
   }
   return {};
 }
-} // namespace deepvaccontrol
+}

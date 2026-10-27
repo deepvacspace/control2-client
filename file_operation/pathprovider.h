@@ -27,6 +27,6 @@ private:
   Logger *m_logger;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // PATHPROVIDER_H

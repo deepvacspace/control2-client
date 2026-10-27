@@ -30,6 +30,6 @@ private:
   QPushButton   *m_syncBtn{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // SHAREDRUNSDIALOG_H

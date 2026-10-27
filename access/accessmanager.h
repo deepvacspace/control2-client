@@ -102,6 +102,6 @@ inline QString AccessManager::getCurrentUserName() const {
 inline QStringList AccessManager::getUserNamesList() const {
   return m_users.keys();
 }
-} // namespace deepvaccontrol
+}
 
 #endif // ACCESSMANAGER_H

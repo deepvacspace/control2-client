@@ -53,6 +53,6 @@ private:
 inline HardwareStatus::HardwareStatusEnum HardwareStatus::getHardwareStatus() const {
   return m_status;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // HARDWARESTATUS_H

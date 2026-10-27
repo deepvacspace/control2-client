@@ -100,6 +100,6 @@ private:
   bool m_windowMode;
   bool m_debugMode;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // APP_H

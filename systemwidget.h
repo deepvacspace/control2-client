@@ -8,6 +8,8 @@
 
 namespace deepvaccontrol {
 
+class ChamberView;
+
 class SysCmdWidget : public QWidget {
   Q_OBJECT
 public:
@@ -32,7 +34,10 @@ class SystemWidget : public QWidget {
   Q_OBJECT
 public:
   explicit SystemWidget(ResHolder *resHolder, QWidget *parent = nullptr);
-  void showDiagram(); // the Diagram tab
+  // the Diagram tab's drawing: what the chamber has fitted (the Light button follows it)
+  [[nodiscard]] ChamberView *chamberView() const {
+    return m_chamberView;
+  }
 
 signals:
   void prepareToCloseApp();
@@ -42,10 +47,11 @@ private:
   void        handleAccessChange(QString const &, AccessManager::AccessLevel newLevel);
   QTabWidget *m_tabWidget;
   QWidget    *m_diagramTab{nullptr};
+  ChamberView *m_chamberView{nullptr};
   QWidget    *m_osTab{nullptr};
   QWidget    *m_outputsTab{nullptr};
   QWidget    *m_commandsTab{nullptr};
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SYSTEMWIDGET_H

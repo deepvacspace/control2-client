@@ -76,4 +76,4 @@ SeriesStats computeStats(QVector<double> const &times, QVector<double> const &va
   return stats;
 }
 
-} // namespace deepvaccontrol::core
+}

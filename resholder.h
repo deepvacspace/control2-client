@@ -36,5 +36,5 @@ struct ResHolder {
   AnalysisServices     *analysis{nullptr}; // experiment library, notes, reports: shared by the pages
   bool                  aiAdvisorEnabled{true};
 };
-} // namespace deepvaccontrol
+}
 #endif // RESHOLDER_H

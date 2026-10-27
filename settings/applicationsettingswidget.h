@@ -30,6 +30,6 @@ private:
   LineEditTime *m_defaultDuration{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // APPLICATIONSETTINGSWIDGET_H

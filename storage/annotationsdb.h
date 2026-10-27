@@ -68,6 +68,6 @@ public:
   static void migrateJsonNotes(QString const &jsonPath);
 };
 
-} // namespace deepvaccontrol::storage
+}
 
 #endif // ANNOTATIONSDB_H

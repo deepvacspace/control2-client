@@ -23,6 +23,6 @@ private:
 protected:
   void closeEvent(QCloseEvent *event) override;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // ALARMDIALOG_H

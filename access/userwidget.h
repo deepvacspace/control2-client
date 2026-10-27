@@ -41,6 +41,6 @@ private:
   QPushButton *m_addUserBtn;
   QPushButton *m_delUserBtn;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // USERWIDGET_H

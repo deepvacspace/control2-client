@@ -63,4 +63,4 @@ void StatusManager::setOpcStatus(int newState) {
   m_resHolder->logger->stream(Logger::Level::INFO) << "OPC Ua Server initialized with status:" << newState;
   emit opcStateChanged(m_opcState);
 }
-} // namespace deepvaccontrol
+}

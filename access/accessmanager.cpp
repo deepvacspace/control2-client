@@ -215,4 +215,4 @@ QJsonObject AccessManager::User::toJson() const {
   return json;
 }
 
-} // namespace deepvaccontrol
+}

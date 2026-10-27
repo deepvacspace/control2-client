@@ -131,4 +131,4 @@ void AlarmSingleWidget::updateConfigValue() {
   m_conditionValue->notify();
 }
 
-} // namespace deepvaccontrol
+}
