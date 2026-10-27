@@ -64,6 +64,6 @@ private:
   quint64      m_max;
   bool         m_secEnable;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // LINEEDITTIME_H

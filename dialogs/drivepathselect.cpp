@@ -48,4 +48,4 @@ DrivePathSelect::DrivePathSelect(QList<QString> pathList, QWidget *parent) : QWi
   setStyleSheet(utils::readStyleFromFile(":/styles/fileSelect.qss"));
   mainLay->addWidget(box);
 }
-} // namespace deepvaccontrol
+}

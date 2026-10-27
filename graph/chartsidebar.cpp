@@ -17,7 +17,7 @@ namespace {
 int px(double value) {
   return qMax(1, static_cast<int>(value * utils::ssf()));
 }
-} // namespace
+}
 
 ChartSideBar::ChartSideBar(QWidget *parent) : QFrame{parent} {
   setObjectName("sideBar");
@@ -34,6 +34,8 @@ ChartSideBar::ChartSideBar(QWidget *parent) : QFrame{parent} {
   panelLay->setSpacing(px(8));
   auto *header = new QHBoxLayout();
   header->setContentsMargins(0, 0, px(8), 0);
+  header->setSpacing(px(8));
+  m_header = header;
   m_title    = new QLabel(m_panel);
   QFont font = m_title->font();
   font.setBold(true);
@@ -44,6 +46,7 @@ ChartSideBar::ChartSideBar(QWidget *parent) : QFrame{parent} {
   closeBtn->setText(QStringLiteral("×"));
   closeBtn->setToolTip(tr("Close"));
   closeBtn->setFocusPolicy(Qt::NoFocus);
+  closeBtn->setMinimumSize(px(40), px(40)); // a finger's width
   header->addWidget(m_title, 1);
   header->addWidget(closeBtn);
   panelLay->addLayout(header);
@@ -76,16 +79,25 @@ ChartSideBar::ChartSideBar(QWidget *parent) : QFrame{parent} {
   connect(closeBtn, &QToolButton::clicked, this, &ChartSideBar::close);
 }
 
-void ChartSideBar::addPage(QString const &key, QString const &title, QString const &icon, QWidget *page, bool bottom, bool scroll) {
+QToolButton *ChartSideBar::railButton(QString const &title, QString const &icon, bool bottom) {
   auto *button = new QToolButton(this);
   button->setObjectName("railButton");
   button->setToolTip(title);
-  button->setCheckable(true);
   button->setFocusPolicy(Qt::NoFocus);
   button->setToolButtonStyle(Qt::ToolButtonIconOnly);
   button->setFixedSize(px(36), px(36));
   theme::setThemedIcon(button, icon, px(18), QStringLiteral("muted"));
   (bottom ? m_bottom : m_top)->addWidget(button);
+  return button;
+}
+
+QToolButton *ChartSideBar::addAction(QString const &title, QString const &icon, bool bottom) {
+  return railButton(title, icon, bottom);
+}
+
+void ChartSideBar::addPage(QString const &key, QString const &title, QString const &icon, QWidget *page, bool bottom, bool scroll) {
+  QToolButton *button = railButton(title, icon, bottom);
+  button->setCheckable(true);
 
   QWidget *holder = page;
   if (scroll) {
@@ -105,6 +117,17 @@ void ChartSideBar::addPage(QString const &key, QString const &title, QString con
   connect(button, &QToolButton::clicked, this, [this, key] { toggle(key); });
 }
 
+void ChartSideBar::setHeaderWidget(QString const &key, QWidget *widget) {
+  auto page = m_pages.find(key);
+  if (page == m_pages.end()) {
+    return;
+  }
+  widget->setParent(m_panel);
+  m_header->insertWidget(1, widget); // after the title, before the ×
+  widget->setVisible(m_current == key);
+  page->header = widget;
+}
+
 void ChartSideBar::open(QString const &key) {
   auto const page = m_pages.constFind(key);
   if ((page == m_pages.cend()) || !page->button->isEnabled()) {
@@ -112,6 +135,9 @@ void ChartSideBar::open(QString const &key) {
   }
   for (auto it = m_pages.cbegin(); it != m_pages.cend(); ++it) {
     it->button->setChecked(it.key() == key);
+    if (it->header) {
+      it->header->setVisible(it.key() == key);
+    }
   }
   m_current = key;
   m_title->setText(page->title);
@@ -155,4 +181,4 @@ void ChartSideBar::setPageEnabled(QString const &key, bool enabled) {
   }
 }
 
-} // namespace deepvaccontrol
+}

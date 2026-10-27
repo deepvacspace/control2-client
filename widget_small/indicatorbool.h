@@ -26,6 +26,6 @@ private:
   QString      m_textOff;
   QLabel      *m_label;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // INDICATORBOOL_H

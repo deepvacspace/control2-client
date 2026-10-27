@@ -140,4 +140,4 @@ void OverlayDrawer::keyPressEvent(QKeyEvent *event) {
   QWidget::keyPressEvent(event);
 }
 
-} // namespace deepvaccontrol
+}

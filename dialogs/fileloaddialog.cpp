@@ -84,4 +84,4 @@ void FileLoadDialog::selectPath(QString const &path) {
   m_fileListView->setModel(m_sortedModel);
   m_fileListView->setRootIndex(m_sortedModel->mapFromSource(m_fileSysModel->index(path)));
 }
-} // namespace deepvaccontrol
+}

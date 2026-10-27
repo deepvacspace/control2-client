@@ -31,6 +31,6 @@ inline void LabelPlus::setPrec(int newPrec) {
 inline void LabelPlus::setFormat(QString (*dispFnc)(float, int)) {
   m_dispFnc = dispFnc;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // LABELPLUS_H

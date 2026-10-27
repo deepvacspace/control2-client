@@ -237,4 +237,4 @@ LineEditNum *VirtualNumKeyboard::getLineEditNumOwner() const {
 void VirtualNumKeyboard::setLineEditNum(LineEditNum *value) {
   host = value;
 }
-} // namespace deepvaccontrol
+}

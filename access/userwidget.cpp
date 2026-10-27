@@ -59,7 +59,7 @@ QString levelName(int level) {
       return UserWidget::tr("Service Engineer");
   }
 }
-} // namespace
+}
 
 void UserWidget::initGui() {
   double const ssf{utils::ssf()};
@@ -268,4 +268,4 @@ void UserWidget::switchUser() {
     }
   }
 }
-} // namespace deepvaccontrol
+}

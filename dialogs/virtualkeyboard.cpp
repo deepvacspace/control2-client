@@ -105,9 +105,15 @@ void VirtualKeyboard::initCtrlLayout() {
   auto *spaceBtn = new VirtKeyBtn(" ", " ", this);
   spaceBtn->setFixedWidth(200 * utils::ssf());
 
-  m_langBtn = new QPushButton(this);
-  m_langBtn->setIcon(QIcon(":imgs/lang.png"));
-  m_langBtn->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));
+  // German / English layouts
+  m_langBtn = new QPushButton(QStringLiteral("DE\nEN"), this);
+  m_langBtn->setToolTip(tr("Switch between the German and English keyboard"));
+  {
+    QFont font = m_langBtn->font();
+    font.setBold(true);
+    font.setPointSize(11 * utils::ssf());
+    m_langBtn->setFont(font);
+  }
   m_langBtn->setFixedSize(QSize(60 * utils::ssf(), 50 * utils::ssf()));
 
   m_ctrlLayout = new QHBoxLayout();
@@ -211,4 +217,4 @@ VirtKeyBtn::VirtKeyBtn(QString const &text, QString const &textAlt, QWidget *par
 void VirtKeyBtn::enableAltText(bool enable) {
   setText(enable ? m_textAlt : m_text);
 }
-} // namespace deepvaccontrol
+}

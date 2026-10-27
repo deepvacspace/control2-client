@@ -30,6 +30,6 @@ protected:
   void reject() override; // Escape = stay
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // STATEMISMATCHDIALOG_H

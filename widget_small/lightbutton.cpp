@@ -87,4 +87,4 @@ void LightButton::paintEvent(QPaintEvent *) {
   p.setBrush(Qt::white);
   p.drawEllipse(QPointF(m_enabled ? track.right() - 6 * s : track.left() + 6 * s, track.center().y()), 4.5 * s, 4.5 * s);
 }
-} // namespace deepvaccontrol
+}

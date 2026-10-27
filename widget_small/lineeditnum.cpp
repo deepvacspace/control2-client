@@ -1,6 +1,9 @@
 #include "lineeditnum.h"
 
 #include <QEvent>
+#include <QMouseEvent>
+
+#include "touchsupport.h"
 
 #include "utils.h"
 #include "virtualnumkeyboard.h"
@@ -99,7 +102,12 @@ void LineEditNum::checkValidator() {
 }
 
 bool LineEditNum::eventFilter(QObject *object, QEvent *event) {
-  if (event->type() == QEvent::MouseButtonRelease && this->isEnabled()) {
+  // the keyboard opens on a tap: a finger that moved (scrolling the page) does not open it
+  if (event->type() == QEvent::MouseButtonPress) {
+    m_pressAt = static_cast<QMouseEvent *>(event)->globalPosition().toPoint();
+  }
+  if (event->type() == QEvent::MouseButtonRelease && this->isEnabled()
+      && ((static_cast<QMouseEvent *>(event)->globalPosition().toPoint() - m_pressAt).manhattanLength() <= touch::tapSlop())) {
     callVirtualKBoard();
     return true; // lets the event continue to the edit
   } else {
@@ -132,4 +140,4 @@ void LineEditNum::updateVarByText() {
   m_sysValue->setValue(text().toDouble());
 }
 
-} // namespace deepvaccontrol
+}

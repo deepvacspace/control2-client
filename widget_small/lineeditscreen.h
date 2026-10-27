@@ -16,8 +16,13 @@ private:
 
   // QWidget interface
 protected:
+  // the keyboard opens on a tap: a finger that moved (scrolling the page) does not open it
   void mousePressEvent(QMouseEvent *event) override;
+  void mouseReleaseEvent(QMouseEvent *event) override;
+
+private:
+  QPoint m_pressAt;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // LINEEDITSCREEN_H

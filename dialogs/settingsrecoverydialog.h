@@ -36,6 +36,6 @@ private:
   QPushButton *m_restoreBtn{nullptr};
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSRECOVERYDIALOG_H

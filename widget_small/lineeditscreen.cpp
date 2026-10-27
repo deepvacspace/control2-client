@@ -1,11 +1,19 @@
 #include "lineeditscreen.h"
 
+#include <QMouseEvent>
+
+#include "touchsupport.h"
+
 namespace deepvaccontrol {
 LineEditScreen::LineEditScreen(QWidget *parent, VirtualKeyboard::Language lang) : QLineEdit{parent}, m_lang{lang} {
 }
 
 void LineEditScreen::mousePressEvent(QMouseEvent *event) {
-  if (!isEnabled()) {
+  m_pressAt = event->globalPosition().toPoint();
+}
+
+void LineEditScreen::mouseReleaseEvent(QMouseEvent *event) {
+  if (!isEnabled() || ((event->globalPosition().toPoint() - m_pressAt).manhattanLength() > touch::tapSlop())) {
     return;
   }
 
@@ -16,4 +24,4 @@ void LineEditScreen::mousePressEvent(QMouseEvent *event) {
   });
   virtualBoard->open();
 }
-} // namespace deepvaccontrol
+}

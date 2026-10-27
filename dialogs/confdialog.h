@@ -17,6 +17,6 @@ public:
   ~ConfDialog() {
   }
 };
-} // namespace deepvaccontrol
+}
 
 #endif // CONFDIALOG_H

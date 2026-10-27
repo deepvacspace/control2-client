@@ -49,7 +49,8 @@ private:
   bool                m_isScientific = false;
 
 protected:
-  bool eventFilter(QObject *object, QEvent *event);
+  bool   eventFilter(QObject *object, QEvent *event);
+  QPoint m_pressAt; // a tap opens the keyboard, a scroll does not
 };
 
 inline DoubleValidator const *LineEditNum::getValidator() const {
@@ -87,6 +88,6 @@ inline bool LineEditNum::getIsScientific() const {
   return m_isScientific;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // LINEEDITNUM_H

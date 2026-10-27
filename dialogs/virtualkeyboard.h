@@ -60,6 +60,6 @@ private:
   bool     m_isUpper;
   Language m_currLang;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // VIRTUALKEYBOARD_H

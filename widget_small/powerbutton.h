@@ -14,6 +14,6 @@ public:
 signals:
   void prepareToCloseApp();
 };
-} // namespace deepvaccontrol
+}
 
 #endif // POWERBUTTON_H

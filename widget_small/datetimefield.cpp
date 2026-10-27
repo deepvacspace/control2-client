@@ -47,4 +47,4 @@ void DateTimeField::setDateTime(QDateTime const &value) {
   m_time->setTime(static_cast<quint32>(QTime(0, 0).secsTo(value.time())));
 }
 
-} // namespace deepvaccontrol
+}

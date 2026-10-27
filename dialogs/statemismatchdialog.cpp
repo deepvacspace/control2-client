@@ -19,7 +19,7 @@ QString nameList(QStringList const &names) {
   }
   return QObject::tr("%1 and %2 more").arg(names.mid(0, SHOWN).join(QStringLiteral(", "))).arg(names.size() - SHOWN);
 }
-} // namespace
+}
 
 StateMismatchDialog::StateMismatchDialog(QString const     &address,
                                          QStringList const &chamberNames,
@@ -124,4 +124,4 @@ void StateMismatchDialog::reject() {
   done(STAY);
 }
 
-} // namespace deepvaccontrol
+}

@@ -55,6 +55,6 @@ void setFlatTabs(QWidget *tabWidget);
 // when the theme changes
 void setThemedIcon(QWidget *target, QString const &kind, int size, QString const &role = QStringLiteral("text"));
 
-} // namespace deepvaccontrol::theme
+}
 
 #endif // THEME_H

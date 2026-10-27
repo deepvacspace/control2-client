@@ -2,6 +2,7 @@
 
 #include <QAbstractButton>
 #include <QApplication>
+#include <QToolTip>
 #include <QDir>
 #include <QFile>
 #include <QMenu>
@@ -10,6 +11,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
+#include <cmath>
 #include <QPixmap>
 #include <QtMath>
 
@@ -34,7 +36,7 @@ Colors const LIGHT{
 int px(double value) {
   return qMax(1, static_cast<int>(value * utils::ssf()));
 }
-} // namespace
+}
 
 bool isDark() {
   return g_dark;
@@ -138,7 +140,7 @@ QToolButton#railButton { background: transparent; border: none; border-radius: %
 QToolButton#railButton:hover { background: %11; }
 QToolButton#railButton:checked { background: %17; color: %21; font-weight: bold; }
 QToolButton#railButton:disabled { color: %12; }
-QToolButton#panelClose { background: transparent; border: none; color: %15; font-size: 14pt; padding: 0 %10px; }
+QToolButton#panelClose { background: transparent; border: none; color: %15; font-size: 24pt; padding: 0 %10px; }
 QToolButton#panelClose:hover { color: %2; }
 QFrame#statsBox { background: %1; border: %3px solid %13; border-radius: %16px; }
 QLabel#statsValue { font-family: Consolas, monospace; }
@@ -186,7 +188,7 @@ QTableView#statsTable QTableCornerButton::section { background: transparent; bor
     .arg(px(24))
     .arg(chevronImage(c.muted));
 }
-} // namespace
+}
 
 QString styleSheet(bool dark) {
   Colors const &c = dark ? NAVY : LIGHT;
@@ -218,7 +220,7 @@ QTabBar::tab { background: %17; color: %16; border: %4px solid %3; padding: %6px
 QTabBar::tab:selected { background: %1; color: %2; border-bottom: %18px solid %8; }
 QGroupBox { border: %4px solid %3; border-radius: %5px; margin-top: %19px; padding-top: %15px; }
 QGroupBox::title { subcontrol-origin: margin; left: %7px; padding: 0 %15px; color: %16; }
-QToolTip { background: %1; color: %2; border: %4px solid %3; }
+QToolTip { background: %1; color: %2; border: %4px solid %3; border-radius: %15px; padding: %15px %6px; }
 QScrollBar:vertical { background: transparent; width: %20px; margin: 0; }
 QScrollBar:horizontal { background: transparent; height: %20px; margin: 0; }
 QScrollBar::handle { background: %3; border-radius: %21px; min-height: %20px; min-width: %20px; }
@@ -237,8 +239,6 @@ QPushButton#startButton { background: %22; color: #052e16; border: none; font-we
 QPushButton#startButton:disabled { background: %14; color: %10; }
 QPushButton[outline="true"] { background: transparent; color: %13; border: %4px solid %13; }
 QPushButton[outline="true"]:disabled { color: %10; border-color: %3; }
-QFrame#advisorNote { background: rgba(168, 85, 247, 40); border: none; border-left: %18px solid #a855f7; border-radius: %15px; }
-QLabel#advisorNoteTitle { color: %23; font-weight: bold; }
 QGroupBox#setpointBox { border: none; margin-top: 0; padding-top: 0; }
 QLabel#dutField { background: %14; border: %4px solid %3; border-radius: %15px; padding: %15px %7px; }
 QPushButton#readoutBox { background: %14; text-align: left; padding-left: %7px; }
@@ -322,7 +322,7 @@ public:
     return false;
   }
 };
-} // namespace
+}
 
 void apply(bool dark) {
   static MessageBoxStyler *styler = nullptr;
@@ -333,6 +333,18 @@ void apply(bool dark) {
   g_dark = dark;
   QApplication::setPalette(palette(dark));
   qApp->setStyleSheet(styleSheet(dark));
+  // tooltips of widgets with style sheets of their own fall back to the native look: the palette and font of the
+  // application for them too
+  {
+    Colors const &c       = colors();
+    QPalette      tipPalette = QToolTip::palette();
+    tipPalette.setColor(QPalette::ToolTipBase, c.panel);
+    tipPalette.setColor(QPalette::ToolTipText, c.text);
+    tipPalette.setColor(QPalette::Window, c.panel);
+    tipPalette.setColor(QPalette::WindowText, c.text);
+    QToolTip::setPalette(tipPalette);
+    QToolTip::setFont(QApplication::font());
+  }
   for (QWidget *widget : QApplication::allWidgets()) {
     if (auto *plot = qobject_cast<QCustomPlot *>(widget)) {
       stylePlot(plot);
@@ -762,12 +774,95 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
     path.lineTo(pt(0.7, 0.52));
     path.lineTo(pt(0.92, 0.52));
     p.drawPath(path);
+  } else if (kind == "repeat") { // two arrows round a loop
+    QPainterPath upper;
+    upper.moveTo(pt(0.16, 0.58));
+    upper.lineTo(pt(0.16, 0.32));
+    upper.lineTo(pt(0.8, 0.32));
+    p.drawPath(upper);
+    p.drawLine(pt(0.68, 0.2), pt(0.8, 0.32));
+    p.drawLine(pt(0.68, 0.44), pt(0.8, 0.32));
+    QPainterPath lower;
+    lower.moveTo(pt(0.84, 0.42));
+    lower.lineTo(pt(0.84, 0.68));
+    lower.lineTo(pt(0.2, 0.68));
+    p.drawPath(lower);
+    p.drawLine(pt(0.32, 0.56), pt(0.2, 0.68));
+    p.drawLine(pt(0.32, 0.8), pt(0.2, 0.68));
+  } else if (kind == "clipboard") { // experiment details: a sheet on a clipboard
+    p.drawRoundedRect(QRectF(pt(0.22, 0.18), pt(0.78, 0.9)), s * 0.06, s * 0.06);
+    p.drawRect(QRectF(pt(0.38, 0.1), pt(0.62, 0.26)));
+    for (double const y : {0.44, 0.6, 0.76}) {
+      p.drawLine(pt(0.34, y), pt(0.66, y));
+    }
   } else if (kind == "power") {
     p.drawArc(QRectF(pt(0.16, 0.2), pt(0.84, 0.88)), 120 * 16, 300 * 16);
     p.drawLine(pt(0.5, 0.1), pt(0.5, 0.5));
+    // ---- chamber components (the diagram's indicators)
+  } else if (kind == "bulb") {
+    QPainterPath glass;
+    glass.moveTo(pt(0.38, 0.66));
+    glass.arcTo(QRectF(pt(0.22, 0.1), pt(0.78, 0.66)), 230, -280);
+    glass.lineTo(pt(0.62, 0.66));
+    glass.closeSubpath();
+    p.drawPath(glass);
+    p.drawLine(pt(0.4, 0.76), pt(0.6, 0.76));
+    p.drawLine(pt(0.43, 0.86), pt(0.57, 0.86));
+  } else if (kind == "thermometer") {
+    p.drawRoundedRect(QRectF(pt(0.42, 0.1), pt(0.58, 0.62)), 0.08 * s, 0.08 * s);
+    p.setBrush(color);
+    p.drawEllipse(QRectF(pt(0.34, 0.6), pt(0.66, 0.92)));
+    p.drawLine(pt(0.5, 0.35), pt(0.5, 0.65));
+  } else if (kind == "snowflake") {
+    for (int k{0}; k < 3; ++k) {
+      double const a{k * 3.14159265 / 3.0};
+      p.drawLine(pt(0.5 + 0.38 * std::cos(a), 0.5 + 0.38 * std::sin(a)), pt(0.5 - 0.38 * std::cos(a), 0.5 - 0.38 * std::sin(a)));
+    }
+  } else if (kind == "heater") { // three heat waves
+    for (double const x : {0.3, 0.5, 0.7}) {
+      QPainterPath wave;
+      wave.moveTo(pt(x, 0.12));
+      wave.cubicTo(pt(x - 0.1, 0.3), pt(x + 0.1, 0.42), pt(x, 0.6));
+      wave.cubicTo(pt(x - 0.1, 0.74), pt(x + 0.06, 0.82), pt(x, 0.9));
+      p.drawPath(wave);
+    }
+  } else if (kind == "fridge") { // a unit with a grille
+    p.drawRoundedRect(QRectF(pt(0.14, 0.2), pt(0.86, 0.8)), 0.08 * s, 0.08 * s);
+    p.drawLine(pt(0.14, 0.44), pt(0.86, 0.44));
+    p.drawLine(pt(0.3, 0.6), pt(0.7, 0.6));
+  } else if (kind == "fan") { // turbo pump: a rotor
+    p.drawEllipse(QRectF(pt(0.12, 0.12), pt(0.88, 0.88)));
+    for (int k{0}; k < 4; ++k) {
+      double const a{k * 3.14159265 / 2.0 + 0.4};
+      p.drawLine(pt(0.5, 0.5), pt(0.5 + 0.3 * std::cos(a), 0.5 + 0.3 * std::sin(a)));
+    }
+  } else if (kind == "spiral") { // scroll pump
+    QPainterPath spiral;
+    spiral.moveTo(pt(0.5, 0.5));
+    for (int k{1}; k <= 40; ++k) {
+      double const a{k * 0.45};
+      double const r{0.012 * k};
+      spiral.lineTo(pt(0.5 + r * std::cos(a), 0.5 + r * std::sin(a)));
+    }
+    p.drawPath(spiral);
+  } else if (kind == "valve") { // two triangles meeting
+    QPolygonF const bowtie{pt(0.14, 0.3), pt(0.86, 0.7), pt(0.86, 0.3), pt(0.14, 0.7)};
+    p.drawPolygon(bowtie);
+  } else if (kind == "gauge") { // a dial with its needle
+    p.drawArc(QRectF(pt(0.12, 0.18), pt(0.88, 0.94)), 0, 180 * 16);
+    p.drawLine(pt(0.12, 0.56), pt(0.88, 0.56));
+    p.drawLine(pt(0.5, 0.56), pt(0.68, 0.32));
+  } else if (kind == "chip") { // the PLC
+    p.drawRoundedRect(QRectF(pt(0.26, 0.26), pt(0.74, 0.74)), 0.06 * s, 0.06 * s);
+    for (double const t : {0.38, 0.5, 0.62}) {
+      p.drawLine(pt(t, 0.1), pt(t, 0.26));
+      p.drawLine(pt(t, 0.74), pt(t, 0.9));
+      p.drawLine(pt(0.1, t), pt(0.26, t));
+      p.drawLine(pt(0.74, t), pt(0.9, t));
+    }
   }
 }
-} // namespace
+}
 
 QIcon menuIcon(QString const &kind, QColor const &normal, QColor const &selected, int size) {
   QIcon icon;
@@ -785,4 +880,4 @@ QIcon menuIcon(QString const &kind, QColor const &normal, QColor const &selected
   return icon;
 }
 
-} // namespace deepvaccontrol::theme
+}

@@ -88,4 +88,4 @@ void DelaySelectDialog::checkMinToMinDateTime() {
     startTimeEdit->setMinimumDateTime(startTimeEdit->dateTime());
   }
 }
-} // namespace deepvaccontrol
+}

@@ -136,4 +136,4 @@ void SettingsRecoveryDialog::reject() {
   done(EXIT);
 }
 
-} // namespace deepvaccontrol
+}

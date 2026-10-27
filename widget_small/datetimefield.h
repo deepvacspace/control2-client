@@ -28,6 +28,6 @@ private:
   LineEditTime *m_time;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // DATETIMEFIELD_H

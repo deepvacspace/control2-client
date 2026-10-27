@@ -38,4 +38,4 @@ StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent}
 void StatusLabel::updateString() {
   setText(m_statusStr + " " + m_typeStr);
 }
-} // namespace deepvaccontrol
+}

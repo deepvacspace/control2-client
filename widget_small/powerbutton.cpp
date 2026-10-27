@@ -3,7 +3,7 @@
 #include <QProcess>
 #include <qprocess.h>
 
-#include "confdialog.h"
+#include "choicedialog.h"
 #include "constants.h"
 #include "messagedialog.h"
 #include "theme.h"
@@ -25,26 +25,29 @@ PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{QS
                   .arg(QColor(danger.red(), danger.green(), danger.blue(), 50).name(QColor::HexArgb)));
 
   connect(this, &QPushButton::clicked, this, [this, resHolder] {
-    if (HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()) {
-      auto *msgDlg
-        = new MessageDialog(tr("Warning"), tr("Stop operation before shutting down equipment"), this);
-      msgDlg->open();
-    } else {
-      ConfDialog *confDialog
-        = new ConfDialog(tr("Confirmation"),
-                         tr("The chamber will be turned off and the program will be closed.\n\nDo you want to continue?"),
-                         tr("Yes"),
-                         tr("No"),
-                         this);
-      connect(confDialog, &ConfDialog::finished, this, [this, resHolder](int result) {
-        if (1 == result) {
-          resHolder->tcpGate->sendTextCmd("shutdown");
-          emit prepareToCloseApp();
-          // system("c:\\windows\\system32\\shutdown /s /t 1");
+    // the chamber turned off with the application, or left as it is (a running job goes on without the application)
+    bool const working{HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()};
+    enum { CANCEL = 1, APP_ONLY = 2, STOP_AND_EXIT = 3 };
+    auto *dialog = new ChoiceDialog(tr("Confirmation"),
+                                    working ? tr("A job is running. Stop the chamber and close the application, or close only the "
+                                                 "application and let the job go on?")
+                                            : tr("Turn the chamber off and close the application, or close only the application?"),
+                                    QStringLiteral("question"), this);
+    dialog->addChoice(tr("Cancel"), CANCEL);
+    dialog->addChoice(tr("Exit app only"), APP_ONLY);
+    dialog->addChoice(tr("Stop chamber and exit"), STOP_AND_EXIT, true);
+    connect(dialog, &QDialog::finished, this, [this, resHolder, working](int result) {
+      if (STOP_AND_EXIT == result) {
+        if (working) {
+          resHolder->tcpGate->sendTextCmd("stop");
         }
-      });
-      confDialog->show();
-    }
+        resHolder->tcpGate->sendTextCmd("shutdown");
+        emit prepareToCloseApp();
+      } else if (APP_ONLY == result) {
+        emit prepareToCloseApp();
+      }
+    });
+    dialog->open();
   });
 }
 }

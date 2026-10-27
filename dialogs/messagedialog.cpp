@@ -23,7 +23,7 @@ QString iconKind(QString const &title) {
   }
   return QStringLiteral("info");
 }
-} // namespace
+}
 
 MessageDialog::MessageDialog(QString const &title, QString const &message, QWidget *parent) : QDialog{parent} {
   double const ssf{utils::ssf()};
@@ -80,7 +80,7 @@ void MessageDialog::setIconKind(QString const &kind) {
 void MessageDialog::closeEvent(QCloseEvent *) {
   emit finished(0); // QDialog::Rejected == close dialog
 }
-} // namespace deepvaccontrol
+}
 
 void deepvaccontrol::MessageDialog::open(int visDurationMs) {
   QDialog::open();

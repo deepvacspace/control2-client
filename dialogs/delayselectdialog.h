@@ -18,5 +18,5 @@ private:
 
   QDateTimeEdit *startTimeEdit;
 };
-} // namespace deepvaccontrol
+}
 #endif // DELAYSELECTDIALOG_H

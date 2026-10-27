@@ -43,4 +43,4 @@ void IndicatorBool::updateGui() {
                           : QStringLiteral("background-color: %1; color: %2;").arg(c.panelAlt.name(), c.muted.name()));
   m_label->setText(boolState ? m_textOn : m_textOff);
 }
-} // namespace deepvaccontrol
+}

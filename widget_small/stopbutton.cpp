@@ -22,4 +22,4 @@ StopButton::StopButton(QWidget *parent) : QPushButton{parent} {
     confDialog->open();
   });
 }
-} // namespace deepvaccontrol
+}

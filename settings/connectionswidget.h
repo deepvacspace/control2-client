@@ -72,7 +72,6 @@ private:
   LineEditNum    *m_hostPort{nullptr};
   QPushButton    *m_hostBtn{nullptr};
   QPushButton    *m_joinCodeBtn{nullptr};
-  QPushButton    *m_ownHostBtn{nullptr};
   QLabel         *m_joinCodeLabel{nullptr};
   QListWidget    *m_peers{nullptr};
   QLabel         *m_clientStatus{nullptr};
@@ -87,6 +86,6 @@ private:
   QByteArray      m_pendingCert;
 };
 
-} // namespace deepvaccontrol
+}
 
 #endif // CONNECTIONSWIDGET_H

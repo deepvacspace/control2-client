@@ -96,7 +96,7 @@ QString chamberText(QVariantMap const &chamber) {
     .arg(chamber["name"].toString(), chamber["host"].toString())
     .arg(chamber["port"].toUInt());
 }
-} // namespace
+}
 
 ConnectionsWidget::ConnectionsWidget(ResHolder *resHolder, Page page, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder} {
@@ -409,9 +409,6 @@ QWidget *ConnectionsWidget::buildOpcBox() {
   form->setColumnStretch(3, 1);
   lay->addLayout(form);
 
-  auto *security = makeInfoLabel(box);
-  security->setText(tr("Security: None · Authentication: Anonymous (the OPC library has no other modes)"));
-  lay->addWidget(security);
 
   lay->addWidget(new QLabel(tr("Published variables"), box));
   m_opcTags = new QListWidget(box);
@@ -420,9 +417,16 @@ QWidget *ConnectionsWidget::buildOpcBox() {
   for (QVariant const &tag : opc["tags"].toList()) {
     publishedStates.push_back(tag.toMap()["state"].toString());
   }
+  // the PLC's job bookkeeping, status words and I/O bit masks are not measurements: not offered
+  static QStringList const internal{"temp_pid_idx", "status_condition", "work_type",       "interval",   "intervals_count",
+                                    "cycle_cur",    "cycle_total",      "t_total",         "t_interval", "inputs",
+                                    "outputs",      "alarm_in_status",  "alarm_out_status"};
   for (QVariant const &state : m_resHolder->settings->settingsMap()["states"].toList()) {
     QVariantMap const map  = state.toMap();
     QString const     name = map["name"].toString();
+    if (internal.contains(name)) {
+      continue;
+    }
     auto *item = new QListWidgetItem(QStringLiteral("%1  (%2)").arg(map["label"].toString(), name), m_opcTags);
     item->setData(Qt::UserRole, name);
     item->setData(Qt::UserRole + 1, map["label"].toString());
@@ -529,21 +533,23 @@ void ConnectionsWidget::refreshOpcStatus() {
 // ---------------------------------------------------------------- local network sharing
 
 QWidget *ConnectionsWidget::buildSharingBox() {
-  QFrame *box = makeCard(tr("Local network sharing"), this);
+  auto *cards = new QWidget(this);
+  auto *cardsLay = new QVBoxLayout(cards);
+  cardsLay->setContentsMargins(0, 0, 0, 0);
+  cardsLay->setSpacing(12 * utils::ssf());
+  QFrame *box = makeCard(tr("Host data transfer"), cards);
   auto   *lay = static_cast<QVBoxLayout *>(box->layout());
+  cardsLay->addWidget(box);
 
   CollabManager *collab = m_resHolder->collab;
   if (!collab || !collab->available()) {
     auto *info = makeInfoLabel(box);
     info->setText(tr("Not available in this build (OpenSSL is missing)."));
     lay->addWidget(info);
-    return box;
+    return cards;
   }
 
-
   // host
-  auto *hostTitle = new QLabel(tr("<b>Host on this computer</b>"), box);
-  lay->addWidget(hostTitle);
   m_hostStatus = new QLabel(box);
   m_hostStatus->setWordWrap(true);
   m_hostStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -554,13 +560,11 @@ QWidget *ConnectionsWidget::buildSharingBox() {
   m_hostPort->setValue(m_resHolder->settings->settingsMap()["collab"].toMap().value("host_port", 8765).toUInt());
   m_hostBtn     = makeButton(QString{}, box);
   m_joinCodeBtn = makeButton(tr("New join code"), box);
-  m_ownHostBtn  = makeButton(tr("Include this computer"), box);
-  m_ownHostBtn->setToolTip(tr("Let this computer's own data take part in the sharing"));
   hostRow->addWidget(new QLabel(tr("Port"), box));
   hostRow->addWidget(m_hostPort);
   hostRow->addWidget(m_hostBtn);
   hostRow->addWidget(m_joinCodeBtn);
-  hostRow->addWidget(m_ownHostBtn);
+  hostRow->addStretch();
   lay->addLayout(hostRow);
 
   m_joinCodeLabel = new QLabel(box);
@@ -569,7 +573,7 @@ QWidget *ConnectionsWidget::buildSharingBox() {
 
   auto *peersRow = new QHBoxLayout();
   m_peers        = new QListWidget(box);
-  m_peers->setMaximumHeight(110 * utils::ssf());
+  m_peers->setMaximumHeight(80 * utils::ssf());
   auto *removePeerBtn = makeButton(tr("Remove device"), box);
   peersRow->addWidget(m_peers, 1);
   peersRow->addWidget(removePeerBtn, 0, Qt::AlignTop);
@@ -582,8 +586,11 @@ QWidget *ConnectionsWidget::buildSharingBox() {
     }
     QString error;
     if (!collab->startHost(static_cast<quint16>(m_hostPort->text().toUInt()), &error)) {
-      message(tr("Local network sharing"), tr("Could not start hosting: %1").arg(error));
+      message(tr("Host data transfer"), tr("Could not start hosting: %1").arg(error));
+      return;
     }
+    collab->connectToOwnHost(); // the host's own data takes part too
+    refreshSharing();
   });
   connect(m_joinCodeBtn, &QPushButton::clicked, this, [this, collab] {
     QString const code = collab->newJoinCode();
@@ -591,7 +598,6 @@ QWidget *ConnectionsWidget::buildSharingBox() {
                                 "(valid 10 minutes, one device)")
                                .arg(code));
   });
-  connect(m_ownHostBtn, &QPushButton::clicked, collab, &CollabManager::connectToOwnHost);
   connect(removePeerBtn, &QPushButton::clicked, this, [this, collab] {
     if (QListWidgetItem *item = m_peers->currentItem()) {
       collab->removePeer(item->data(Qt::UserRole).toString());
@@ -599,7 +605,9 @@ QWidget *ConnectionsWidget::buildSharingBox() {
   });
 
   // client
-  lay->addWidget(new QLabel(tr("<b>Connection</b>"), box));
+  box = makeCard(tr("Connect for data transfer"), cards);
+  lay = static_cast<QVBoxLayout *>(box->layout());
+  cardsLay->addWidget(box);
   m_clientStatus = new QLabel(box);
   m_clientStatus->setWordWrap(true);
   lay->addWidget(m_clientStatus);
@@ -642,16 +650,14 @@ QWidget *ConnectionsWidget::buildSharingBox() {
             m_pendingUrl  = url;
             m_pendingCert = pem;
             m_pairBtn->setEnabled(!pem.isEmpty());
-            m_fingerprintLabel->setText(pem.isEmpty() ? error
-                                                      : tr("Host fingerprint:\n%1\nPair only if it matches the one shown on "
-                                                           "the host computer.")
-                                                          .arg(fingerprint));
+            Q_UNUSED(fingerprint);
+            m_fingerprintLabel->setText(pem.isEmpty() ? error : tr("Host found: enter its join code and pair."));
           });
   connect(m_pairBtn, &QPushButton::clicked, this, [this, collab] {
     collab->pair(m_pendingUrl, m_joinCode->text(), m_pendingCert);
   });
   connect(collab, &CollabManager::paired, this, [this](bool ok, QString const &text) {
-    message(tr("Local network sharing"), text);
+    message(tr("Connect for data transfer"), text);
     if (ok) {
       m_joinCode->clear();
       m_fingerprintLabel->clear();
@@ -670,7 +676,7 @@ QWidget *ConnectionsWidget::buildSharingBox() {
   connect(collab, &CollabManager::syncFinished, this, &ConnectionsWidget::refreshSharing);
 
   refreshSharing();
-  return box;
+  return cards;
 }
 
 void ConnectionsWidget::refreshSharing() {
@@ -682,15 +688,13 @@ void ConnectionsWidget::refreshSharing() {
   bool const hosting{collab->isHosting()};
   m_hostBtn->setText(hosting ? tr("Stop hosting") : tr("Start hosting"));
   m_joinCodeBtn->setEnabled(hosting);
-  m_ownHostBtn->setEnabled(hosting);
   m_hostPort->setEnabled(!hosting);
   if (hosting) {
     QStringList urls;
     for (QString const &host : hostAddresses()) {
       urls.push_back(QStringLiteral("%1:%2").arg(host).arg(collab->hostPort()));
     }
-    m_hostStatus->setText(statusHtml(COLOR_OK, tr("Hosting at %1").arg(urls.join(", ")))
-                          + "<br>" + tr("Fingerprint: %1").arg(collab->hostFingerprint()).toHtmlEscaped());
+    m_hostStatus->setText(statusHtml(COLOR_OK, tr("Hosting at %1").arg(urls.join(", "))));
   } else {
     m_hostStatus->setText(statusHtml(COLOR_OFF, tr("Not hosting")));
     m_joinCodeLabel->clear();
@@ -704,7 +708,7 @@ void ConnectionsWidget::refreshSharing() {
 
   bool const connected{collab->isConnected()};
   QString    text = connected ? tr("Connected to %1 (%2)").arg(collab->connection().hostName, collab->connection().url)
-                              : tr("Not connected. Check a host, compare its fingerprint, then pair with its join code.");
+                              : tr("Not connected.");
   if (collab->isBusy()) {
     text += tr(" — working…");
   } else if (!collab->lastSyncSummary().isEmpty()) {
@@ -720,4 +724,4 @@ void ConnectionsWidget::message(QString const &title, QString const &text) const
   (new MessageDialog(title, text))->open();
 }
 
-} // namespace deepvaccontrol
+}

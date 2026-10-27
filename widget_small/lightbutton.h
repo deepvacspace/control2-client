@@ -27,6 +27,6 @@ private:
   int          m_bit{-1}; // light output bit, -1 when no light is configured
   bool         m_enabled{false};
 };
-} // namespace deepvaccontrol
+}
 
 #endif // LIGHTBUTTON_H

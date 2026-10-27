@@ -27,6 +27,6 @@ protected:
   QTimer      *m_closeTimer{nullptr};
   QLabel      *m_iconLabel{nullptr};
 };
-} // namespace deepvaccontrol
+}
 
 #endif // MESSAGEDIALOG_H

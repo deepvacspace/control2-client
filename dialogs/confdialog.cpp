@@ -28,4 +28,4 @@ ConfDialog::ConfDialog(
 
   setAttribute(Qt::WA_DeleteOnClose);
 }
-} // namespace deepvaccontrol
+}

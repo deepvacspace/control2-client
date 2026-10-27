@@ -82,4 +82,4 @@ void DelayInfoDialog::checkTime() {
     accept();
   }
 }
-} // namespace deepvaccontrol
+}

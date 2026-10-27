@@ -13,6 +13,6 @@ public:
 signals:
   void confirmPressed();
 };
-} // namespace deepvaccontrol
+}
 
 #endif // STOPBUTTON_H

@@ -170,4 +170,4 @@ void LineEditTime::updateTextByValue(long sec) {
     sEdit->setText(QString::number(sec % 60));
   }
 }
-} // namespace deepvaccontrol
+}

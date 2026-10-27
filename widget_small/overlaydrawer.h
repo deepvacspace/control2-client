@@ -57,6 +57,6 @@ inline bool OverlayDrawer::isOpen() const {
   return m_open;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // OVERLAYDRAWER_H
