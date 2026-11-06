@@ -2,7 +2,6 @@
 
 #include <QEvent>
 #include <QPainter>
-#include <QResizeEvent>
 #include <QVBoxLayout>
 
 #include "theme.h"
@@ -17,8 +16,8 @@ int px(double value) {
 
 Menu::Menu(int buttonHeight, QWidget *parent)
     : QWidget{parent}
-    , m_listLay{new QHBoxLayout()}
-    , m_extraLay{new QHBoxLayout()}
+    , m_listLay{new QVBoxLayout()}
+    , m_extraLay{new QVBoxLayout()}
     , m_currentSelected{0}
     , m_prevSelected{0}
     , m_buttonHeight{buttonHeight} {
@@ -26,31 +25,41 @@ Menu::Menu(int buttonHeight, QWidget *parent)
   outer->setContentsMargins(0, 0, 0, 0);
   m_content = new QWidget(this);
   outer->addWidget(m_content);
-  auto *mainlay = new QHBoxLayout(m_content);
-  mainlay->setContentsMargins(px(8), px(4), px(8), px(4));
-  mainlay->setSpacing(px(10));
+  auto *mainlay = new QVBoxLayout(m_content);
+  mainlay->setContentsMargins(px(7), px(8), px(7), px(10));
+  mainlay->setSpacing(px(8));
   m_listLay->setSpacing(px(4));
   m_extraLay->setSpacing(px(10));
+  m_extraLay->setAlignment(Qt::AlignHCenter);
 
   auto *separator = new QWidget(m_content);
   separator->setObjectName("menuSeparator");
-  separator->setFixedWidth(px(1));
+  separator->setFixedHeight(px(1));
 
-  mainlay->addLayout(m_listLay, 1);
+  mainlay->addLayout(m_listLay);
+  // the light button, the clock and the product name stay at the bottom whatever is shown above them
+  mainlay->addStretch(1);
   mainlay->addWidget(separator);
+  mainlay->addSpacing(px(4));
   mainlay->addLayout(m_extraLay);
-  setFixedHeight(px(46));
+  setFixedWidth(sidebarWidth());
   restyle();
+}
+
+int Menu::sidebarWidth() {
+  return px(76);
 }
 
 void Menu::addItem(QString const &name, QString const &iconKind) {
   auto *itemBtn = new QToolButton(m_content);
   itemBtn->setObjectName("menuButton");
-  itemBtn->setText(QString(name).replace('\n', ' '));
+  itemBtn->setText(name);
   itemBtn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
   itemBtn->setCheckable(true);
-  itemBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  itemBtn->setIconSize(QSize(px(14), px(14)));
+  itemBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  // two-line labels ("Manual\ncontrol") get a taller button
+  itemBtn->setFixedHeight(px(name.contains('\n') ? m_buttonHeight + 12 : m_buttonHeight + 2));
+  itemBtn->setIconSize(QSize(px(17), px(17)));
   itemBtn->setFocusPolicy(Qt::NoFocus);
   connect(itemBtn, &QToolButton::clicked, this, &Menu::processMenuClicked);
 
@@ -65,29 +74,26 @@ void Menu::restyle() {
   if (busy) {
     return;
   }
-  busy                   = true;
-  theme::Colors const &c = theme::colors();
+  busy                    = true;
+  theme::Colors const &sc = theme::sidebarColors();
+  QColor const         selectedBg("#dbe7fb");
+  QColor const         selectedText("#1e3a8a");
   setStyleSheet(QStringLiteral(R"(
-QToolButton#menuButton { background: transparent; color: %1; border: %4px solid transparent; border-radius: %5px;
-  padding-top: %6px; }
-QToolButton#menuButton:hover { color: %2; }
-QToolButton#menuButton:checked { color: %2; background: %3; border-color: %7; }
-QWidget#menuSeparator { background: %8; }
-QToolButton#barToggle { color: %1; background: %9; border: %4px solid %8; border-radius: %10px; font-weight: bold; padding: 0; }
-QToolButton#barToggle:hover { color: %2; border-color: %7; }
+QToolButton#menuButton { background: transparent; color: %1; border: none; border-radius: %4px; padding-top: %5px; }
+QToolButton#menuButton:hover { background: %6; }
+QToolButton#menuButton:checked { color: %2; background: %3; }
+QWidget#menuSeparator { background: %7; }
 )")
-                  .arg(c.muted.name(), c.text.name(), QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 60).name(QColor::HexArgb))
-                  .arg(px(1))
-                  .arg(px(5))
-                  .arg(px(3))
-                  .arg(c.accent.name(), c.border.name(), c.panel.name())
-                  .arg(px(4)));
+                  .arg(sc.text.name(), selectedText.name(), selectedBg.name())
+                  .arg(px(9))
+                  .arg(px(4))
+                  .arg(QColor(255, 255, 255, 18).name(QColor::HexArgb), QColor(255, 255, 255, 30).name(QColor::HexArgb)));
   QFont small = font();
   small.setPointSizeF(QWidget::font().pointSizeF() * 0.9);
   for (int i{0}; i < m_buttons.size(); ++i) {
     m_buttons[i]->setFont(small);
     if (!m_iconKinds[i].isEmpty()) {
-      m_buttons[i]->setIcon(theme::menuIcon(m_iconKinds[i], c.muted, c.text, px(14)));
+      m_buttons[i]->setIcon(theme::menuIcon(m_iconKinds[i], sc.text, selectedText, px(17)));
     }
   }
   update();
@@ -152,12 +158,19 @@ void Menu::addWidget(QWidget *widget) {
   m_extraLay->addWidget(widget);
 }
 
+void Menu::addListWidget(QWidget *widget) {
+  m_listLay->addWidget(widget);
+}
+
 void Menu::paintEvent(QPaintEvent *) {
-  theme::Colors const &c = theme::colors();
+  theme::Colors const &sc = theme::sidebarColors();
   QPainter             p(this);
-  p.fillRect(rect(), c.header);
-  p.setPen(c.border);
-  p.drawLine(rect().topLeft(), rect().topRight());
+  p.setRenderHint(QPainter::Antialiasing);
+  // a rounded navy card; outlined on the dark theme, where the page background is navy too
+  double const radius{14 * utils::ssf()};
+  p.setPen(theme::isDark() ? QPen(sc.border, px(1)) : Qt::NoPen);
+  p.setBrush(sc.header);
+  p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
 }
 
 void Menu::changeEvent(QEvent *event) {
