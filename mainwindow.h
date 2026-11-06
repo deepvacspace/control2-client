@@ -7,8 +7,6 @@
 #include "flasher.h"
 #include "graphwidget.h"
 #include "head.h"
-#include "headerbar.h"
-#include "manual.h"
 #include "menu.h"
 #include "programwidget.h"
 #include "resholder.h"
@@ -35,12 +33,10 @@ private:
   QStackedWidget *m_stackedWidget;
   Menu           *m_menu;
   Head           *m_head;
-  Manual         *m_manual;
   ProgramWidget  *m_programWidget;
   SettingsWidget *m_settingsWidget;
   GraphWidget        *m_graphWidget;
   DataAnalysisWidget *m_dataAnalysisWidget;
-  HeaderBar      *m_headerBar{nullptr};
   Flasher        *m_flasher;
   bool            m_windowMode;
 

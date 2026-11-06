@@ -141,6 +141,7 @@ RunDetailsPanel::RunDetailsPanel(ResHolder *resHolder, QWidget *parent) : QWidge
     lay->addWidget(label);
     lay->addWidget(edit);
     lay->addSpacing(6 * utils::ssf());
+    return label;
   };
   // on-screen keyboard on the HMI, like the other text fields
   auto line = [this](QString const &placeholder) {
@@ -173,8 +174,8 @@ RunDetailsPanel::RunDetailsPanel(ResHolder *resHolder, QWidget *parent) : QWidge
     lay->addLayout(row);
     lay->addSpacing(6 * utils::ssf());
   }
-  field(tr("Operator"), m_operator);
-  field(tr("Purpose"), m_purpose);
+  m_operatorTitle = field(tr("Operator"), m_operator);
+  m_purposeTitle  = field(tr("Purpose"), m_purpose);
 
   m_storeTimer = new QTimer(this);
   m_storeTimer->setSingleShot(true);
@@ -185,6 +186,7 @@ RunDetailsPanel::RunDetailsPanel(ResHolder *resHolder, QWidget *parent) : QWidge
       if (!m_loading) {
         m_storeTimer->start();
       }
+      emit edited();
     });
   }
   if (m_resHolder->recorder) {
@@ -230,6 +232,24 @@ void RunDetailsPanel::load() {
   if (fillOperator) {
     store();
   }
+}
+
+void RunDetailsPanel::setRequiredFields() {
+  m_purposeTitle->setText(tr("Name or purpose"));
+  for (QLineEdit *edit : {m_purpose, m_operator}) {
+    edit->setPlaceholderText(tr("Required"));
+  }
+  // first in the form
+  auto *lay = static_cast<QVBoxLayout *>(layout());
+  lay->removeWidget(m_purposeTitle);
+  lay->removeWidget(m_purpose);
+  lay->insertWidget(0, m_purposeTitle);
+  lay->insertWidget(1, m_purpose);
+  lay->insertSpacing(2, 6 * utils::ssf());
+}
+
+bool RunDetailsPanel::complete() const {
+  return !m_purpose->text().trimmed().isEmpty() && !m_operator->text().trimmed().isEmpty();
 }
 
 void RunDetailsPanel::userChanged(QString const &name) {

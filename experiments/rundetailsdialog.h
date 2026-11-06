@@ -6,6 +6,7 @@
 
 #include "runmanifest.h"
 
+class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QTimer;
@@ -49,12 +50,19 @@ private:
   ResHolder *m_resHolder;
 };
 
-// DUT, operator and purpose as an inline form (Manual control page): edits are stored for the next experiments as
+// DUT, operator and purpose as an inline form (Program page, step 1): edits are stored for the next experiments as
 // they are typed (tags and notes are kept as they are). The operator is the logged-in user unless typed otherwise.
 class RunDetailsPanel : public QWidget {
   Q_OBJECT
 public:
   explicit RunDetailsPanel(ResHolder *resHolder, QWidget *parent = nullptr);
+
+  // the Program page's form: the purpose is "Name or purpose", first; it and the operator say "Required" when empty
+  void setRequiredFields();
+  [[nodiscard]] bool complete() const; // name or purpose and operator given
+
+signals:
+  void edited(); // a field changed (stored a moment later)
 
 private:
   void load();  // from the recorder
@@ -67,6 +75,8 @@ private:
   QLineEdit *m_density{nullptr};
   QLineEdit *m_operator{nullptr};
   QLineEdit *m_purpose{nullptr};
+  QLabel    *m_operatorTitle{nullptr};
+  QLabel    *m_purposeTitle{nullptr};
   QTimer    *m_storeTimer{nullptr};
   QString    m_autoOperator; // the logged-in user filled in as operator
   bool       m_loading{false};

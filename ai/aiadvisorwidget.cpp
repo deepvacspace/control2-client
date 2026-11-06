@@ -391,7 +391,7 @@ bool AiAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd) {
 }
 
 bool AiAdvisorWidget::startChamberJob(double targetTemp) {
-  constexpr quint32 LONG_TIME{100 * 3600 - 1}; // matches Manual::sendProgram(); comfortably exceeds any AI run duration
+  constexpr quint32 LONG_TIME{100 * 3600 - 1}; // matches QuickSetpointPanel (held until stopped); comfortably exceeds any AI run duration
 
   QVariantList const controlParamsList = m_resHolder->settings->settingsMap().value("control_params").toList();
   if (controlParamsList.isEmpty()) {
