@@ -532,7 +532,7 @@ void AnalysisTools::registerTools(ToolRegistry &registry) {
   registry.add({"rank_runs", "Rank the saved runs by a KPI to find the best or worst run.",
                 schema({{"metric", property("string", "tail_mae (default), mae, overshoot, settling")}, {"limit", property("integer", "default 10")}}),
                 [this](QJsonObject const &a) { return rankRuns(a); }});
-  registry.add({"plot_run", "Show a run, stage or time range on the chart page.",
+  registry.add({"plot_run", "Show a run, stage or time range on the Analysis page.",
                 schema({{"run", run}, {"channels", stringList("default temp, temp_ref")}, {"stage", stage}, {"from_s", from}, {"to_s", to},
                         {"compare_with", stringList("runs to overlay")}},
                        {"run"}),
@@ -1772,7 +1772,7 @@ QJsonObject AnalysisTools::plotRun(QJsonObject const &args) {
     return QJsonObject{{"error", failed}};
   }
   QJsonObject result = runHeader(*loaded);
-  result.insert("shown", QStringLiteral("opened on the chart page"));
+  result.insert("shown", QStringLiteral("opened on the Analysis page"));
   result.insert("channels", QJsonArray::fromStringList(channels));
   // what is on screen, so the explanation can stick to facts
   QString what = QStringLiteral("the whole experiment");
@@ -1784,7 +1784,7 @@ QJsonObject AnalysisTools::plotRun(QJsonObject const &args) {
                                              {"to", hms(std::isfinite(to) ? to : loaded->run.duration())}});
     what = QStringLiteral("%1 to %2").arg(hms(std::isfinite(from) ? from : 0.0), hms(std::isfinite(to) ? to : loaded->run.duration()));
   }
-  QStringList facts{QStringLiteral("Opened on the chart page: experiment %1, %2.").arg(runId(loaded->run), what),
+  QStringList facts{QStringLiteral("Opened on the Analysis page: experiment %1, %2.").arg(runId(loaded->run), what),
                     QStringLiteral("Channels: %1.").arg(channels.join(QStringLiteral(", ")))};
   if (!compare.isEmpty()) {
     QStringList others;

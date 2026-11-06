@@ -37,6 +37,7 @@ private:
   QLabel      *m_label{nullptr};
   QPushButton *m_colorPicker;
   QComboBox   *m_lineStyle;
+  int          m_lineSample{80}; // width of the line drawn in the style box (unscaled px)
   QComboBox   *m_lineWidth;
 };
 

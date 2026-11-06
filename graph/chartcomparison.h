@@ -8,7 +8,7 @@
 
 namespace deepvaccontrol {
 
-// What a comparison tab of the chart page shows: the same channels of several experiments, aligned on a common time.
+// What a comparison tab of the Analysis page shows: the same channels of several experiments, aligned on a common time.
 struct ChartComparison {
   struct Member {
     QString       key;   // the tab it was chosen from ("live", "db:…", "day:…", a library key) or the library key

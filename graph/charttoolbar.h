@@ -14,7 +14,8 @@ class QToolButton;
 namespace deepvaccontrol {
 
 /**
- * @brief The chart's tools, floating in the top left corner of the chart (over the value axis): a small handle that opens downwards.
+ * @brief The chart's tools, floating at the left edge of the charts' card (draggable over both charts): a small handle that
+ * opens downwards.
  *
  * Collapsed, the handle shows the tool in use (with its name, tinted, when it is not Inspect). Opened, the tools are
  * listed below it: picking one, or the pointer leaving for 2 s, closes it again. Pinned, it is a strip beside the

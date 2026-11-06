@@ -35,7 +35,7 @@ struct StoredRun {
   core::RunManifest manifest; // self-describing part (control-app extension column manifest_json); invalid when absent
 };
 
-// When and what an experiment is, without its samples (calendar of the Chart page).
+// When and what an experiment is, without its samples (calendar of the Analysis page).
 struct ExperimentSpan {
   QString key;
   QString name;

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "pressureunits.h"
 #include "utils.h"
 namespace deepvaccontrol {
 
@@ -108,6 +109,17 @@ QVector<double> smoothed(QVector<double> const &y, int samples) {
   return result;
 }
 
+// a line's style as shown: the pressure's label in Torr, the unit it is drawn in
+QVariantMap shownStyle(QVariantMap style) {
+  if (pressure::isPressureChannel(style.value(QStringLiteral("name")).toString())) {
+    style[QStringLiteral("label")] = pressure::torrLabel(style.value(QStringLiteral("label")).toString());
+    if (style.contains(QStringLiteral("axis_label"))) {
+      style[QStringLiteral("axis_label")] = pressure::torrLabel(style.value(QStringLiteral("axis_label")).toString());
+    }
+  }
+  return style;
+}
+
 QString formatValue(double value) {
   double const absValue{std::fabs(value)};
   if ((absValue != 0.0) && ((absValue < 1e-2) || (absValue >= 1e6))) {
@@ -136,16 +148,9 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   elapsedTicker->setTimeFormat("%h:%m:%s");
   m_elapsedTicker = elapsedTicker;
 
-  if (m_useLogAxis) {
-    QSharedPointer<QCPAxisTickerLog> logTicker(new QCPAxisTickerLog);
-    logTicker->setSubTickCount(4);
-    logTicker->setTickCount(10);
-    m_plot->yAxis2->setTicker(logTicker);
-    m_plot->yAxis2->setScaleType(QCPAxis::stLogarithmic);
-    m_plot->yAxis2->setNumberFormat("eb"); // e = exponential, b = beautiful decimal powers
-    m_plot->yAxis2->setNumberPrecision(0); // makes sure "1*10^4" is displayed only as "10^4"
+  if (m_useLogAxis) { // the pressure's (titled by the lines on it, see updateAxisTitles)
+    theme::setupPressureAxis(m_plot->yAxis2);
     m_plot->yAxis2->setRange(1e-7, 1e3);
-    m_plot->yAxis2->setVisible(true);
   }
 
   connect(m_plot, &QCustomPlot::mousePress, this, &DataViewer::mouseEventHeadler);
@@ -320,7 +325,17 @@ void DataViewer::onRenderTick() {
 }
 
 void DataViewer::setStyles(QVariantList const &stateListVariant) {
-  m_legendController.setStyles(stateListVariant);
+  // the pressure drawn in Torr: its factor from the unit of its label (the styles keep the label, e.g. for exports)
+  QVariantList shown;
+  m_torrScale.clear();
+  for (QVariant const &style : stateListVariant) {
+    QVariantMap const map = style.toMap();
+    shown << shownStyle(map);
+    m_torrScale << (pressure::isPressureChannel(map.value(QStringLiteral("name")).toString())
+                      ? pressure::toTorr(1.0, map.value(QStringLiteral("label")).toString())
+                      : 1.0);
+  }
+  m_legendController.setStyles(shown);
   if (m_compactLegend) {
     m_legendController.compactLayout(3);
   }
@@ -331,7 +346,7 @@ void DataViewer::setStyles(QVariantList const &stateListVariant) {
 }
 
 void DataViewer::setStyle(int index, QVariantMap stateMapVariant) {
-  m_legendController.setStyle(index, stateMapVariant);
+  m_legendController.setStyle(index, shownStyle(stateMapVariant));
   if (m_compactLegend) {
     m_legendController.compactLayout(3);
   }
@@ -655,8 +670,12 @@ void DataViewer::showCursor(double x, double y, int graphIndex, int index) {
   QCPGraph     *graph = m_plot->graph(graphIndex);
   auto const    point = graph->data()->constBegin() + index;
   QColor const  color = graph->pen().color();
-  QString const label = (graphIndex < m_stateListVariant.size()) ? m_stateListVariant[graphIndex].toMap()["label"].toString() : QString{};
-  QString const value = m_logAxisDataIndexes.contains(graphIndex) ? utils::formatScientific(point->value, 2) : formatValue(point->value);
+  QVariantMap const style = (graphIndex < m_stateListVariant.size()) ? m_stateListVariant[graphIndex].toMap() : QVariantMap{};
+  QString const     label = shownStyle(style).value(QStringLiteral("label")).toString();
+  QString           value = m_logAxisDataIndexes.contains(graphIndex) ? utils::formatScientific(point->value, 2) : formatValue(point->value);
+  if (pressure::isPressureChannel(style.value(QStringLiteral("name")).toString())) {
+    value += QStringLiteral(" Torr");
+  }
   QString const clock = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::llround(point->key))).toString("hh:mm:ss");
   QString const time  = m_relativeTime ? QStringLiteral("t = %1  (%2)").arg(durationText(point->key - m_data->getTimes().first()), clock) : clock;
 
@@ -891,7 +910,8 @@ void DataViewer::updateAxisTitles() {
         continue;
       }
       // "axis_label": what the line measures, when its label names something else (a comparison's experiment)
-      QString const   label = m_stateListVariant[i].toMap().value(QStringLiteral("axis_label"), channelLabel(i)).toString();
+      QVariantMap const style = shownStyle(m_stateListVariant[i].toMap());
+      QString const   label = style.value(QStringLiteral("axis_label"), style.value(QStringLiteral("label"))).toString();
       qsizetype const comma = label.lastIndexOf(QLatin1Char(','));
       QString const   name  = (comma > 0) ? label.left(comma).trimmed() : label.trimmed();
       QString const   unit  = (comma > 0) ? label.mid(comma + 1).trimmed() : QString{};
@@ -918,6 +938,15 @@ void DataViewer::updateAxisTitles() {
       QString const unitText = units.join(QStringLiteral(" | "));
       title = (units.size() <= 1) && !quantity.isEmpty() ? (unitText.isEmpty() ? quantity : QStringLiteral("%1, %2").arg(quantity, unitText))
                                                          : unitText;
+    }
+    // the pressure's axis while its line is hidden: still what it would show
+    if (title.isEmpty() && (axis == m_plot->yAxis2)) {
+      for (int i : std::as_const(m_logAxisDataIndexes)) {
+        if ((i < m_stateListVariant.size()) && pressure::isPressureChannel(m_stateListVariant[i].toMap().value(QStringLiteral("name")).toString())) {
+          title = pressure::torrLabel(QCoreApplication::translate("theme", "Pressure"));
+          break;
+        }
+      }
     }
     axis->setLabel(title);
   }
@@ -987,7 +1016,14 @@ void DataViewer::updateData() {
   updateTimeOrigin();
   QVector<QVector<double>> const states = m_data->getStates();
   for (int i{0U}; i < graphCount; ++i) {
-    m_plot->graph(i)->setData(times, (m_smoothing > 1) ? smoothed(states[i], m_smoothing) : states[i], /*alreadySorted*/ true);
+    QVector<double> values = (m_smoothing > 1) ? smoothed(states[i], m_smoothing) : states[i];
+    double const    scale{m_torrScale.value(i, 1.0)}; // the pressure in Torr
+    if (scale != 1.0) {
+      for (double &value : values) {
+        value *= scale;
+      }
+    }
+    m_plot->graph(i)->setData(times, values, /*alreadySorted*/ true);
   }
 
   updateRange();

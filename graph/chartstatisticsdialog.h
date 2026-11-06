@@ -22,7 +22,7 @@ class DataViewer;
 struct ResHolder;
 
 /**
- * @brief Chart page statistics, as tabs of one window: statistics and control KPIs of the visible range, the
+ * @brief Analysis page statistics, as tabs of one window: statistics and control KPIs of the visible range, the
  * experiment's KPIs and stages, anomalies and events (tap a row to zoom to it), the annotations of the shown data and
  * its variable rules; for a comparison tab, the comparison of its experiments. Each tab's buttons show only while it
  * is selected. It follows the chart the page's buttons act on.

@@ -11,7 +11,8 @@ DoubleValidator::DoubleValidator(
   }
 }
 
-QValidator::State DoubleValidator::validate(QString &string, int &) const {
+QValidator::State DoubleValidator::validate(QString &input, int &) const {
+  QString string = QString(input).remove(QChar(0x00B7)); // "1.0·E-02": the dot is only shown
   if (string.startsWith("00") || string.startsWith("-00")) {
     return Invalid;
   }
@@ -67,6 +68,7 @@ QValidator::State DoubleValidator::validate(QString &string, int &) const {
     if (top() < string.toDouble()) {
       string = QString::number(top());
     }
+    input = string;
   }
 
   return Acceptable;

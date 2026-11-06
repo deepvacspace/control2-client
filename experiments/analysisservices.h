@@ -13,7 +13,7 @@ class AnalysisNotesStore;
 struct ResHolder;
 
 /**
- * @brief What the chart page, the data analysis page and the assistant share, independent of any page: the
+ * @brief What the Analysis page, the data analysis page and the assistant share, independent of any page: the
  * experiment library (kept up to date when an experiment is saved or received from a paired computer), the notes
  * (annotations, variable rules), experiment reports, and a way to show an experiment to the user.
  */
@@ -37,7 +37,7 @@ public:
   QString writeReport(ExperimentRun const &run, QVector<ExperimentRun> const &compare, bool pdf, QString &path,
                       QStringList const &channels = {});
 
-  // the page that shows experiments (the chart page) registers itself
+  // the page that shows experiments (the Analysis page) registers itself
   void    setShowHandler(ShowHandler handler);
   QString show(ExperimentRun const &run, QStringList const &channels, double from, double to, QVector<ExperimentRun> const &compare);
 

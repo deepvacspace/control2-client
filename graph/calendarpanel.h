@@ -16,7 +16,7 @@ namespace deepvaccontrol {
 class CalendarCustomWidget;
 
 /**
- * @brief Chart page side panel: the recorded experiments by day. A month (days with experiments marked), the
+ * @brief Analysis page side panel: the recorded experiments by day. A month (days with experiments marked), the
  * experiments of the day chosen (one tap opens one in the active pane), the whole day, or back to the live data.
  */
 class CalendarPanel : public QWidget {

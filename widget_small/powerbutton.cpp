@@ -10,21 +10,25 @@
 #include "utils.h"
 
 namespace deepvaccontrol {
-PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{QString{}, parent} {
-  setText(tr("Off"));
+PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QToolButton{parent} {
+  setToolTip(tr("Off"));
   setObjectName("offButton");
-  setFixedSize(92 * utils::ssf(), 34 * utils::ssf());
-  QColor const danger = theme::colors().danger;
-  setIcon(theme::menuIcon(QStringLiteral("power"), danger, danger, static_cast<int>(13 * utils::ssf())));
-  setIconSize(QSize(13 * utils::ssf(), 13 * utils::ssf()));
-  setStyleSheet(QStringLiteral("QPushButton#offButton { color: %1; border: %2px solid %1; background: transparent; "
-                               "border-radius: %3px; } QPushButton#offButton:pressed { background: %4; }")
+  setFocusPolicy(Qt::NoFocus);
+  // the power icon alone: it says "off" without a caption
+  setToolButtonStyle(Qt::ToolButtonIconOnly);
+  setFixedSize(62 * utils::ssf(), 46 * utils::ssf());
+  QColor const danger = theme::sidebarColors().danger; // drawn on the navigation sidebar
+  setIcon(theme::menuIcon(QStringLiteral("power"), danger, danger, static_cast<int>(22 * utils::ssf())));
+  setIconSize(QSize(22 * utils::ssf(), 22 * utils::ssf()));
+  setStyleSheet(QStringLiteral("QToolButton#offButton { border: %2px solid %1; background: %4; border-radius: %3px; } "
+                               "QToolButton#offButton:pressed { background: %5; }")
                   .arg(danger.name())
-                  .arg(qMax(1, static_cast<int>(1 * utils::ssf())))
-                  .arg(static_cast<int>(5 * utils::ssf()))
-                  .arg(QColor(danger.red(), danger.green(), danger.blue(), 50).name(QColor::HexArgb)));
+                  .arg(qMax(1, static_cast<int>(1.5 * utils::ssf())))
+                  .arg(static_cast<int>(9 * utils::ssf()))
+                  .arg(QColor(danger.red(), danger.green(), danger.blue(), 30).name(QColor::HexArgb))
+                  .arg(QColor(danger.red(), danger.green(), danger.blue(), 70).name(QColor::HexArgb)));
 
-  connect(this, &QPushButton::clicked, this, [this, resHolder] {
+  connect(this, &QToolButton::clicked, this, [this, resHolder] {
     // the chamber turned off with the application, or left as it is (a running job goes on without the application)
     bool const working{HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()};
     enum { CANCEL = 1, APP_ONLY = 2, STOP_AND_EXIT = 3 };

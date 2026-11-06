@@ -12,7 +12,7 @@
 namespace deepvaccontrol {
 
 // What the analysis core finds in one experiment, and its events: the KPIs, stages, anomalies and event views of
-// the chart page. Analysis times are elapsed from `start`; event times are epoch s.
+// the Analysis page. Analysis times are elapsed from `start`; event times are epoch s.
 struct RunInsight {
   std::shared_ptr<core::ExperimentAnalysis const> analysis;
   QVector<core::RunEvent>                         events;

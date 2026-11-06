@@ -20,7 +20,7 @@ struct ResHolder;
 class ComparisonDialog : public QDialog {
   Q_OBJECT
 public:
-  // a tab open on the chart page that can take part
+  // a tab open on the Analysis page that can take part
   struct OpenTab {
     QString       key;
     QString       label;

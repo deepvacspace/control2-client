@@ -9,7 +9,45 @@
 #include "utils.h"
 
 namespace deepvaccontrol {
-GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDialog{parent}, m_resHolder{resHolder} {
+namespace {
+// the channels' styles with the choice kept under key (by name) laid over them
+QVariantList stylesOf(ResHolder *resHolder, QString const &key, QStringList const &defaultShown) {
+  QVariantMap const  settings = resHolder->settings->settingsMap();
+  QVariantList       styles   = settings.value(QStringLiteral("states")).toList();
+  if (key == QLatin1String("states")) {
+    return styles;
+  }
+  QMap<QString, QVariantMap> kept;
+  for (QVariant const &item : settings.value(key).toList()) {
+    QVariantMap const map = item.toMap();
+    kept.insert(map.value(QStringLiteral("name")).toString(), map);
+  }
+  for (QVariant &item : styles) {
+    QVariantMap   map  = item.toMap();
+    QString const name = map.value(QStringLiteral("name")).toString();
+    if (!map.contains(QStringLiteral("visible"))) {
+      continue;
+    }
+    if (kept.contains(name)) {
+      for (char const *field : {"visible", "color", "pen", "width"}) {
+        if (kept[name].contains(field)) {
+          map[field] = kept[name].value(field);
+        }
+      }
+    } else {
+      map[QStringLiteral("visible")] = kept.isEmpty() && defaultShown.contains(name);
+    }
+    item = map;
+  }
+  return styles;
+}
+}
+
+GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent)
+    : GraphStyleEditor{resHolder, QStringLiteral("states"), {}, parent} {}
+
+GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QString const &settingsKey, QStringList const &defaultShown, QWidget *parent)
+    : QDialog{parent}, m_resHolder{resHolder}, m_settingsKey{settingsKey}, m_styles(stylesOf(resHolder, settingsKey, defaultShown)) { // parentheses: braces make a list holding the list
   double const ssf{utils::ssf()};
   auto        *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(16 * ssf, 14 * ssf, 16 * ssf, 14 * ssf);
@@ -32,7 +70,7 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDia
   elementLay->setContentsMargins(0, 0, 6 * ssf, 0);
   elementLay->setSpacing(6 * ssf);
 
-  QVariantList const statesList = resHolder->settings->settingsMap()["states"].toList();
+  QVariantList const statesList = m_styles;
 
   for (int i{0U}; i < statesList.size(); ++i) {
     QVariantMap const stateMap{statesList[i].toMap()};
@@ -62,11 +100,14 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent) : QDia
   closeBtn->setObjectName("primaryButton");
   auto *selectAllBtn  = new QPushButton(tr("Show all"), this);
   auto *selectNoneBtn = new QPushButton(tr("Hide all"), this);
+  m_showAllBtn        = selectAllBtn;
+  m_hideAllBtn        = selectNoneBtn;
   for (QPushButton *item : {closeBtn, selectAllBtn, selectNoneBtn}) {
     item->setMinimumSize(100 * ssf, 30 * ssf);
   }
 
   auto *btnLay = new QHBoxLayout();
+  m_footerLay  = btnLay;
   btnLay->setSpacing(8 * ssf);
   btnLay->addWidget(selectAllBtn);
   btnLay->addWidget(selectNoneBtn);
@@ -104,6 +145,7 @@ void GraphStyleEditor::updateCount() {
     shown += item->getStateMapVariant().value("visible").toBool() ? 1 : 0;
   }
   m_countLabel->setText(tr("%1 of %2 shown").arg(shown).arg(widgetsMap.size()));
+  emit countChanged(m_countLabel->text());
 }
 
 QVariantList GraphStyleEditor::getStateStylesList() {
@@ -124,7 +166,11 @@ QVariantList GraphStyleEditor::getStateStylesList() {
 }
 
 void GraphStyleEditor::hideEvent(QHideEvent *event) {
-  m_resHolder->settings->setStatesSettings(getStateStylesList());
+  if (m_settingsKey == QLatin1String("states")) {
+    m_resHolder->settings->setStatesSettings(getStateStylesList());
+  } else {
+    m_resHolder->settings->setEntries({{m_settingsKey, getStateStylesList()}});
+  }
 
   // Call the base class implementation
   QDialog::hideEvent(event);
@@ -135,10 +181,31 @@ void GraphStyleEditor::setCompact() {
   setModal(false);
   setMinimumSize(0, 0);
   layout()->setContentsMargins(0, 0, static_cast<int>(8 * ssf), 0);
-  // the panel has its own title, and its × instead of Done
+  // the panel has its own title (the count under it), and its × instead of Done
   for (QLabel *label : findChildren<QLabel *>()) {
     if (label->objectName() == QLatin1String("cardTitle")) {
       label->hide();
+    }
+  }
+  m_countLabel->hide();
+  // the rows as wide as the panel (they wrap their names): no sideways scrolling
+  for (QScrollArea *area : findChildren<QScrollArea *>()) {
+    area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  }
+  // Show all and Hide all share the width; Hide all dark
+  for (QPushButton *button : {m_showAllBtn, m_hideAllBtn}) {
+    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    button->setMinimumSize(0, static_cast<int>(44 * ssf));
+    button->setProperty("panelFooter", true); // roomy, rounded (theme)
+  }
+  m_footerLay->setSpacing(static_cast<int>(10 * ssf));
+  if (auto *list = findChild<QScrollArea *>(); list && list->widget() && list->widget()->layout()) {
+    list->widget()->layout()->setSpacing(static_cast<int>(8 * ssf)); // the cards apart
+  }
+  m_hideAllBtn->setObjectName("darkButton");
+  for (int i{m_footerLay->count() - 1}; i >= 0; --i) {
+    if (m_footerLay->itemAt(i)->spacerItem()) {
+      delete m_footerLay->takeAt(i);
     }
   }
   for (QPushButton *button : findChildren<QPushButton *>()) {

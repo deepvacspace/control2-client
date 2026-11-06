@@ -238,10 +238,8 @@ void ChartStatsPanel::refresh() {
   }
   m_controlCaption->setVisible(control);
   m_controlBox->setVisible(control);
-  m_note->setText(!control   ? tr("No setpoint in the visible range, so no control figures.")
-                  : tracking ? QString{}
-                             : tr("No ramp in the visible range: the temperature starts away from the setpoint, so MAE and "
-                                  "RMSE are not shown; the tail MAE is the error at the end."));
+  m_note->setText(control ? QString{} : tr("No setpoint in the visible range, so no control figures."));
+  m_note->setVisible(!m_note->text().isEmpty());
 }
 
 }

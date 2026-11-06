@@ -137,19 +137,8 @@ void StatusBar::handleHardStatusCahnged(HardwareStatus::HardwareStatusEnum const
 }
 
 void StatusBar::handleOpcStateCahnged(int newState) {
-  QString opcStatusString;
-  switch (newState) {
-    case 0:
-      opcStatusString = "OPC OK";
-      break;
-    case -1:
-      opcStatusString = "OPC ERR";
-      break;
-    default:
-      opcStatusString = "OPC OFF";
-      break;
-  }
-  m_opcState->setText(opcStatusString);
+  // OK only while the OPC UA server broadcasts; stopped or failed to start: OFF
+  m_opcState->setText((newState == 0) ? tr("OPC OK") : tr("OPC OFF"));
 }
 
 void StatusBar::handleUsb(QStringList driveList) {

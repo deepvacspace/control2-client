@@ -5,11 +5,13 @@
 #include <QLabel>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
 
 #include "dataholder.h"
 #include "datamanager.h"
 #include "experimentrecorder.h"
+#include "pressureunits.h"
 #include "qcustomplot.h"
 #include "resholder.h"
 #include "statusmanager.h"
@@ -38,14 +40,16 @@ HomeTrend::HomeTrend(ResHolder *resHolder, QWidget *parent)
   QSharedPointer<QCPAxisTickerDateTime> ticker(new QCPAxisTickerDateTime);
   ticker->setDateTimeFormat("HH:mm");
   m_plot->xAxis->setTicker(ticker);
-  m_plot->addGraph(); // setpoint
-  m_plot->addGraph(); // temperature
   m_plot->legend->setVisible(true);
   m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignTop | Qt::AlignLeft);
   m_plot->setMinimumHeight(static_cast<int>(160 * ssf));
-  m_plot->setInteractions({}); // a glance, not a tool: the Chart page is for exploring
+  m_plot->setInteractions({}); // a glance, not a tool: the Analysis page is for exploring
   m_plot->xAxis->setLabel(tr("Time"));
   m_plot->yAxis->setLabel(tr("Temperature, °C"));
+  theme::setupPressureAxis(m_plot->yAxis2);
+  m_plot->yAxis2->setVisible(false);
+  m_otherAxis = m_plot->axisRect()->addAxis(QCPAxis::atRight); // outside the pressure's
+  m_otherAxis->setVisible(false);
   restyle();
 
   m_timer->setInterval(REFRESH_MS);
@@ -54,8 +58,11 @@ HomeTrend::HomeTrend(ResHolder *resHolder, QWidget *parent)
 
 void HomeTrend::restyle() {
   theme::Colors const &c = theme::colors();
+  QFont titleFont = m_title->font();
+  titleFont.setPointSizeF(font().pointSizeF() * 1.25);
+  m_title->setFont(titleFont);
   m_plot->setBackground(c.panel);
-  for (QCPAxis *axis : {m_plot->xAxis, m_plot->yAxis}) {
+  for (QCPAxis *axis : {m_plot->xAxis, m_plot->yAxis, m_plot->yAxis2, m_otherAxis}) {
     axis->setBasePen(QPen(c.border));
     axis->setTickPen(QPen(c.border));
     axis->setSubTickPen(QPen(c.border));
@@ -63,14 +70,54 @@ void HomeTrend::restyle() {
     axis->setLabelColor(c.muted);
     axis->grid()->setPen(QPen(c.border, 1, Qt::DotLine));
   }
-  m_plot->graph(0)->setPen(QPen(c.muted, 1.6 * utils::ssf(), Qt::DashLine));
-  m_plot->graph(0)->setName(tr("Setpoint"));
-  m_plot->graph(1)->setPen(QPen(c.heat, 2.2 * utils::ssf()));
-  m_plot->graph(1)->setName(tr("Temperature"));
+  m_plot->yAxis2->grid()->setVisible(false); // the temperature's grid only
+  m_otherAxis->grid()->setVisible(false);
   m_plot->legend->setBrush(c.panel);
   m_plot->legend->setBorderPen(QPen(c.border));
   m_plot->legend->setTextColor(c.text);
   m_plot->replot();
+}
+
+void HomeTrend::setStyles(QVariantList const &styles) {
+  m_styles = styles;
+  m_plot->clearGraphs();
+  m_graphs.clear();
+  for (int i{0}; i < m_styles.size(); ++i) {
+    QVariantMap const style = m_styles[i].toMap();
+    if (!style.contains(QStringLiteral("visible"))) {
+      continue; // not a line
+    }
+    QString const name = style.value(QStringLiteral("name")).toString();
+    QString const unit = pressure::unitOf(style.value(QStringLiteral("label")).toString());
+    QCPAxis      *axis = pressure::isPressureChannel(name) ? m_plot->yAxis2 : (unit == QStringLiteral("°c")) ? m_plot->yAxis : m_otherAxis;
+    m_graphs.insert(i, m_plot->addGraph(m_plot->xAxis, axis));
+    applyStyle(i);
+  }
+  refresh();
+}
+
+void HomeTrend::setStyle(int index, QVariantMap const &style) {
+  if ((index < 0) || (index >= m_styles.size())) {
+    return;
+  }
+  m_styles[index] = style;
+  applyStyle(index);
+  refresh();
+}
+
+// as on the Analysis page: the channel's colour, line style and width
+void HomeTrend::applyStyle(int index) {
+  QCPGraph *graph = m_graphs.value(index);
+  if (!graph) {
+    return;
+  }
+  QVariantMap const style = m_styles.value(index).toMap();
+  QPen              pen{QColor(style.value(QStringLiteral("color")).toString())};
+  pen.setWidth(style.value(QStringLiteral("width")).toInt());
+  pen.setStyle(static_cast<Qt::PenStyle>(style.value(QStringLiteral("pen")).toInt()));
+  graph->setPen(pen);
+  QString const label = style.value(QStringLiteral("label")).toString();
+  graph->setName(pressure::isPressureChannel(style.value(QStringLiteral("name")).toString()) ? pressure::torrLabel(label) : label);
 }
 
 void HomeTrend::showEvent(QShowEvent *event) {
@@ -92,28 +139,47 @@ void HomeTrend::refresh() {
   double const from{running ? jobStart : now - IDLE_WINDOW_S};
   m_title->setText(running ? tr("Current experiment") : tr("Last 2 hours"));
 
-  QVector<double> times, temp, ref;
-  auto const      data = m_resHolder->dataManager ? m_resHolder->dataManager->getIntervalToAdd() : nullptr;
-  if (data) {
-    QStringList const              names  = m_resHolder->states->getNames();
-    qsizetype const                ti     = names.indexOf("temp");
-    qsizetype const                ri     = names.indexOf("temp_ref");
-    QVector<double> const          all    = data->getTimes();
-    QVector<QVector<double>> const states = data->getStates();
-    for (qsizetype i{0}; i < all.size(); ++i) {
-      if (all[i] < from) {
-        continue;
+  auto const                     data   = m_resHolder->dataManager ? m_resHolder->dataManager->getIntervalToAdd() : nullptr;
+  QVector<double> const          all    = data ? data->getTimes() : QVector<double>{};
+  QVector<QVector<double>> const states = data ? data->getStates() : QVector<QVector<double>>{};
+  qsizetype                      first{0};
+  while ((first < all.size()) && (all[first] < from)) {
+    ++first;
+  }
+  QVector<double> const times = all.mid(first);
+  int                   shown{0};
+  QStringList           otherUnits;
+  for (auto it = m_graphs.cbegin(); it != m_graphs.cend(); ++it) {
+    QVariantMap const style = m_styles.value(it.key()).toMap();
+    QString const     name  = style.value(QStringLiteral("name")).toString();
+    QString const     label = style.value(QStringLiteral("label")).toString();
+    bool const        torr{pressure::isPressureChannel(name)};
+    // a setpoint only means something while a job runs
+    bool const      setpoint{name.endsWith(QStringLiteral("_ref"))};
+    bool const      drawn{style.value(QStringLiteral("visible")).toBool() && (!setpoint || running)};
+    QVector<double> values;
+    values.reserve(times.size());
+    for (qsizetype i{first}; i < all.size(); ++i) {
+      double value{(drawn && (it.key() < states.size())) ? states[it.key()].value(i, qQNaN()) : qQNaN()};
+      if (torr) {
+        value = pressure::toTorr(value, label);
+        value = (value > 0.0) ? value : qQNaN(); // none at or below zero on the logarithmic axis
       }
-      times << all[i];
-      temp << ((ti >= 0) && (ti < states.size()) ? states[ti].value(i, qQNaN()) : qQNaN());
-      // the setpoint only means something while a job runs
-      ref << ((running && (ri >= 0) && (ri < states.size())) ? states[ri].value(i, qQNaN()) : qQNaN());
+      values << value;
+    }
+    it.value()->setData(times, values, true);
+    it.value()->setVisible(drawn);
+    if (drawn) {
+      it.value()->addToLegend();
+      ++shown;
+      if (it.value()->valueAxis() == m_otherAxis) {
+        otherUnits << pressure::unitOf(label);
+      }
+    } else {
+      it.value()->removeFromLegend();
     }
   }
-  m_plot->graph(0)->setData(times, ref, true);
-  m_plot->graph(1)->setData(times, temp, true);
-  m_plot->graph(0)->setVisible(running);
-  m_plot->legend->setVisible(running);
+  m_plot->legend->setVisible(shown > 1);
   m_plot->xAxis->setRange(from, std::max(now, from + 60.0));
   // seconds on the axis while the span is short
   if (auto ticker = m_plot->xAxis->ticker().dynamicCast<QCPAxisTickerDateTime>()) {
@@ -121,19 +187,42 @@ void HomeTrend::refresh() {
     ticker->setDateTimeFormat(seconds ? QStringLiteral("HH:mm:ss") : QStringLiteral("HH:mm"));
     m_plot->xAxis->setLabel(seconds ? tr("Time, hh:mm:ss") : tr("Time, hh:mm"));
   }
+  // each axis around the lines drawn on it; the ones at the right only while they have some
+  auto valueRange = [this](QCPAxis *axis, QCP::SignDomain domain, bool &found) {
+    QCPRange range;
+    found = false;
+    for (QCPGraph *graph : std::as_const(m_graphs)) {
+      bool     any{false};
+      QCPRange own;
+      if (graph->visible() && (graph->valueAxis() == axis)) {
+        own = graph->getValueRange(any, domain);
+      }
+      if (any) {
+        range = found ? QCPRange(std::min(range.lower, own.lower), std::max(range.upper, own.upper)) : own;
+        found = true;
+      }
+    }
+    return range;
+  };
+  auto hasLines = [this](QCPAxis *axis) {
+    return std::any_of(m_graphs.cbegin(), m_graphs.cend(), [axis](QCPGraph *graph) { return graph->visible() && (graph->valueAxis() == axis); });
+  };
   bool found{false};
-  QCPRange values = m_plot->graph(1)->getValueRange(found);
-  if (running) {
-    bool           foundRef{false};
-    QCPRange const refRange = m_plot->graph(0)->getValueRange(foundRef);
-    if (foundRef) {
-      values = found ? QCPRange(std::min(values.lower, refRange.lower), std::max(values.upper, refRange.upper)) : refRange;
-      found  = true;
+  for (QCPAxis *axis : {m_plot->yAxis, m_otherAxis}) {
+    QCPRange const values = valueRange(axis, QCP::sdBoth, found);
+    if (found) {
+      double const padding{std::max(values.size() * 0.08, 1.0)};
+      axis->setRange(values.lower - padding, values.upper + padding);
     }
   }
-  if (found) {
-    double const padding{std::max(values.size() * 0.08, 1.0)};
-    m_plot->yAxis->setRange(values.lower - padding, values.upper + padding);
+  m_otherAxis->setVisible(hasLines(m_otherAxis));
+  otherUnits.removeDuplicates();
+  m_otherAxis->setLabel((otherUnits.size() == 1) ? otherUnits.first() : QString{});
+  m_plot->yAxis2->setVisible(hasLines(m_plot->yAxis2));
+  QCPRange const presRange      = valueRange(m_plot->yAxis2, QCP::sdPositive, found);
+  auto const     [lower, upper] = pressure::decadeRange(found ? presRange.lower : qQNaN(), found ? presRange.upper : qQNaN());
+  if (std::isfinite(lower)) {
+    m_plot->yAxis2->setRange(lower, upper);
   }
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }

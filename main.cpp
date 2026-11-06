@@ -24,6 +24,15 @@ static void setupLanguage(QApplication &app, deepvaccontrol::UiLanguage lang, QT
       QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
       break;
     }
+    case deepvaccontrol::UiLanguage::German: {
+      qDebug() << "Set UiLanguage::German";
+      // res/language_de.ts holds the German of the texts in the code
+      if (translator.load(":/language_de.qm")) {
+        app.installTranslator(&translator);
+      }
+      QLocale::setDefault(QLocale(QLocale::German, QLocale::Germany));
+      break;
+    }
     case deepvaccontrol::UiLanguage::English:
     default: {
       qDebug() << "Set UiLanguage::English";
@@ -70,7 +79,6 @@ int main(int argc, char *argv[]) {
 
   // Style and sizes
   a.setStyle(QStyleFactory::create("fusion"));
-  deepvaccontrol::theme::apply(false); // light design by default (System -> OS switches to dark)
 
   if (!windowedMode) {
     auto        *screen = a.primaryScreen();
@@ -84,6 +92,8 @@ int main(int argc, char *argv[]) {
     font.setPointSize(fontSize);
     a.setFont(font);
   }
+  // after the scale and the font: the style sheet's sizes and fonts follow them
+  deepvaccontrol::theme::apply(false); // light design by default (System -> OS switches to dark)
 
   // Control application
   deepvaccontrol::App m_app(windowedMode, debugMode);

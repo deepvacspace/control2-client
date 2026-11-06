@@ -29,7 +29,7 @@ namespace deepvaccontrol {
 DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}
     , m_resHolder{resHolder}
-    , m_library{resHolder->analysis->library()} // shared with the chart page and the assistant
+    , m_library{resHolder->analysis->library()} // shared with the Analysis page and the assistant
     , m_notes{resHolder->analysis->notes()}
     , m_editor{new AnalysisEditorArea(this)} {
   auto *mainLay = new QVBoxLayout(this);

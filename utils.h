@@ -39,6 +39,10 @@ QString formatScientific(float v, int frac, bool fixedWhenReadable);
 QString formatScientific(double v, int frac = 3);
 QString formatScientific(float v, int frac = 3);
 QString formatScientificRef(float v, int frac = 3);
+// fixed width: one decimal and a two-digit exponent ("1.0·E-02"), whatever the value; editable (parseNumber reads it)
+QString formatSciE(double v);
+// a number as typed or shown: "1.0·E-02", "−5,2"
+double  parseNumber(QString text, bool *ok = nullptr);
 
 template<typename t_type> concept CharSized = (sizeof(t_type) == sizeof(char));
 

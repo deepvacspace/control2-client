@@ -20,7 +20,7 @@ class DataManager;
 class DataViewer;
 
 /**
- * @brief One side of the chart page: a row of small tabs and the chart of the selected one. A tab shows the live data
+ * @brief One side of the Analysis page: a row of small tabs and the chart of the selected one. A tab shows the live data
  * of today (only in the first pane, where it stays first and cannot be closed) or recorded data. Tabs are reordered
  * by dragging them along the row, and dragged to the other pane (or to the right half of the chart to split).
  */
@@ -88,11 +88,13 @@ public:
   void setHighlighted(bool highlighted);
   // the left pane: a tab dropped on the right half of its own chart splits the page
   void setPrimary(bool primary);
-  // ---- the chart's tools (top left of the plot) and the zoom / pan pad (bottom left)
+  // ---- the chart's tools (floating over the card, from its left edge) and the zoom / pan pad (bottom left)
   [[nodiscard]] ChartToolbar *toolbar() const;
   void setToolbarPinned(bool pinned);
   // only the left pane shows the tools; they act on whichever pane is selected
   void setToolbarShown(bool shown);
+  // the card holding the panes: the floating tools move over all of it (both panes) and start at its left edge
+  void setToolbarArea(QWidget *area);
   // the tool in use on this pane's charts; pad: the zoom / pan pad here (the selected pane)
   void setTool(ChartToolbar::Tool tool, bool pad);
 
@@ -149,9 +151,13 @@ private:
   QToolButton        *m_addBtn{nullptr};
   ChartToolbar::Tool  m_tool{ChartToolbar::Tool::INSPECT};
   bool                m_padShown{false};
-  // the floating tools moved by the user: where, from the chart's top left corner
+  // the floating tools moved by the user: where, from the top left corner of their area
   bool                m_toolbarMoved{false};
   QPoint              m_toolbarOffset;
+  bool                m_toolbarShown{true};
+  QWidget            *m_toolbarArea{nullptr}; // floating, they are its child; none: the pane's
+  [[nodiscard]] QWidget *toolbarHost() const;
+  [[nodiscard]] QRect    toolbarBounds() const; // in the host
   QMetaObject::Connection m_replotConnection; // the overlays follow the plot's area
   QWidget            *m_dropHint;
   QVector<Tab>        m_tabs;

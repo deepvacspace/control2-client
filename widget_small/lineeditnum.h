@@ -30,6 +30,10 @@ public:
   void                   setMax(int value);
   bool                   getIsScientific() const;
   void                   setIsScientific(bool value);
+  // a value as this edit shows it: fixed decimals, or scientific as "1.0·E-02"
+  QString                formatted(double value) const;
+  // the value in the text (whatever way it is written)
+  double                 number(bool *ok = nullptr) const;
 
 signals:
   // user make some changes

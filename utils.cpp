@@ -309,6 +309,19 @@ QString formatScientific(float v, int frac) {
   return formatScientific(v, frac, true);
 }
 
+QString formatSciE(double v) {
+  if (!std::isfinite(v)) {
+    return QStringLiteral("--");
+  }
+  QString text = QString::number(v, 'E', 1); // "1.0E-02"
+  return text.insert(text.indexOf(QLatin1Char('E')), QChar(0x00B7));
+}
+
+double parseNumber(QString text, bool *ok) {
+  text.remove(QChar(0x00B7)).remove(QChar(0x2219)).replace(QChar(0x2212), QLatin1Char('-')).replace(QLatin1Char(','), QLatin1Char('.'));
+  return text.trimmed().toDouble(ok);
+}
+
 QString formatScientificRef(float v, int frac) {
   return QString("(%1)").arg(formatScientific(v, frac, true));
 }

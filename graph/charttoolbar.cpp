@@ -58,7 +58,7 @@ ChartToolbar::ChartToolbar(QWidget *parent) : QFrame{parent}, m_collapseTimer{ne
   setObjectName("chartToolbar");
   setAttribute(Qt::WA_StyledBackground);
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(px(4), px(4), px(4), px(4));
+  lay->setContentsMargins(px(2), px(2), px(2), px(2));
   lay->setSpacing(px(2));
 
   // the handle: the tool in use; a tap opens the tools below it
@@ -66,8 +66,10 @@ ChartToolbar::ChartToolbar(QWidget *parent) : QFrame{parent}, m_collapseTimer{ne
   m_handle->setObjectName("toolHandle");
   m_handle->setFocusPolicy(Qt::NoFocus);
   m_handle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  m_handle->setIconSize(QSize(px(16), px(16)));
-  m_handle->setMinimumSize(px(40), px(32));
+  // small while it waits: it stands over the value axis' labels
+  m_handle->setIconSize(QSize(px(14), px(14)));
+  m_handle->setMinimumSize(px(30), px(26));
+  m_handle->setStyleSheet(QStringLiteral("QToolButton#toolHandle { padding: 0 %1px; }").arg(px(3)));
   m_handle->installEventFilter(this); // a tap opens the tools, a drag moves them
   lay->addWidget(m_handle);
 
@@ -212,7 +214,7 @@ void ChartToolbar::updateView() {
   // the handle: the tool in use, named and tinted when it is not Inspect
   ToolInfo const t = info(m_tool);
   bool const     special{m_tool != Tool::INSPECT};
-  theme::setThemedIcon(m_handle, QString::fromLatin1(t.icon), px(16), special ? QStringLiteral("accent") : QString{});
+  theme::setThemedIcon(m_handle, QString::fromLatin1(t.icon), px(14), special ? QStringLiteral("accent") : QString{});
   m_handle->setText(QStringLiteral("▾")); // the icon tells the tool in use
   m_handle->setToolTip(tr("Chart tools · %1").arg(translated(t.name)));
   m_handle->setProperty("active", special);

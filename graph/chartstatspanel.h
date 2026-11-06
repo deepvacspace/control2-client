@@ -15,7 +15,7 @@ namespace deepvaccontrol {
 class DataViewer;
 
 /**
- * @brief Chart page side panel: statistics of the visible range of one channel and the control against the setpoint
+ * @brief Analysis page side panel: statistics of the visible range of one channel and the control against the setpoint
  * (temp against temp_ref), following the zoom. The full statistics (stages, anomalies, events, rules) are a tap away.
  */
 class ChartStatsPanel : public QWidget {

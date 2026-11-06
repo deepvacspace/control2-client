@@ -1,16 +1,20 @@
 #include "head.h"
 #include "hometrend.h"
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QGraphicsDropShadowEffect>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <cmath>
 
@@ -18,6 +22,7 @@
 #include "controloutput.h"
 #include "constants.h"
 #include "experimentrecorder.h"
+#include "graphstyleeditor.h"
 #include "pressureunits.h"
 #include "statusmanager.h"
 #include "theme.h"
@@ -92,25 +97,81 @@ void Head::initBaseGui() {
   m_diagram   = new ChamberView(m_resHolder, m_leftStack);
   m_leftStack->addWidget(m_trend);
   m_leftStack->addWidget(m_diagram);
-  mainLay->addWidget(m_leftStack, 64);
-  // one button: it names the other view
-  m_viewSwitch = new QPushButton(tr("Diagram"), m_leftStack);
-  m_viewSwitch->setFocusPolicy(Qt::NoFocus);
-  m_viewSwitch->setFixedHeight(px(30));
-  m_viewSwitch->setMinimumWidth(px(84));
+  mainLay->addWidget(m_leftStack, 55);
+  // small buttons in the corner, clear of the chart: the chart's channels, and the other view (named)
+  m_corner        = new QWidget(m_leftStack);
+  auto *cornerLay = new QHBoxLayout(m_corner);
+  cornerLay->setContentsMargins(0, 0, 0, 0);
+  cornerLay->setSpacing(px(6));
+  m_channelsBtn = new QPushButton(tr("Channels"), m_corner);
+  m_viewSwitch  = new QPushButton(tr("Diagram"), m_corner);
+  for (QPushButton *button : {m_channelsBtn, m_viewSwitch}) {
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setFixedHeight(px(26));
+    QFont font = button->font();
+    font.setPointSizeF(font.pointSizeF() * 0.9);
+    button->setFont(font);
+    cornerLay->addWidget(button);
+  }
   connect(m_viewSwitch, &QPushButton::clicked, this, [this] {
     bool const toDiagram{m_leftStack->currentWidget() == m_trend};
+    setChannelsOpen(false);
     m_leftStack->setCurrentWidget(toDiagram ? static_cast<QWidget *>(m_diagram) : m_trend);
     m_viewSwitch->setText(toDiagram ? tr("Chart") : tr("Diagram"));
-    m_viewSwitch->adjustSize();
-    m_viewSwitch->move(m_leftStack->width() - m_viewSwitch->width() - px(14), px(12));
-    m_viewSwitch->raise();
+    m_channelsBtn->setVisible(!toDiagram);
+    placeOverlays();
   });
+  connect(m_channelsBtn, &QPushButton::clicked, this, [this] { setChannelsOpen(m_channelsPanel->isHidden()); });
   m_leftStack->installEventFilter(this);
+
+  // the Channels panel: as the Analysis page's side panel (title, count, ×, a card per channel), the chart's own
+  // choice; temperature, its setpoint and the pressure until one is made
+  m_channelsPanel = new QFrame(this);
+  m_channelsPanel->setObjectName("sidePanel");
+  auto *shadow = new QGraphicsDropShadowEffect(m_channelsPanel);
+  shadow->setBlurRadius(px(24));
+  shadow->setOffset(0, px(3));
+  shadow->setColor(QColor(15, 23, 42, 60));
+  m_channelsPanel->setGraphicsEffect(shadow);
+  auto *panelLay = new QVBoxLayout(m_channelsPanel);
+  panelLay->setContentsMargins(px(18), px(14), px(10), px(14));
+  panelLay->setSpacing(px(4));
+  auto *panelHeader = new QHBoxLayout();
+  panelHeader->setContentsMargins(0, 0, px(6), 0);
+  auto *panelTitle = new QLabel(tr("Channels"), m_channelsPanel);
+  QFont titleFont  = panelTitle->font();
+  titleFont.setBold(true);
+  titleFont.setPointSizeF(titleFont.pointSizeF() * 1.45);
+  panelTitle->setFont(titleFont);
+  auto *closeBtn = new QToolButton(m_channelsPanel);
+  closeBtn->setObjectName("panelClose");
+  closeBtn->setText(QStringLiteral("×"));
+  closeBtn->setToolTip(tr("Close"));
+  closeBtn->setFocusPolicy(Qt::NoFocus);
+  closeBtn->setFixedSize(px(36), px(36));
+  panelHeader->addWidget(panelTitle, 1);
+  panelHeader->addWidget(closeBtn);
+  panelLay->addLayout(panelHeader);
+  m_channelsCount = new QLabel(m_channelsPanel);
+  m_channelsCount->setProperty("muted", true);
+  panelLay->addWidget(m_channelsCount);
+  panelLay->addSpacing(px(8));
+  m_channels = new GraphStyleEditor(m_resHolder, QStringLiteral("homeStates"), {QStringLiteral("temp"), QStringLiteral("temp_ref"), QStringLiteral("pres")},
+                                    m_channelsPanel);
+  m_channels->setCompact();
+  panelLay->addWidget(m_channels, 1);
+  m_channelsPanel->setFixedWidth(px(330));
+  m_channelsPanel->hide();
+  m_channelsCount->setText(m_channels->countText());
+  connect(closeBtn, &QToolButton::clicked, this, [this] { setChannelsOpen(false); });
+  connect(m_channels, &GraphStyleEditor::countChanged, m_channelsCount, &QLabel::setText);
+  connect(m_channels, &GraphStyleEditor::styleChanged, m_trend, &HomeTrend::setStyle);
+  connect(m_channels, &GraphStyleEditor::styleAllChanged, m_trend, &HomeTrend::setStyles);
+  m_trend->setStyles(m_channels->getStateStylesList());
 
   auto *column = new QVBoxLayout();
   column->setSpacing(px(10));
-  mainLay->addLayout(column, 36);
+  mainLay->addLayout(column, 45);
 
   auto makeCard = [this] {
     auto *card = new QFrame(this);
@@ -203,26 +264,30 @@ void Head::initBaseGui() {
         tr("Pumping"), tr("Venting"));
   statusLay->addLayout(columns);
   statusLay->addStretch();
-  column->addWidget(statusCard, 60);
+  column->addWidget(statusCard, 54);
 
   // test time and program position
   auto *timeCard = makeCard();
   auto *timeLay  = static_cast<QVBoxLayout *>(timeCard->layout());
-  // all centred; the program position always shown (a dash without a program), so the card reads the same way
+  // the program position always shown (a dash without a program), so the card reads the same way
+  m_timeTitle = new QLabel(tr("Total test time"), timeCard);
+  timeLay->addWidget(m_timeTitle);
   timeLay->addStretch();
-  auto *timeTitle = muted(tr("Total test time"));
-  timeTitle->setAlignment(Qt::AlignHCenter);
-  timeLay->addWidget(timeTitle);
   m_curWorkTimeLabel = new QLabel(timeCard);
   m_curWorkTimeLabel->setAlignment(Qt::AlignHCenter);
   timeLay->addWidget(m_curWorkTimeLabel);
-  timeLay->addSpacing(px(8));
+  timeLay->addStretch();
+  auto *timeLine = new QFrame(timeCard);
+  timeLine->setObjectName("homeDivider");
+  timeLine->setFixedHeight(px(1));
+  timeLay->addWidget(timeLine);
+  timeLay->addSpacing(px(4));
   auto *positionRow = new QHBoxLayout();
   auto  makeBox     = [&](QString const &title, QLabel *&value) {
     auto *box = new QWidget(timeCard);
     auto *lay = new QVBoxLayout(box);
-    lay->setContentsMargins(0, 0, 0, 0);
-    lay->setSpacing(px(2));
+    lay->setContentsMargins(0, px(4), 0, px(4));
+    lay->setSpacing(px(4));
     auto *name = muted(title);
     name->setAlignment(Qt::AlignHCenter);
     lay->addWidget(name);
@@ -233,14 +298,17 @@ void Head::initBaseGui() {
     return box;
   };
   m_intervalBox = makeBox(tr("Current interval"), m_intervalLabel);
-  m_cycleBox    = makeBox(tr("Cycle"), m_cycleLabel);
+  auto *positionLine = new QFrame(timeCard);
+  positionLine->setObjectName("homeDivider");
+  positionLine->setFixedWidth(px(1));
+  positionRow->addWidget(positionLine);
+  m_cycleBox = makeBox(tr("Cycle"), m_cycleLabel);
   timeLay->addLayout(positionRow);
-  timeLay->addSpacing(px(10));
-  m_nextIntervalBtn = new QPushButton(tr("Next step"), timeCard);
-  m_nextIntervalBtn->setFixedSize(px(100), px(26));
-  timeLay->addWidget(m_nextIntervalBtn, 0, Qt::AlignHCenter);
   timeLay->addStretch();
-  column->addWidget(timeCard, 40);
+  m_nextIntervalBtn = new QPushButton(tr("Next step"), timeCard);
+  m_nextIntervalBtn->setFixedSize(px(170), px(34));
+  timeLay->addWidget(m_nextIntervalBtn, 0, Qt::AlignHCenter);
+  column->addWidget(timeCard, 46);
 
   restyle();
 }
@@ -271,6 +339,7 @@ QLabel[muted="true"] { color: %6; }
     return f;
   };
   m_statusText->setFont(sized(1.15, true));
+  m_timeTitle->setFont(sized(1.15, true));
   m_tempValue->setFont(sized(4.2, true));
   m_tempUnit->setFont(sized(1.8, false));
   m_presValue->setFont(sized(4.2, true));
@@ -296,12 +365,57 @@ QLabel[muted="true"] { color: %6; }
 }
 
 bool Head::eventFilter(QObject *watched, QEvent *event) {
-  if ((watched == m_leftStack) && ((event->type() == QEvent::Resize) || (event->type() == QEvent::Show))) {
-    m_viewSwitch->adjustSize();
-    m_viewSwitch->move(m_leftStack->width() - m_viewSwitch->width() - px(14), px(12));
-    m_viewSwitch->raise();
+  if (watched == m_leftStack) {
+    if ((event->type() == QEvent::Resize) || (event->type() == QEvent::Show) || (event->type() == QEvent::Move)) {
+      placeOverlays();
+    }
+    return QWidget::eventFilter(watched, event);
   }
-  return QWidget::eventFilter(watched, event);
+  // (the application's events while the Channels panel is open) a tap beside it closes it, and goes on to what it
+  // was on; the Channels button toggles it itself
+  QPointF global;
+  if (event->type() == QEvent::MouseButtonPress) {
+    global = static_cast<QMouseEvent *>(event)->globalPosition();
+  } else if ((event->type() == QEvent::TouchBegin) && !static_cast<QTouchEvent *>(event)->points().isEmpty()) {
+    global = static_cast<QTouchEvent *>(event)->points().first().globalPosition();
+  } else {
+    return false;
+  }
+  auto const inside = [&global](QWidget const *widget) {
+    return widget->isVisible() && QRect(widget->mapToGlobal(QPoint(0, 0)), widget->size()).contains(global.toPoint());
+  };
+  if (!inside(m_channelsPanel) && !inside(m_channelsBtn)) {
+    setChannelsOpen(false);
+  }
+  return false;
+}
+
+// the corner buttons in the top right corner, the panel under them down to the chart's bottom
+void Head::placeOverlays() {
+  m_corner->adjustSize();
+  m_corner->move(m_leftStack->width() - m_corner->width() - px(14), px(10));
+  m_corner->raise();
+  QPoint const corner = m_corner->mapTo(this, QPoint(0, 0));
+  QRect const  stack{m_leftStack->mapTo(this, QPoint(0, 0)), m_leftStack->size()};
+  int const    top{corner.y() + m_corner->height() + px(8)};
+  m_channelsPanel->setGeometry(stack.right() - px(10) - m_channelsPanel->width() + 1, top, m_channelsPanel->width(),
+                               std::max(px(120), stack.bottom() - px(10) - top + 1));
+  m_channelsPanel->raise();
+}
+
+void Head::setChannelsOpen(bool open) {
+  if (open == !m_channelsPanel->isHidden()) {
+    return;
+  }
+  if (open) {
+    placeOverlays();
+    m_channelsPanel->show();
+    m_channelsPanel->raise();
+    qApp->installEventFilter(this);
+  } else {
+    m_channelsPanel->hide(); // keeps the choice (the editor's hide)
+    qApp->removeEventFilter(this);
+  }
 }
 
 void Head::changeEvent(QEvent *event) {

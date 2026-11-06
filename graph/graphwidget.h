@@ -41,7 +41,7 @@ class DateTimeField;
 class OverlayDrawer;
 
 /**
- * @brief Chart page: the live data of today and opened recorded data in tabs, optionally split into two panes side by
+ * @brief Analysis page: the live data of today and opened recorded data in tabs, optionally split into two panes side by
  * side. The buttons act on the focused pane; with Tooltip on, the panes mirror each other's crosshair (same time
  * from their start, same line).
  */

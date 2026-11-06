@@ -17,7 +17,7 @@ public:
   }
 
 protected:
-  // footer card: lamp, label and an on / off switch
+  // sidebar item: a sun and an on / off switch over the label
   void paintEvent(QPaintEvent *event) override;
 
 private:

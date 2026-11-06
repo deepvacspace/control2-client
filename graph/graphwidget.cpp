@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QFontMetrics>
 #include <QScrollBar>
 #include <QTextBrowser>
 #include <QComboBox>
@@ -56,6 +57,7 @@
 #include "overlaydrawer.h"
 #include "rundetailsdialog.h"
 #include "dialogs/messagedialog.h"
+#include "pressureunits.h"
 #include "theme.h"
 #include "touchsupport.h"
 #include "utils.h"
@@ -123,11 +125,11 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_styleEditor{nullptr} {
   auto *mainLay = new QGridLayout(this);
 
-  // channels shown on the logarithmic axis ("notation": "scientific" in the settings)
+  // channels shown on the logarithmic axis: "notation": "scientific" in the settings, and the pressure (in Torr)
   QList<QVariant> const states_list = resHolder->settings->settingsMap()["states"].toList();
   for (int i{0U}; i < states_list.size(); ++i) {
     QVariantMap const paramMap = states_list[i].toMap();
-    if (paramMap.contains("notation") && paramMap["notation"].toString() == "scientific") {
+    if ((paramMap.value("notation").toString() == QLatin1String("scientific")) || pressure::isPressureChannel(paramMap.value("name").toString())) {
       m_addLogAxis = true;
       m_logAxisIndexes.push_back(i);
     }
@@ -156,7 +158,7 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   card->setObjectName("pageCard");
   mainLay->addWidget(card, 0, 0);
   auto *cardLay = new QGridLayout(card);
-  cardLay->setContentsMargins(14 * ssf, 12 * ssf, 14 * ssf, 12 * ssf);
+  cardLay->setContentsMargins(14 * ssf, 6 * ssf, 14 * ssf, 12 * ssf); // little above the tabs
   cardLay->setHorizontalSpacing(8 * ssf);
   cardLay->setVerticalSpacing(8 * ssf);
 
@@ -204,6 +206,11 @@ GraphWidget::GraphWidget(ResHolder *resHolder, QWidget *parent)
   m_sideBar->addPage(QStringLiteral("info"), tr("Info"), QStringLiteral("info"), buildInfoPage());
   m_sideBar->addPage(QStringLiteral("ai"), tr("Assistant"), QStringLiteral("ai"), buildAiPage());
   m_sideBar->setHeaderWidget(QStringLiteral("ai"), m_aiHeader);
+  // "6 of 8 shown" under the Channels title
+  connect(m_styleEditor, &GraphStyleEditor::countChanged, m_sideBar, [this](QString const &text) {
+    m_sideBar->setSubtitle(QStringLiteral("channels"), text);
+  });
+  m_sideBar->setSubtitle(QStringLiteral("channels"), m_styleEditor->countText());
   m_sideBar->addPage(QStringLiteral("calendar"), tr("Calendar"), QStringLiteral("calendar"), m_calendarPanel, true);
   m_sideBar->addPage(QStringLiteral("export"), tr("Export"), QStringLiteral("export"), m_exportHost, true);
   mainLay->addWidget(m_sideBar, 0, 1);
@@ -319,6 +326,7 @@ ChartPane *GraphWidget::addPane() {
   }
   // the tools: shown in the left pane only, acting on the selected pane
   pane->setToolbarShown(m_panes.size() == 1);
+  pane->setToolbarArea(m_split->parentWidget()); // the card: over both panes
   pane->toolbar()->bindToggles(m_labelsBtn, m_valuesBtn);
   pane->setToolbarPinned(m_toolbarPinned);
   pane->setTool(m_tool, false);
@@ -524,7 +532,7 @@ void GraphWidget::openLoading(Tab tab, bool splitRight, std::function<bool(Sampl
     }
     if (!*ok || samples->times.isEmpty()) {
       pane->closeTab(pane->indexOf(tab.key));
-      QMessageBox::warning(this, tr("Chart"), error->isEmpty() ? tr("%1 could not be read.").arg(tab.name) : *error);
+      QMessageBox::warning(this, tr("Analysis"), error->isEmpty() ? tr("%1 could not be read.").arg(tab.name) : *error);
       return;
     }
     pane->setTabData(tab.key, holderFrom(samples->times, samples->columns, samples->values)); // a QObject: made here
@@ -1798,7 +1806,7 @@ void GraphWidget::styleComparison(DataViewer *chart, ChartComparison const &comp
       qsizetype const   index{names.indexOf(comparison.channels[c])};
       QVariantMap const channel = ((index >= 0) && (index < states.size())) ? states[index].toMap() : QVariantMap{};
       QString const     label   = channel.value("label", comparison.channels[c]).toString();
-      if (channel.value("notation").toString() == QLatin1String("scientific")) {
+      if ((channel.value("notation").toString() == QLatin1String("scientific")) || pressure::isPressureChannel(comparison.channels[c])) {
         logIndexes.push_back(static_cast<int>(styles.size()));
       }
       styles.push_back(QVariantMap{{"label", (comparison.channels.size() == 1) ? comparison.members[k].label
@@ -2241,6 +2249,11 @@ QWidget *GraphWidget::buildOptions() {
       button->setProperty("softSegment", true);
       button->setProperty("segmentFirst", i == 0);
       button->setProperty("segmentLast", i == labels.size() - 1);
+      // wide enough for its text in bold (checked), with the theme's padding
+      button->ensurePolished();
+      QFont bold = button->font();
+      bold.setBold(true);
+      button->setMinimumWidth(QFontMetrics(bold).horizontalAdvance(labels[i]) + static_cast<int>(30 * ssf));
       if (group) {
         group->addButton(button);
       }

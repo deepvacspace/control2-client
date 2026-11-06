@@ -3,14 +3,15 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QEvent>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
-#include <QResizeEvent>
-#include <QToolButton>
+#include <QPainterPath>
 #include <QVBoxLayout>
 #include <QTimer>
 #include <cmath>
+#include <iterator>
 
 #include "constants.h"
 #include "pressureunits.h"
@@ -64,51 +65,115 @@ QColor statusColor(HardwareStatus::HardwareStatusEnum status) {
       return c.off;
   }
 }
+
+// the user's avatar: a person on a disc
+QPixmap userAvatar(int size, QColor const &disc, QColor const &person) {
+  QPixmap pixmap(size * 2, size * 2);
+  pixmap.fill(Qt::transparent);
+  pixmap.setDevicePixelRatio(2.0);
+  QPainter p(&pixmap);
+  p.setRenderHint(QPainter::Antialiasing);
+  double const s{static_cast<double>(size)};
+  p.setPen(Qt::NoPen);
+  p.setBrush(disc);
+  p.drawEllipse(QRectF(0, 0, s, s));
+  QPainterPath clip;
+  clip.addEllipse(QRectF(0, 0, s, s));
+  p.setClipPath(clip);
+  p.setBrush(person);
+  p.drawEllipse(QPointF(s * 0.5, s * 0.38), s * 0.17, s * 0.17);
+  p.drawEllipse(QRectF(s * 0.2, s * 0.64, s * 0.6, s * 0.56));
+  return pixmap;
+}
+
+// a label that shortens its text with "…" rather than being cut when the header is short of room (a long user name)
+class ElidedLabel : public QLabel {
+public:
+  using QLabel::QLabel;
+  [[nodiscard]] QSize minimumSizeHint() const override {
+    return {fontMetrics().horizontalAdvance(QStringLiteral("Wo…")), QLabel::minimumSizeHint().height()};
+  }
+
+protected:
+  void paintEvent(QPaintEvent *) override {
+    QPainter p(this);
+    p.setPen(palette().color(foregroundRole()));
+    p.drawText(contentsRect(), Qt::AlignVCenter | Qt::AlignLeft, fontMetrics().elidedText(text(), Qt::ElideRight, contentsRect().width()));
+  }
+};
 }
 
 HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
-  setFixedHeight(px(38));
+  setFixedHeight(px(54));
   auto *outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
   m_content = new QWidget(this);
   outer->addWidget(m_content);
   auto *lay = new QHBoxLayout(m_content);
-  lay->setContentsMargins(px(14), 0, px(14), 0);
-  lay->setSpacing(px(10));
+  lay->setContentsMargins(px(16), 0, px(14), 0);
+  lay->setSpacing(px(9));
 
-  m_brand = new QLabel(QStringLiteral("Deepvac Control"), m_content);
+  // the product name only: a logo is to come beside it
+  m_brand = new QLabel(QStringLiteral("Deepvac"), m_content);
   m_brand->setObjectName("headerBrand");
   m_statusDot = new QLabel(m_content);
-  m_statusDot->setFixedSize(px(8), px(8));
-  m_status = new QLabel(m_content);
-  m_values = new QLabel(m_content);
-  m_values->setTextFormat(Qt::RichText);
-  m_user     = new QLabel(m_resHolder->users->getCurrentUserName(), m_content);
+  m_statusDot->setFixedSize(px(9), px(9));
+  m_status   = new QLabel(m_content);
+  m_userPill = new QFrame(m_content);
+  m_userPill->setObjectName("userPill");
+  m_userIcon = new QLabel(m_userPill);
+  m_user     = new ElidedLabel(m_resHolder->users->getCurrentUserName(), m_userPill);
+  m_user->setToolTip(m_user->text());
   m_appState = new QLabel(m_content);
-  m_usb      = new QLabel(QStringLiteral("USB"), m_content);
-  m_opc      = new QLabel(m_content);
-  m_clock    = new QLabel(m_content);
+  m_appState->setTextFormat(Qt::RichText);
+  m_usb   = new QLabel(QStringLiteral("USB"), m_content);
+  m_opc   = new QLabel(m_content);
+  m_clock = new QLabel(m_content);
   for (QLabel *badge : {m_appState, m_usb, m_opc}) {
     badge->setAlignment(Qt::AlignCenter);
+    badge->setFixedHeight(px(28));
   }
-
-  auto *separator = new QWidget(m_content);
-  separator->setObjectName("headerSeparator");
-  separator->setFixedSize(px(1), px(18));
+  // the clock keeps its width as the seconds change
+  m_clock->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  auto *pillLay = new QHBoxLayout(m_userPill);
+  pillLay->setContentsMargins(px(4), px(4), px(11), px(4));
+  pillLay->setSpacing(px(6));
+  pillLay->addWidget(m_userIcon);
+  pillLay->addWidget(m_user);
+  m_userPill->setFixedHeight(px(32));
 
   lay->addWidget(m_brand);
-  lay->addWidget(separator);
-  lay->addSpacing(px(30));
-  lay->addWidget(m_statusDot);
-  lay->addWidget(m_status);
-  lay->addSpacing(px(30));
-  lay->addWidget(m_values);
+  lay->addWidget(separator());
+  auto *statusLay = new QHBoxLayout();
+  statusLay->setSpacing(px(7));
+  statusLay->addWidget(m_statusDot);
+  statusLay->addWidget(m_status);
+  lay->addLayout(statusLay);
+  // the values with their setpoints, each over its caption; shown or hidden by updateValues()
+  for (auto const &[name, label] : statusBarStatesList()) {
+    ValueBlock block;
+    block.name      = name;
+    block.separator = separator();
+    block.box       = new QWidget(m_content);
+    auto *boxLay    = new QVBoxLayout(block.box);
+    boxLay->setContentsMargins(0, 0, 0, 0);
+    boxLay->setSpacing(0);
+    block.value = new QLabel(block.box);
+    block.value->setTextFormat(Qt::RichText);
+    block.caption = new QLabel(label, block.box);
+    boxLay->addStretch();
+    boxLay->addWidget(block.value);
+    boxLay->addWidget(block.caption);
+    boxLay->addStretch();
+    lay->addWidget(block.separator);
+    lay->addWidget(block.box);
+    m_valueBlocks.push_back(block);
+  }
   lay->addStretch();
-  lay->addWidget(m_user);
-  lay->addSpacing(px(8));
+  lay->addWidget(m_userPill);
   lay->addWidget(m_appState);
   lay->addWidget(m_opc);
-  lay->addSpacing(px(30));
+  lay->addSpacing(px(4));
   lay->addWidget(m_clock);
 
   // clock
@@ -135,18 +200,30 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   });
   connect(m_resHolder->users, &AccessManager::userSelected, this, [this](QString const &name, AccessManager::AccessLevel) {
     m_user->setText(name);
+    m_user->setToolTip(name);
   });
   connect(m_resHolder->usb, &UsbManager::drivesUpdated, this, [this](QStringList drives) {
     m_usbPresent = !drives.isEmpty();
     updateBadges();
   });
   m_usbPresent = !m_resHolder->usb->getAvailableDrives().isEmpty();
+  m_opcState   = m_resHolder->status->getOpcStatus();
 
   for (QLabel *label : findChildren<QLabel *>()) {
     label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed); // badges keep their height
   }
+  // the user name gives way first when the header is short of room
+  m_user->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_userPill->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   restyle();
-  setFixedHeight(px(38));
+  setFixedHeight(px(54));
+}
+
+QWidget *HeaderBar::separator() {
+  auto *line = new QWidget(m_content);
+  line->setObjectName("headerSeparator");
+  line->setFixedSize(px(1), px(26));
+  return line;
 }
 
 void HeaderBar::restyle() {
@@ -158,23 +235,38 @@ void HeaderBar::restyle() {
   theme::Colors const &c = theme::colors();
   QFont                brandFont = font();
   brandFont.setBold(true);
-  brandFont.setPointSizeF(font().pointSizeF() * 1.35);
+  brandFont.setPointSizeF(font().pointSizeF() * 1.5);
   m_brand->setFont(brandFont);
-  m_brand->setStyleSheet(QStringLiteral("color: %1; border-bottom: %2px solid %3; padding-bottom: %4px;")
-                           .arg(c.text.name())
-                           .arg(px(2))
-                           .arg(c.accent.name())
-                           .arg(px(1)));
-  findChild<QWidget *>("headerSeparator")->setStyleSheet(QStringLiteral("background: %1;").arg(c.border.name()));
+  m_brand->setStyleSheet(QStringLiteral("color: %1;").arg(c.text.name()));
+  for (QWidget *line : findChildren<QWidget *>("headerSeparator")) {
+    line->setStyleSheet(QStringLiteral("background: %1;").arg(c.border.name()));
+  }
   QFont bold = font();
   bold.setBold(true);
-  bold.setPointSizeF(font().pointSizeF() * 1.1);
+  bold.setPointSizeF(font().pointSizeF() * 1.05);
   m_status->setFont(bold);
   m_status->setStyleSheet(QStringLiteral("color: %1;").arg(c.text.name()));
-  m_user->setStyleSheet(QStringLiteral("color: %1;").arg(c.muted.name()));
+  QFont small = font();
+  small.setPointSizeF(font().pointSizeF() * 0.85);
+  for (ValueBlock const &block : m_valueBlocks) {
+    block.caption->setFont(small);
+    block.caption->setStyleSheet(QStringLiteral("color: %1;").arg(c.muted.name()));
+  }
+  m_userPill->setStyleSheet(QStringLiteral("QFrame#userPill { background: %1; border: %2px solid %3; border-radius: %4px; }")
+                              .arg(c.panelAlt.name())
+                              .arg(px(1))
+                              .arg(c.border.name())
+                              .arg(m_userPill->height() / 2));
+  int const avatar{px(20)};
+  m_userIcon->setFixedSize(avatar, avatar);
+  m_userIcon->setPixmap(userAvatar(avatar, c.text, c.panel));
+  QFont userFont = font();
+  userFont.setWeight(QFont::DemiBold);
+  m_user->setFont(userFont);
+  m_user->setStyleSheet(QStringLiteral("color: %1; background: transparent; border: none;").arg(c.text.name()));
   m_clock->setStyleSheet(QStringLiteral("color: %1;").arg(c.text.name()));
   QFont clockFont = font();
-  clockFont.setPointSizeF(font().pointSizeF() * 1.15);
+  clockFont.setPointSizeF(font().pointSizeF() * 1.25);
   m_clock->setFont(clockFont);
   updateStatus();
   updateValues();
@@ -196,25 +288,28 @@ void HeaderBar::updateStatus() {
   }
   m_status->setText(text);
   m_statusDot->setStyleSheet(
-    QStringLiteral("background: %1; border-radius: %2px;").arg(statusColor(status).name()).arg(px(4)));
+    QStringLiteral("background: %1; border-radius: %2px;").arg(statusColor(status).name()).arg(m_statusDot->width() / 2));
 }
 
 void HeaderBar::updateValues() {
   theme::Colors const &c = theme::colors();
-  QStringList          parts;
   // not connected: the values are not the chamber's (zeros or the last ones received), a dash instead (with its unit)
   StatusManager::AppState const appState{m_resHolder->status->getAppState()};
   bool const online{(StatusManager::AppState::ONLINE == appState) || (StatusManager::AppState::DUMMY == appState)};
   auto state = [this](QString const &name) -> SystemValue const * {
     return m_resHolder->states->contains(name) ? m_resHolder->states->getSysValue(name) : nullptr;
   };
-  for (auto const &[name, label] : statusBarStatesList()) {
-    bool const         isPressure{name == QLatin1String("pres")};
-    SystemValue const *value = state(name);
-    if (!value && !isPressure) {
-      continue; // pressure is always shown (a dash without a gauge), as on Home
+  for (ValueBlock const &block : m_valueBlocks) {
+    bool const         isPressure{block.name == QLatin1String("pres")};
+    SystemValue const *value = state(block.name);
+    // pressure is always shown (a dash without a gauge), as on Home
+    bool const shownBlock{value || isPressure};
+    block.box->setVisible(shownBlock);
+    block.separator->setVisible(shownBlock);
+    if (!shownBlock) {
+      continue;
     }
-    QString const unit = unitOf(name, value);
+    QString const unit = unitOf(block.name, value);
     // pressure in Torr, whatever unit the chamber reports; a dash when there is none
     auto shown = [&](SystemValue const *shownValue) {
       if (!online || !shownValue) {
@@ -222,48 +317,63 @@ void HeaderBar::updateValues() {
       }
       return isPressure ? pressure::text(pressure::toTorr(shownValue->getValue(), value ? value->getLabel() : QString{})) : number(shownValue);
     };
-    QString part = QStringLiteral("<span style='font-weight:bold; font-size:%1pt; color:%2'>%3%4</span>")
-                     .arg(font().pointSizeF() * 1.3)
+    QString text = QStringLiteral("<span style='font-weight:bold; font-size:%1pt; color:%2'>%3%4</span>")
+                     .arg(font().pointSizeF() * 1.2)
                      .arg(c.text.name(), shown(value), unit);
-    SystemValue const *setpoint = state(name + "_ref");
+    SystemValue const *setpoint = state(block.name + "_ref");
     if (setpoint || isPressure) {
       // the pressure setpoint with its unit too
-      part += QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>[%2%3]</span>").arg(c.muted.name(), shown(setpoint), isPressure ? unit : QString{});
+      text += QStringLiteral("&nbsp;&nbsp;<span style='color:%1'>[%2%3]</span>").arg(c.muted.name(), shown(setpoint), isPressure ? unit : QString{});
     }
-    parts << part;
+    block.value->setText(text);
   }
-  m_values->setText(parts.join(QStringLiteral("&nbsp;&nbsp;&nbsp;&nbsp;")));
 }
 
 void HeaderBar::updateBadges() {
-  theme::Colors const &c     = theme::colors();
-  auto                 badge = [&](QLabel *label, QString const &text, QColor const &color) {
-    label->setText(text);
-    label->setStyleSheet(QStringLiteral("color: %1; border: %2px solid %1; border-radius: %3px; padding: %4px %5px; "
-                                                        "background: %6;")
+  theme::Colors const &c = theme::colors();
+  // rounded pills; a state is tinted with its colour, the connection one has a dot before its text
+  auto badge = [&](QLabel *label, QString const &text, QColor const &color, bool tinted, bool dot) {
+    label->setText(dot ? QStringLiteral("<span style='font-size:%1pt'>&#9679;</span>&nbsp;&nbsp;%2").arg(font().pointSizeF() * 0.9).arg(text)
+                       : text);
+    label->setStyleSheet(QStringLiteral("color: %1; border: %2px solid %3; border-radius: %4px; padding: 0 %5px; background: %6; "
+                                        "font-weight: %7;")
                            .arg(color.name())
                            .arg(px(1))
-                           .arg(px(3))
-                           .arg(px(1))
-                           .arg(px(6))
-                           .arg(QColor(color.red(), color.green(), color.blue(), 28).name(QColor::HexArgb)));
+                           .arg(tinted ? QColor(color.red(), color.green(), color.blue(), 110).name(QColor::HexArgb) : c.border.name())
+                           .arg(label->height() / 2)
+                           .arg(px(10))
+                           .arg(tinted ? QColor(color.red(), color.green(), color.blue(), 34).name(QColor::HexArgb) : c.panel.name())
+                           .arg(tinted ? 600 : 400));
   };
+  // the state's name in the interface language (APP_STATE_LIST holds the identifiers), in its order
+  static char const *const STATE_TEXTS[]{QT_TR_NOOP("IDLE"),    QT_TR_NOOP("CONNECTING"), QT_TR_NOOP("CONNECTED"),
+                                         QT_TR_NOOP("ONLINE"),  QT_TR_NOOP("OFFLINE"),    QT_TR_NOOP("DUMMY"),
+                                         QT_TR_NOOP("WAIT_IN_DEBUG"), QT_TR_NOOP("ERROR")};
   auto const appState = m_resHolder->status->getAppState();
-  QString    stateText = APP_STATE_LIST.value(static_cast<int>(
-    appState == StatusManager::AppState::CONNECTED ? StatusManager::AppState::CONNECTING : appState)); // until the chamber answers
-  badge(m_appState, stateText, appState == StatusManager::AppState::ONLINE ? c.active : (appState == StatusManager::AppState::OFFLINE ? c.danger : c.warning));
+  int const  shown{static_cast<int>(appState == StatusManager::AppState::CONNECTED ? StatusManager::AppState::CONNECTING : appState)}; // until the chamber answers
+  QString    stateText = ((shown >= 0) && (shown < static_cast<int>(std::size(STATE_TEXTS)))) ? tr(STATE_TEXTS[shown]) : APP_STATE_LIST.value(shown);
+  badge(m_appState,
+        stateText,
+        appState == StatusManager::AppState::ONLINE ? c.active : (appState == StatusManager::AppState::OFFLINE ? c.danger : c.warning),
+        true,
+        true);
   m_usb->setVisible(false); // removed from the design; drives are still offered as export locations
-  QString const opcText = (m_opcState == 0) ? QStringLiteral("OPC OK") : (m_opcState == -1 ? QStringLiteral("OPC ERR") : QStringLiteral("OPC OFF"));
-  badge(m_opc, opcText, (m_opcState == 0) ? c.ready : (m_opcState == -1 ? c.danger : c.off));
+  // OPC OK only while the OPC UA server broadcasts (0); stopped (-2) or failed to start (an error code): OPC OFF,
+  // a plain outlined pill
+  bool const broadcasting{m_opcState == 0};
+  badge(m_opc, broadcasting ? tr("OPC OK") : tr("OPC OFF"), broadcasting ? c.ready : c.muted, broadcasting, false);
+  m_opc->setToolTip((broadcasting || (m_opcState == -2)) ? QString{} : tr("The OPC UA server could not start (code %1)").arg(m_opcState));
 }
-
 
 void HeaderBar::paintEvent(QPaintEvent *) {
   theme::Colors const &c = theme::colors();
   QPainter             p(this);
-  p.fillRect(rect(), c.header);
-  p.setPen(c.border);
-  p.drawLine(rect().bottomLeft(), rect().bottomRight());
+  p.setRenderHint(QPainter::Antialiasing);
+  // a rounded card, as the pages' cards
+  double const radius{12 * utils::ssf()};
+  p.setPen(QPen(c.border, px(1)));
+  p.setBrush(c.panel);
+  p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
 }
 
 void HeaderBar::changeEvent(QEvent *event) {

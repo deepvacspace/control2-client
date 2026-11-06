@@ -6,6 +6,7 @@
 #include <QPalette>
 #include <QString>
 
+class QCPAxis;
 class QCustomPlot;
 
 namespace deepvaccontrol::theme {
@@ -32,6 +33,8 @@ struct Colors {
 
 [[nodiscard]] bool          isDark();
 [[nodiscard]] Colors const &colors();
+// the navigation sidebar is navy in both themes
+[[nodiscard]] Colors const &sidebarColors();
 [[nodiscard]] QPalette      palette(bool dark);
 [[nodiscard]] QString       styleSheet(bool dark);
 // palette and application style sheet
@@ -39,6 +42,8 @@ void apply(bool dark);
 
 // colours of a QCustomPlot (background, axes, grid, legend)
 void stylePlot(QCustomPlot *plot);
+// a chart's right axis for pressure: logarithmic, powers of ten, "Pressure, Torr"; styled like the plot's other axes
+void setupPressureAxis(QCPAxis *axis);
 // flat tab bar: plain labels, the selected one underlined (System and Settings pages)
 [[nodiscard]] QString flatTabStyleSheet();
 // flatTabStyleSheet() on a tab widget, re-applied by apply() when the theme changes

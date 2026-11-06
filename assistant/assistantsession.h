@@ -22,7 +22,7 @@ class AssistantEngine;
 class LlmClient;
 
 /**
- * @brief The assistant behind the chart page's Assistant panel: a fully offline conversation with a local model
+ * @brief The assistant behind the Analysis page's Assistant panel: a fully offline conversation with a local model
  * (llama.cpp llama-server sidecar) that answers questions about recorded experiments, days, the chamber and the
  * digital twin through the read-only tools. The panel shows the exchange (exchange()) and the model's state.
  */

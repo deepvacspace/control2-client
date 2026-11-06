@@ -20,6 +20,7 @@
 #include "constants.h"
 #include "settingslistwidget.h"
 #include "theme.h"
+#include "userwidget.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -29,6 +30,19 @@ SettingsWidget::SettingsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{
   connect(m_resHolder->settings, &SettingsManager::settingsPulled, this, &SettingsWidget::updatePidsAndCalibrations);
   // changed elsewhere (the AI Advisor's coefficients): shown here too, so a later Send does not undo them
   connect(m_resHolder->settings, &SettingsManager::plcSettingsChanged, this, &SettingsWidget::updatePidsAndCalibrations);
+
+  connect(m_resHolder->users, &AccessManager::userSelected, this, &SettingsWidget::handleAccessChange);
+  handleAccessChange(QString(), m_resHolder->users->getCurrentAccessLevel());
+}
+
+void SettingsWidget::handleAccessChange(QString const &, AccessManager::AccessLevel newLevel) {
+  bool const enableAll{newLevel == AccessManager::AccessLevel::USER_ADMIN_3};
+  if (!enableAll) {
+    m_tabWidget->setCurrentWidget(m_usersTab);
+  }
+  for (int i{0}; i < m_tabWidget->count(); ++i) {
+    m_tabWidget->setTabVisible(i, enableAll || (m_tabWidget->widget(i) == m_usersTab));
+  }
 }
 
 void SettingsWidget::setPids(QVariantList const &pidVariantList) {
@@ -83,6 +97,7 @@ void SettingsWidget::initGui() {
   mainLay->setSpacing(3 * utils::ssf());
 
   auto *tabWidget = new QTabWidget(this);
+  m_tabWidget     = tabWidget;
   theme::setFlatTabs(tabWidget);
   mainLay->addWidget(tabWidget);
 
@@ -137,6 +152,9 @@ void SettingsWidget::initGui() {
   tabWidget->addTab(new ApplicationSettingsWidget(m_resHolder, this), tr("Application"));
   // databases and their backups
   tabWidget->addTab(new DataWidget(m_resHolder, this), tr("Data"));
+  // users: the only tab below the Service Engineer level, where any user logs in with a higher level
+  m_usersTab = new UserWidget(m_resHolder->logger, m_resHolder->users, this);
+  tabWidget->addTab(m_usersTab, tr("Users"));
 
   auto *btnsLay = new QHBoxLayout();
   mainLay->addLayout(btnsLay);

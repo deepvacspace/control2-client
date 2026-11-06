@@ -188,6 +188,7 @@ private:
   // Legend
   DataViewerLegend m_legendController;
   QVariantList     m_stateListVariant;
+  QVector<double>  m_torrScale; // per line: 1, or the pressure's factor to Torr
 
   QCPItemStraightLine *m_cursor{nullptr};  // crosshair: vertical
   QCPItemStraightLine *m_cursorH{nullptr}; // and horizontal line

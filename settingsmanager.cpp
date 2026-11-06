@@ -98,41 +98,43 @@ void SettingsManager::makeAlarmsMap() {
 }
 
 void SettingsManager::getUiLanguage() {
-  // English unless Russian is chosen (System page): the texts in the code are English, translations in res/
+  // English unless Russian or German is chosen (System page): the texts in the code are English, translations in res/
   m_language = UiLanguage::English;
   if (m_settingsMap["app_settings"].isValid() && m_settingsMap["app_settings"].toMap()["language"].isValid()) {
     auto const lang = m_settingsMap["app_settings"].toMap()["language"].toString();
     if (lang == "ru") {
       m_language = UiLanguage::Russian;
+    } else if (lang == "de") {
+      m_language = UiLanguage::German;
     }
   }
 }
 
 void SettingsManager::standardChannelNames() {
-  // name -> {English, Russian}; the unit after the comma of the configured label is kept
+  // name -> {English, Russian, German}; the unit after the comma of the configured label is kept
   struct Name {
     char const *en;
     char const *ru;
+    char const *de;
   };
   static QHash<QString, Name> const names{
-    {"temp", {"Temperature", "Температура"}},
-    {"temp_raw", {"Temperature (uncalibrated)", "Температура (без корректировки)"}},
-    {"temp_ref", {"Temperature setpoint", "Уставка температуры"}},
-    {"temp_u", {"Temperature control output", "Управление по температуре"}},
-    {"temp_u_p", {"Temperature control output (P)", "Управление по температуре (П)"}},
-    {"temp_u_i", {"Temperature control output (I)", "Управление по температуре (И)"}},
-    {"temp_u_d", {"Temperature control output (D)", "Управление по температуре (Д)"}},
-    {"pres", {"Pressure", "Давление"}},
-    {"pres_raw", {"Pressure (uncalibrated)", "Давление (без корректировки)"}},
-    {"pres_volt", {"Pressure gauge signal", "Сигнал датчика давления"}},
-    {"pres_volt_raw", {"Pressure gauge signal (uncalibrated)", "Сигнал датчика давления (без корректировки)"}},
-    {"pres_ref", {"Pressure setpoint", "Уставка давления"}},
-    {"pres_u", {"Pressure control output", "Управление по давлению"}},
-    {"pres_u_p", {"Pressure control output (P)", "Управление по давлению (П)"}},
-    {"pres_u_i", {"Pressure control output (I)", "Управление по давлению (И)"}},
-    {"pres_u_d", {"Pressure control output (D)", "Управление по давлению (Д)"}},
+    {"temp", {"Temperature", "Температура", "Temperatur"}},
+    {"temp_raw", {"Temperature (uncalibrated)", "Температура (без корректировки)", "Temperatur (unkalibriert)"}},
+    {"temp_ref", {"Temperature setpoint", "Уставка температуры", "Temperatursollwert"}},
+    {"temp_u", {"Temperature control output", "Управление по температуре", "Stellgröße Temperatur"}},
+    {"temp_u_p", {"Temperature control output (P)", "Управление по температуре (П)", "Stellgröße Temperatur (P)"}},
+    {"temp_u_i", {"Temperature control output (I)", "Управление по температуре (И)", "Stellgröße Temperatur (I)"}},
+    {"temp_u_d", {"Temperature control output (D)", "Управление по температуре (Д)", "Stellgröße Temperatur (D)"}},
+    {"pres", {"Pressure", "Давление", "Druck"}},
+    {"pres_raw", {"Pressure (uncalibrated)", "Давление (без корректировки)", "Druck (unkalibriert)"}},
+    {"pres_volt", {"Pressure gauge signal", "Сигнал датчика давления", "Signal des Druckmessgeräts"}},
+    {"pres_volt_raw", {"Pressure gauge signal (uncalibrated)", "Сигнал датчика давления (без корректировки)", "Signal des Druckmessgeräts (unkalibriert)"}},
+    {"pres_ref", {"Pressure setpoint", "Уставка давления", "Drucksollwert"}},
+    {"pres_u", {"Pressure control output", "Управление по давлению", "Stellgröße Druck"}},
+    {"pres_u_p", {"Pressure control output (P)", "Управление по давлению (П)", "Stellgröße Druck (P)"}},
+    {"pres_u_i", {"Pressure control output (I)", "Управление по давлению (И)", "Stellgröße Druck (I)"}},
+    {"pres_u_d", {"Pressure control output (D)", "Управление по давлению (Д)", "Stellgröße Druck (D)"}},
   };
-  bool const   russian{m_language == UiLanguage::Russian};
   QVariantList states = m_settingsMap["states"].toList();
   for (QVariant &entry : states) {
     QVariantMap state = entry.toMap();
@@ -143,10 +145,32 @@ void SettingsManager::standardChannelNames() {
     QString const   label = state.value("label").toString();
     qsizetype const comma = label.lastIndexOf(',');
     QString const   unit  = (comma >= 0) ? label.mid(comma) : QString{}; // ", °C"
-    state["label"]        = QString::fromUtf8(russian ? name->ru : name->en) + unit;
+    char const     *text{(m_language == UiLanguage::Russian) ? name->ru : (m_language == UiLanguage::German) ? name->de : name->en};
+    state["label"]        = QString::fromUtf8(text) + unit;
     entry                 = state;
   }
   m_settingsMap["states"] = states;
+
+  // the program parameters too (the fields of an interval), whole labels
+  static QHash<QString, Name> const params{
+    {"duration", {"Duration", "Продолжительность", "Dauer"}},
+    {"temp", {"Temperature", "Температура", "Temperatur"}},
+    {"pres", {"Pressure", "Давление", "Druck"}},
+    {"flags", {"Flags", "Флаги", "Flags"}},
+  };
+  QVariantList controlParams = m_settingsMap["control_params"].toList();
+  for (QVariant &entry : controlParams) {
+    QVariantMap param = entry.toMap();
+    auto const  name  = params.constFind(param.value("name").toString());
+    if (name == params.cend()) {
+      continue;
+    }
+    param["label"] = QString::fromUtf8((m_language == UiLanguage::Russian) ? name->ru : (m_language == UiLanguage::German) ? name->de : name->en);
+    entry          = param;
+  }
+  if (!controlParams.isEmpty()) {
+    m_settingsMap["control_params"] = controlParams;
+  }
 }
 
 QVariantList SettingsManager::commitSystemValues() {

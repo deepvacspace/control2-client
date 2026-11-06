@@ -18,6 +18,7 @@
 #include <QVBoxLayout>
 
 #include "actionwidget.h"
+#include "choicedialog.h"
 #include "confdialog.h"
 #include "constants.h"
 #include "forceoutlistwidget.h"
@@ -189,7 +190,7 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
     mainLay->addWidget(row);
   };
 
-  auto *exitBtn = new QPushButton(tr("Exit to the OS"));
+  auto *exitBtn = new QPushButton(tr("Exit"));
   exitBtn->setProperty("outline", true);
   auto *windowBtn = new QPushButton(tr("Full screen / window"));
   auto *themeBtn  = new QPushButton();
@@ -198,7 +199,8 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   };
   updateThemeBtnText();
 
-  addRow("power", tr("Exit to the operating system"), tr("Closes the application; the chamber keeps running its job."), exitBtn);
+  addRow("power", tr("Exit to the operating system"),
+         tr("Closes the application, and turns the chamber off or leaves it running its job."), exitBtn);
   addRow("system", tr("Full screen or window"), tr("Switches the application between full screen and a window."), windowBtn);
   addRow("settings", tr("Appearance"), tr("Light design (default) or dark mode."), themeBtn);
 
@@ -206,8 +208,9 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   auto *languageBox = new QComboBox();
   languageBox->addItem(QStringLiteral("English"), QStringLiteral("en"));
   languageBox->addItem(QStringLiteral("Русский"), QStringLiteral("ru"));
+  languageBox->addItem(QStringLiteral("Deutsch"), QStringLiteral("de"));
   QString const language = resHolder->settings->settingsMap().value("app_settings").toMap().value("language", "en").toString();
-  languageBox->setCurrentIndex(qMax(0, languageBox->findData(language == QLatin1String("en") ? "en" : "ru")));
+  languageBox->setCurrentIndex(qMax(0, languageBox->findData(language))); // English for an unknown one
   addRow("globe", tr("Language"), tr("Language of the interface. Applies the next time the application starts."), languageBox);
   connect(languageBox, &QComboBox::currentIndexChanged, this, [this, resHolder, languageBox] {
     QVariantMap appSettings = resHolder->settings->settingsMap().value("app_settings").toMap();
@@ -218,17 +221,34 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
   mainLay->addStretch();
 
   connect(exitBtn, &QPushButton::clicked, this, [this, resHolder] {
-    auto *confDialog = new ConfDialog(tr("Confirmation"),
-                                      tr("Do you really want to exit to the OS?\nThe chamber operation will NOT be stopped."),
-                                      tr("Yes"),
-                                      tr("No"),
-                                      this);
-    connect(confDialog, &ConfDialog::finished, this, [&](int result) {
-      if (1 == result) { // == accepted()
+    // the chamber turned off with the application, or left as it is (a running job goes on without the application);
+    // an Observer may not stop the chamber, so only closes the application
+    bool const working{HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()};
+    bool const mayStop{AccessManager::AccessLevel::SPECTATOR_0 != resHolder->users->getCurrentAccessLevel()};
+    enum { CANCEL = 1, APP_ONLY = 2, STOP_AND_EXIT = 3 };
+    QString const message = !mayStop ? tr("Close the application? The chamber is left as it is%1.")
+                                         .arg(working ? tr(" and the running job goes on") : QString{})
+                            : working ? tr("A job is running. Stop the chamber and close the application, or close only the "
+                                           "application and let the job go on?")
+                                      : tr("Turn the chamber off and close the application, or close only the application?");
+    auto *dialog = new ChoiceDialog(tr("Confirmation"), message, QStringLiteral("question"), this);
+    dialog->addChoice(tr("Cancel"), CANCEL);
+    dialog->addChoice(tr("Exit app only"), APP_ONLY, !mayStop);
+    if (mayStop) {
+      dialog->addChoice(tr("Stop chamber and exit"), STOP_AND_EXIT, true);
+    }
+    connect(dialog, &QDialog::finished, this, [this, resHolder, working](int result) {
+      if (STOP_AND_EXIT == result) {
+        if (working) {
+          resHolder->tcpGate->sendTextCmd("stop");
+        }
+        resHolder->tcpGate->sendTextCmd("shutdown");
+        emit prepareToCloseApp();
+      } else if (APP_ONLY == result) {
         emit prepareToCloseApp();
       }
     });
-    confDialog->open();
+    dialog->open();
   });
 
   connect(windowBtn, &QPushButton::clicked, this, &SysOsWidget::switchAppMaximizedClicked);
@@ -262,6 +282,12 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   m_tabWidget = new QTabWidget(this);
   theme::setFlatTabs(m_tabWidget);
   mainLay->addWidget(m_tabWidget);
+
+  // first - ос: exit (turning the chamber off or not), full screen, appearance, language
+  auto *osWidget = new SysOsWidget(resHolder, this);
+  prepareSystemTabPage(osWidget);
+  m_tabWidget->addTab(osWidget, tr("OS"));
+  m_osTab = osWidget;
 
   // 0 - список
   auto *sysListWidget = new SysListWidget(resHolder, this);
@@ -310,12 +336,6 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   auto *actionWidget = new ActionWidget(resHolder->actions, this);
   prepareSystemTabPage(actionWidget);
   m_tabWidget->addTab(actionWidget, tr("Log"));
-
-  // 2 - ос
-  auto *osWidget = new SysOsWidget(resHolder, this);
-  prepareSystemTabPage(osWidget);
-  m_tabWidget->addTab(osWidget, tr("OS"));
-  m_osTab = osWidget;
 
   // 3 - ручный выходы
   auto *forceOutWidget = new ForceOutListWidget(

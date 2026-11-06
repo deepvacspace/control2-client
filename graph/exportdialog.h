@@ -32,7 +32,7 @@ public:
   // day: of the data shown; canReport / canBundle: what the shown data offers; canUseFiles: the day and custom ranges
   // (read from the recorded files) make sense for it
   // canComparisonCsv: a comparison tab is shown (one row per experiment and channel)
-  // embedded: a one-column form inside the chart page's side panel (no title, no Cancel), not a window
+  // embedded: a one-column form inside the Analysis page's side panel (no title, no Cancel), not a window
   ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, bool canComparisonCsv = false,
                QWidget *parent = nullptr, bool embedded = false);
 

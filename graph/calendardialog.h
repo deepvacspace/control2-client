@@ -26,7 +26,7 @@ private:
   QMap<QDate, int> m_counts; // experiments per day
 };
 
-// Chart page: the experiments of the experiment database by day; one is opened in the chart,
+// Analysis page: the experiments of the experiment database by day; one is opened in the chart,
 // or the live data of today.
 class CalendarDialog : public QDialog {
   Q_OBJECT

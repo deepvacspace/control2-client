@@ -107,10 +107,10 @@ void UserWidget::initGui() {
   auto *levelsLay  = static_cast<QVBoxLayout *>(levelsCard->layout());
   QList<std::pair<int, QString>> const levels{
     {AccessManager::AccessLevel::SPECTATOR_0,
-     tr("Home, Chart, Data analysis, AI, Users and System. Cannot start or stop the chamber.")},
-    {AccessManager::AccessLevel::USER_START_1, tr("Spectator, plus Manual control and Program control.")},
+     tr("Home, Analysis, AI, System and the Users tab of Settings. Cannot start or stop the chamber.")},
+    {AccessManager::AccessLevel::USER_START_1, tr("Observer, plus Program control: programs and quick setpoints.")},
     {AccessManager::AccessLevel::USER_EDIT_2, tr("Level 1, plus run the AI Advisor.")},
-    {AccessManager::AccessLevel::USER_ADMIN_3, tr("Everything, including Settings.")},
+    {AccessManager::AccessLevel::USER_ADMIN_3, tr("Everything, including all of Settings.")},
   };
   for (auto const &[level, text] : levels) {
     levelsLay->addSpacing(8 * ssf);

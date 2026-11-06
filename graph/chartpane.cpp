@@ -59,6 +59,41 @@ private:
   QTimer *m_timer;
   int     m_angle{0};
 };
+
+// the panes' tabs: never wider than its tabs (its own minimum, room for the scroll arrows, left a gap before the +)
+class PaneTabBar : public QTabBar {
+public:
+  using QTabBar::QTabBar;
+  [[nodiscard]] QSize minimumSizeHint() const override {
+    return QTabBar::minimumSizeHint().boundedTo(sizeHint());
+  }
+};
+
+// before "Live": a dot, green while the chamber runs a job
+class LiveDot : public QWidget {
+public:
+  explicit LiveDot(QWidget *parent) : QWidget{parent} {
+    setFixedSize(static_cast<int>(12 * utils::ssf()), static_cast<int>(12 * utils::ssf()));
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+  }
+  void setActive(bool active) {
+    m_active = active;
+    update();
+  }
+
+protected:
+  void paintEvent(QPaintEvent *) override {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(m_active ? theme::colors().active : theme::colors().muted);
+    double const d{8 * utils::ssf()};
+    p.drawEllipse(QRectF((width() - d) / 2, (height() - d) / 2, d, d));
+  }
+
+private:
+  bool m_active{false};
+};
 }
 
 ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList const &channelNames, QWidget *parent)
@@ -66,7 +101,7 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
     , m_viewer{viewer}
     , m_dataManager{dataManager}
     , m_channelNames{channelNames}
-    , m_tabBar{new QTabBar(this)}
+    , m_tabBar{new PaneTabBar(this)}
     , m_stack{new QStackedWidget(this)}
     , m_dropHint{new QWidget(this)} {
   double const ssf{utils::ssf()};
@@ -84,11 +119,16 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   m_tabBar->setElideMode(Qt::ElideRight);
   m_tabBar->setFocusPolicy(Qt::NoFocus);
   m_tabBar->setContextMenuPolicy(Qt::CustomContextMenu);
-  // tall enough for a finger
-  m_tabBar->setStyleSheet(utils::readStyleFromFile(":/styles/tabBar.qss").arg(30 * ssf).arg(80 * ssf).arg(32 * ssf).arg(static_cast<int>(20 * ssf)));
+  // pills (the theme's QTabBar#paneTabs), tall enough for a finger; no line under them
+  m_tabBar->setObjectName("paneTabs");
+  m_tabBar->setDrawBase(false);
+  m_tabBar->setStyleSheet(QStringLiteral("QTabBar::scroller { width: %1px; }"
+                                         "QTabBar QToolButton::left-arrow { image: url(:/imgs/listArrowLeft.png); }"
+                                         "QTabBar QToolButton::right-arrow { image: url(:/imgs/listArrowRight.png); }")
+                            .arg(static_cast<int>(32 * ssf)));
   {
     QFont font = m_tabBar->font();
-    font.setPointSizeF(font.pointSizeF() * 0.85);
+    font.setPointSizeF(font.pointSizeF() * 0.95);
     m_tabBar->setFont(font);
   }
   // the tabs, then a small + to open an experiment or a comparison
@@ -101,7 +141,7 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   m_addBtn->setText(QStringLiteral("+"));
   m_addBtn->setToolTip(tr("Open an experiment, or a new comparison"));
   m_addBtn->setFocusPolicy(Qt::NoFocus);
-  m_addBtn->setFixedSize(28 * ssf, 28 * ssf);
+  m_addBtn->setFixedSize(42 * ssf, 42 * ssf); // round, as tall as the tabs
   header->addWidget(m_addBtn, 0, Qt::AlignVCenter);
   header->addStretch();
   lay->addLayout(header);
@@ -119,10 +159,11 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   m_toolbar = new ChartToolbar(this);
   m_pad     = new ChartPad(this);
   m_pad->hide();
+  connect(this, &QObject::destroyed, m_toolbar, &QObject::deleteLater); // floating, it is the card's child
   connect(m_toolbar, &ChartToolbar::sizeChanged, this, &ChartPane::placeOverlays);
   connect(m_toolbar, &ChartToolbar::dragged, this, [this](QPoint const &delta) {
     if (!m_toolbarMoved) {
-      m_toolbarOffset = m_toolbar->pos() - this->viewer()->getPlot()->mapTo(this, QPoint(0, 0)); // from the corner it stood in
+      m_toolbarOffset = m_toolbar->pos() - toolbarBounds().topLeft(); // from the corner it stood in
       m_toolbarMoved  = true;
     }
     m_toolbarOffset += delta;
@@ -291,7 +332,9 @@ void ChartPane::addTab(Tab const &tab, int at) {
   m_tabBar->setTabToolTip(index, tab.name);
   if (tab.key == LIVE_KEY) {
     m_tabBar->setTabButton(index, QTabBar::RightSide, nullptr); // cannot be closed
-    m_tabBar->setTabButton(index, QTabBar::LeftSide, nullptr);
+    auto *dot = new LiveDot(m_tabBar);
+    dot->setActive(m_liveActive);
+    m_tabBar->setTabButton(index, QTabBar::LeftSide, dot);
   } else if (tab.loading) {
     m_tabBar->setTabButton(index, QTabBar::LeftSide, new TabSpinner(m_tabBar));
   }
@@ -435,6 +478,11 @@ void ChartPane::setLiveActive(bool active, QString const &idleText) {
   bool const changed{(m_liveActive != active) || (!active && (m_liveIdleText != idleText))};
   m_liveActive   = active;
   m_liveIdleText = idleText;
+  if (int const live{indexOf(LIVE_KEY)}; live >= 0) {
+    if (auto *dot = dynamic_cast<LiveDot *>(m_tabBar->tabButton(live, QTabBar::LeftSide))) {
+      dot->setActive(active);
+    }
+  }
   if (changed && liveShown()) {
     showTab(m_tabBar->currentIndex());
   }
@@ -489,6 +537,12 @@ void ChartPane::setPrimary(bool primary) {
 
 // ---------------------------------------------------------------- dragging tabs
 bool ChartPane::eventFilter(QObject *watched, QEvent *event) {
+  if (watched == m_toolbarArea) {
+    if (event->type() == QEvent::Resize) {
+      placeOverlays();
+    }
+    return QFrame::eventFilter(watched, event);
+  }
   if (event->type() == QEvent::MouseButtonPress) {
     emit activated();
   }
@@ -638,13 +692,38 @@ void ChartPane::setToolbarPinned(bool pinned) {
   m_chartRow->removeWidget(m_toolbar);
   if (pinned) {
     m_chartRow->insertWidget(0, m_toolbar, 0, Qt::AlignTop); // a strip beside the chart
+  } else if (m_toolbar->parentWidget() != toolbarHost()) {
+    m_toolbar->setParent(toolbarHost()); // floating over the card
   }
+  m_toolbar->setVisible(m_toolbarShown);
   placeOverlays();
 }
 
 void ChartPane::setToolbarShown(bool shown) {
+  m_toolbarShown = shown;
   m_toolbar->setVisible(shown);
   placeOverlays();
+}
+
+void ChartPane::setToolbarArea(QWidget *area) {
+  if (m_toolbarArea) {
+    m_toolbarArea->removeEventFilter(this);
+  }
+  m_toolbarArea = area;
+  if (m_toolbarArea) {
+    m_toolbarArea->installEventFilter(this); // placed again when it changes size
+  }
+  setToolbarPinned(m_toolbar->pinned());
+}
+
+QWidget *ChartPane::toolbarHost() const {
+  return m_toolbarArea ? m_toolbarArea : const_cast<ChartPane *>(this);
+}
+
+QRect ChartPane::toolbarBounds() const {
+  // inside the card's border; the pane: all of it
+  int const inset{m_toolbarArea ? static_cast<int>(2 * utils::ssf()) : 0};
+  return toolbarHost()->rect().adjusted(inset, inset, -inset, -inset);
 }
 
 void ChartPane::setTool(ChartToolbar::Tool tool, bool pad) {
@@ -674,25 +753,25 @@ void ChartPane::placeOverlays() {
   if (!chart || !m_toolbar) {
     return;
   }
-  // the plot area (inside the axes) of the chart shown, and the whole chart, in the pane
-  QCustomPlot *plot  = chart->getPlot();
-  QPoint const end   = plot->mapTo(this, plot->axisRect()->rect().bottomLeft());
-  QPoint const origin = plot->mapTo(this, QPoint(0, 0));
+  // the plot area (inside the axes) of the chart shown, in the pane
+  QCustomPlot *plot = chart->getPlot();
+  QPoint const end  = plot->mapTo(this, plot->axisRect()->rect().bottomLeft());
   int const    gap{static_cast<int>(6 * utils::ssf())};
-  bool const floating{m_toolbar->isVisibleTo(this) && !m_toolbar->pinned()};
-  // floating from the start: in the top left corner, over the value axis' labels (not the plot area); the chart's
-  // layout stays as it is
+  bool const   floating{m_toolbarShown && !m_toolbar->pinned()};
+  // floating from the start: at the card's left edge, level with the top of the chart (over its margin more than the
+  // value axis' labels); the chart's layout stays as it is
   if (floating) {
     m_toolbar->adjustSize();
-    QPoint at = origin + (m_toolbarMoved ? m_toolbarOffset : QPoint(gap, gap));
-    if (!m_toolbarMoved) { // left of the value axis' line, where the labels leave room for it
-      at.setX(std::min(at.x(), end.x() - m_toolbar->width()));
+    QRect const bounds = toolbarBounds();
+    QPoint      at     = bounds.topLeft() + m_toolbarOffset;
+    if (!m_toolbarMoved) {
+      at = QPoint(bounds.left(), plot->mapTo(toolbarHost(), QPoint(0, 0)).y() + gap);
     }
-    // anywhere on the chart (over the axes too), however far it was dragged
-    at.setX(std::clamp(at.x(), origin.x(), std::max(origin.x(), origin.x() + plot->width() - m_toolbar->width())));
-    at.setY(std::clamp(at.y(), origin.y(), std::max(origin.y(), origin.y() + plot->height() - m_toolbar->height())));
+    // anywhere on the card (over both charts), however far it was dragged
+    at.setX(std::clamp(at.x(), bounds.left(), std::max(bounds.left(), bounds.right() + 1 - m_toolbar->width())));
+    at.setY(std::clamp(at.y(), bounds.top(), std::max(bounds.top(), bounds.bottom() + 1 - m_toolbar->height())));
     if (m_toolbarMoved) {
-      m_toolbarOffset = at - origin;
+      m_toolbarOffset = at - bounds.topLeft();
     }
     m_toolbar->move(at);
     m_toolbar->raise();

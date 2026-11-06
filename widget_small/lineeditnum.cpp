@@ -84,7 +84,7 @@ void LineEditNum::afterCheck() {
 }
 
 void LineEditNum::checkValidator() {
-  double value{text().toDouble()};
+  double value{number()};
 
   if (value < m_validator->bottom()) {
     value = m_validator->bottom();
@@ -94,11 +94,15 @@ void LineEditNum::checkValidator() {
     value = m_validator->top();
   }
 
-  if (!m_isScientific) {
-    setText(QString::number(value, 'f', m_validator->decimals()));
-  } else {
-    setText(QString::number(value, 'E', m_validator->decimals()));
-  }
+  setText(formatted(value));
+}
+
+QString LineEditNum::formatted(double value) const {
+  return m_isScientific ? utils::formatSciE(value) : QString::number(value, 'f', m_validator->decimals());
+}
+
+double LineEditNum::number(bool *ok) const {
+  return utils::parseNumber(text(), ok);
 }
 
 bool LineEditNum::eventFilter(QObject *object, QEvent *event) {
@@ -125,10 +129,8 @@ void LineEditNum::setIsScientific(bool value) {
 void LineEditNum::updateText() {
   if (!m_sysValue) {
     setText(QString::number(0, 'f', m_validator->decimals())); // FIXME 0 or minValue=m_validator->bottom()
-  } else if (!m_isScientific) {
-    setText(QString::number(m_sysValue->getValue(), 'f', m_validator->decimals()));
   } else {
-    setText(QString::number(m_sysValue->getValue(), 'E', m_validator->decimals()));
+    setText(formatted(m_sysValue->getValue()));
   }
 }
 
@@ -137,7 +139,7 @@ void LineEditNum::updateVarByText() {
     return;
   }
 
-  m_sysValue->setValue(text().toDouble());
+  m_sysValue->setValue(number());
 }
 
 }
