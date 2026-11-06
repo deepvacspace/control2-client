@@ -2,6 +2,7 @@
 #define PROGRAMGRAPH_H
 
 #include <QFrame>
+#include <optional>
 
 #include "programmodel.h"
 #include "qcustomplot.h"
@@ -11,6 +12,10 @@ class ProgramGraph : public QFrame {
   Q_OBJECT
 public:
   explicit ProgramGraph(QWidget *parent = nullptr);
+  // the chamber's pressure channel label ("Pressure, mbar"): a programmed pressure is in its unit, drawn in Torr
+  void setPressureLabel(QString const &label);
+  // the chamber's temperature now (none: not known): where a ramp in the first interval is drawn from
+  void setStartTemperature(std::optional<double> temperature);
   void setModel(ProgramModel *newModel);
   void setGraphUpdatesEnabled(bool enable); // to preven multiple reDraw calls
   void selectInterval(int index);
@@ -26,7 +31,7 @@ private:
   void handleMouseDoubleClicked(QMouseEvent *event);
   int  getIntervalIndexOnPlot(QPoint onScreenPosition);
 
-  ProgramModel          *m_model;
+  ProgramModel          *m_model{nullptr};
   QStringList            m_paramOrder;
   QVector<int>           m_paramTypes; // type of each param
   QList<QVector<double>> m_chartData;
@@ -34,6 +39,9 @@ private:
   QCustomPlot                      *m_plot;
   QSharedPointer<QCPAxisTickerText> ticker;
   QCPItemRect                      *selectionRect;
+
+  QString m_pressureLabel;
+  std::optional<double> m_startTemp;
 
   int m_flagsParamIndexInModel;
   int m_flagsParamType;

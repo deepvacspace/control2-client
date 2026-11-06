@@ -9,6 +9,9 @@ namespace deepvaccontrol {
 
 constexpr inline quint8 const  AWAIT_BIT{8U}; // Flag in manual/program job
 constexpr inline quint8 const  RAMP_BIT{9U};  // Flag in manual/program job
+// App-only flag of a program interval, with RAMP_BIT: the ramp's duration comes from a ramp rate given by the user.
+// The PLC reads bits 1, 2, 8 and 9 only, so to it this is a plain linear ramp.
+constexpr inline quint8 const  CUSTOM_RATE_BIT{10U};
 inline QString const           PROGS_DIR{"data/prog/"};
 inline QString const           INTERVALS_DIR{"data/"};
 // full-day recordings, one Parquet file per day (recordingfile.h); INTERVALS_DIR keeps the older .dat days

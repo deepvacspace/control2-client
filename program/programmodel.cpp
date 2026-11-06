@@ -2,6 +2,8 @@
 
 #include <winsock.h>
 
+#include <algorithm>
+
 #include "constants.h"
 #include "utils.h"
 
@@ -45,9 +47,10 @@ bool ProgramModel::setIntervalFromVariantMap(int index, QVariantMap const &param
   QList<QStandardItem *> columnToAdd;
 
   for (int i{0U}; i < m_paramListOrder.size(); ++i) {
-    QString const &paramName = m_paramListOrder[i];
-    float          paramValue{paramVariant[paramName].toFloat()};
+    QString const &paramName        = m_paramListOrder[i];
     auto           paramSettingsMap = m_paramListVariant[i].toMap();
+    // a channel the program was saved without (a pressure added to the chamber): its default, not controlled
+    float paramValue{paramVariant.value(paramName, paramSettingsMap.value("value")).toFloat()};
     if (paramSettingsMap.contains("min")) {
       float const paramMin{paramSettingsMap["min"].toFloat()};
       float const paramMax{paramSettingsMap["max"].toFloat()};
@@ -264,13 +267,14 @@ bool ProgramModel::setProgramVariant(QVariantMap const &loadedProgramVariant) {
   }
 
   {
-    QStringList fileParamList{fileParamMap.keys()};
-    QStringList settingsParamList{m_paramListOrder};
-    fileParamList.sort();
-    settingsParamList.sort();
-    if (fileParamList != settingsParamList) {
-      qWarning() << "file interval params: " << fileParamMap.keys();
-      qWarning() << "settings interval params: " << settingsParamList;
+    // the program's channels must be this chamber's: some of them may be missing (saved before the chamber had them,
+    // given their defaults), none other. The flag bits are the PLC's (temperature 1, pressure 2) either way.
+    QStringList const fileParamList{fileParamMap.keys()};
+    bool const        known{std::all_of(fileParamList.cbegin(), fileParamList.cend(),
+                                        [this](QString const &name) { return m_paramListOrder.contains(name); })};
+    if (!known || !fileParamMap.contains("duration") || !fileParamMap.contains("flags")) {
+      qWarning() << "file interval params: " << fileParamList;
+      qWarning() << "settings interval params: " << m_paramListOrder;
       return false;
     }
   }

@@ -4,12 +4,17 @@
 #include <QTimer>
 
 #include "constants.h"
+#include "pressureunits.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
 ProgramGraph::ProgramGraph(QWidget *parent) : QFrame{parent} {
   setFrameStyle(QFrame::Box | QFrame::Plain);
   setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+}
+
+void ProgramGraph::setPressureLabel(QString const &label) {
+  m_pressureLabel = label;
 }
 
 void ProgramGraph::setModel(ProgramModel *newModel) {
@@ -57,6 +62,17 @@ void ProgramGraph::setGraphUpdatesEnabled(bool enable) {
   reDraw();
 }
 
+void ProgramGraph::setStartTemperature(std::optional<double> temperature) {
+  // small moves are not worth a redraw
+  if ((temperature.has_value() == m_startTemp.has_value()) && (!temperature || (std::abs(*temperature - *m_startTemp) < 0.1))) {
+    return;
+  }
+  m_startTemp = temperature;
+  if (m_model) {
+    reDraw();
+  }
+}
+
 void ProgramGraph::selectInterval(int index) {
   // m_lastSelectedIndex = index;
 
@@ -71,10 +87,19 @@ void ProgramGraph::initGui() {
   m_plot = new QCustomPlot(this);
   QTimer::singleShot(0, m_plot, [plot = m_plot] { theme::stylePlot(plot); });
 
+  // a programmed pressure: in Torr on a logarithmic axis at the right
+  bool const hasPressure{m_paramOrder.contains(QStringLiteral("pres"))};
+  if (hasPressure) {
+    theme::setupPressureAxis(m_plot->yAxis2);
+  }
   for (int i{0}; i < m_paramOrder.size(); ++i) {
-    m_plot->addGraph();
+    bool const pressure{m_paramOrder.at(i) == QLatin1String("pres")};
+    m_plot->addGraph(m_plot->xAxis, pressure ? m_plot->yAxis2 : m_plot->yAxis);
 
     QVariantMap paramMap = m_model->getParamListVariant().at(i).toMap();
+    if (pressure) {
+      m_plot->graph(i)->setPen(QPen(theme::colors().accent, 2));
+    }
     if (paramMap.contains("color")) {
       QColor color(paramMap.value("color").toString());
       if (color.isValid()) {
@@ -103,7 +128,7 @@ void ProgramGraph::initGui() {
   m_plot->xAxis->setLabel(tr("Interval"));
   QStringList quantities;
   for (int i{0}; i < m_paramOrder.size(); ++i) {
-    if (m_plot->graph(i)->visible()) {
+    if (m_plot->graph(i)->visible() && (m_plot->graph(i)->valueAxis() == m_plot->yAxis)) {
       quantities << ((m_paramOrder.at(i) == QLatin1String("temp")) ? tr("Temperature, °C")
                                                                      : m_model->getParamListVariant().at(i).toMap().value("label").toString());
     }
@@ -173,8 +198,19 @@ void ProgramGraph::calculateChartData() {
         case 0: // any float point number
         {
           if ("temp" == m_paramOrder[i]) {
-            m_chartData[i] << (intervalTempRamp ? (m_chartData[i].isEmpty() ? 25 : m_chartData[i].last()) : itemData);
-            m_chartData[i] << itemData;
+            // none where the interval controls only the pressure; a ramp from the previous interval's target (as the
+            // PLC: also when that one controlled only the pressure), the first one from the chamber's temperature
+            // (25 °C when not known)
+            bool const   controlled{utils::getBitOfDword(intervalFlags, i)};
+            double const from{(colonIndex == 0) ? m_startTemp.value_or(25.0)
+                                                : m_model->getStandardModel()->item(i, colonIndex - 1)->data(itemDataType).toDouble()};
+            m_chartData[i] << (!controlled ? qQNaN() : intervalTempRamp ? from : itemData);
+            m_chartData[i] << (controlled ? itemData : qQNaN());
+          } else if ("pres" == m_paramOrder[i]) {
+            // in Torr; none at or below zero on the logarithmic axis
+            double const torr{utils::getBitOfDword(intervalFlags, i) ? pressure::toTorr(itemData, m_pressureLabel) : qQNaN()};
+            m_chartData[i] << ((torr > 0.0) ? torr : qQNaN());
+            m_chartData[i] << ((torr > 0.0) ? torr : qQNaN());
           } else {
             m_chartData[i] << (utils::getBitOfDword(intervalFlags, i) ? itemData : qQNaN());
             m_chartData[i] << (utils::getBitOfDword(intervalFlags, i) ? itemData : qQNaN());
@@ -223,6 +259,13 @@ void ProgramGraph::reDraw() {
 
   m_plot->rescaleAxes();
   m_plot->yAxis->setRange(m_plot->yAxis->range().lower - 5, m_plot->yAxis->range().upper + 5);
+  if (m_plot->yAxis2->visible()) { // the programmed pressure, in whole decades
+    int const pi{static_cast<int>(m_paramOrder.indexOf(QStringLiteral("pres")))};
+    bool      found{false};
+    QCPRange const range = m_plot->graph(pi)->getValueRange(found, QCP::sdPositive);
+    auto const [lower, upper] = found ? pressure::decadeRange(range.lower, range.upper) : std::pair{0.999e-3, 1.001e3};
+    m_plot->yAxis2->setRange(lower, upper);
+  }
   m_plot->replot();
 
   selectInterval(m_model->getSelectedInterval());
