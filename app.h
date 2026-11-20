@@ -29,7 +29,12 @@ public:
   ~App() override;
   void       start();
   UiLanguage uiLanguage() const noexcept;
-  void runtimeSetups();      // right after loading settings file
+  void runtimeSetups();      // right after loading settings file (the window made, not shown yet)
+  // the window shown, maximized, laid out at the screen's size from its first frame; returns it
+  QWidget *showWindow();
+  // --demo-shot: an example run as if a chamber were connected (nothing sent, nothing recorded in experiments), the
+  // Live tab saved into path at twice the window's resolution, then quits. Not after start(): no chamber is connected
+  void runDemoShot(QString const &path);
 
 private:
   void initSettings();

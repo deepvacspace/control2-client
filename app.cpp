@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include "demoshot.h"
+
 #include "experimentrecorder.h"
 
 #include <QCoreApplication>
@@ -8,6 +10,8 @@
 #include <QFile>
 #include <QHash>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QProcess>
 #include <QSaveFile>
 #include <QMessageBox>
@@ -212,7 +216,7 @@ void App::runtimeSetups() {
 
   // Make default program, todo: add settings checks
   m_resHolder.defaultProgram
-    = new ProgramModel{settingMapVariant["control_params"].toList(), ProgramModel::ProgType::PROG, this};
+    = new ProgramModel{m_settings.controlParams(), ProgramModel::ProgType::PROG, this};
   m_resHolder.defaultProgram->setIntervalFromVariantMap(0, settingMapVariant["default_program"].toMap());
 
   //
@@ -225,7 +229,6 @@ void App::runtimeSetups() {
   // Init UI window
   m_mainWindow = new MainWindow(&m_resHolder, m_windowMode);
   connect(m_mainWindow, &MainWindow::aboutClosed, this, &App::stopOpc);
-  m_mainWindow->showMaximized();
   m_hardStatus.requestStatusEmit(); // to update window
 
   // Create Alarm dialog
@@ -251,6 +254,16 @@ void App::runtimeSetups() {
   });
 
   connect(m_gateTcp, &GateTcp::showRedFlag, m_mainWindow, &MainWindow::setConnectionErrorFlash);
+}
+
+QWidget *App::showWindow() {
+  // its size before it is shown: otherwise it is laid out first at the size its contents ask for and drawn so until
+  // the maximized size arrives (a cramped first frame while the start goes on)
+  if (QScreen const *screen = QGuiApplication::primaryScreen()) {
+    m_mainWindow->setGeometry(screen->availableGeometry());
+  }
+  m_mainWindow->showMaximized();
+  return m_mainWindow;
 }
 
 void App::connectToServer() {
@@ -558,6 +571,18 @@ void App::setupOpc() {
 }
 
 // После установления соединения с оборудованием
+void App::runDemoShot(QString const &path) {
+  // "connected" without the OPC server or any request to a chamber
+  disconnect(&m_status, &StatusManager::requestOnline, this, &App::startOnline);
+  m_status.setAppState(StatusManager::AppState::ONLINE);
+  if (m_states.contains("status_condition")) {
+    m_hardStatus.setup(true, m_states.getSysValue("status_condition"));
+  }
+  demo::fillExampleRun(&m_states, m_dataManager);
+  connect(m_mainWindow, &MainWindow::screensExported, qApp, &QCoreApplication::quit, Qt::QueuedConnection);
+  m_mainWindow->saveLiveShot(path, 2.0);
+}
+
 void App::startOnline() {
   // start OPC if need (after a reconnection or a chamber switch the running server is kept)
   if (!m_opcThread) {
