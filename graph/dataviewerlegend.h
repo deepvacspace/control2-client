@@ -11,31 +11,30 @@ class CustomLegendItem : public QCPPlottableLegendItem {
   Q_OBJECT
 public:
   CustomLegendItem(QCPLegend *parent, QString const &label, QPen const &iconPen);
-  void setValue(double value);
+  // the line's value at the cursor, after its name ("" while there is none)
+  void setValueText(QString const &text);
+  // room for the value after the name (a fixed width: the box does not move while the values change)
   void setValueVisible(bool value);
   void setPen(QPen const &pen);
-
-  // // getters:
-  // QCPAbstractPlottable *plottable() { return mPlottable; }
 
 protected:
   void drawLegendIcon(QCPPainter *painter, QRectF const &rect);
 
   // property members:
   QString m_label;
-  double  m_value;
+  QString m_valueText;
   bool    m_value_visibility;
-  size_t  m_value_paddding;
-  size_t  m_label_paddding;
   QPen    m_iconPen;
+
+  [[nodiscard]] int valueWidth(QFontMetrics const &metrics) const;
 
   // reimplemented virtual methods:
   virtual void  draw(QCPPainter *painter) override;
   virtual QSize minimumOuterSizeHint() const override;
 };
 
-inline void CustomLegendItem::setValue(double value) {
-  m_value = value;
+inline void CustomLegendItem::setValueText(QString const &text) {
+  m_valueText = text;
 }
 
 inline void CustomLegendItem::setValueVisible(bool visible) {
@@ -60,9 +59,13 @@ public:
   explicit DataViewerLegend(QCustomPlot *plot);
   void setStyles(QVariantList const &stateListVariant);
   void setStyle(int index, QVariantMap const &stateMapVariant);
-  void setValues(QDateTime const &timeStamp, QVector<double> const &values);
+  // each channel's value as text, by channel index (not the item's place in the grid)
+  void setValueTexts(QStringList const &texts);
   void setVisible(bool value);
+  // the time row and room for the values (unused: the chart's label at the mouse tells the time)
   void setValueVisible(bool visible);
+  // room for a value after each name, without the time row
+  void setItemValuesVisible(bool visible);
   void updateTimePosition();
   // visible channels only, `columns` per row (hidden ones after them, so they leave no gaps)
   void compactLayout(int columns);

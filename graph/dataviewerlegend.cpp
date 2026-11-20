@@ -7,11 +7,13 @@ namespace deepvaccontrol {
 CustomLegendItem::CustomLegendItem(QCPLegend *parent, QString const &label, QPen const &iconPen)
     : QCPPlottableLegendItem(parent, nullptr)
     , m_label{label}
-    , m_iconPen{iconPen}
-    , m_value{0.0}
     , m_value_visibility{true}
-    , m_value_paddding{static_cast<size_t>(40U * utils::ssf())}
-    , m_label_paddding{static_cast<size_t>(10U * utils::ssf())} {
+    , m_iconPen{iconPen} {
+}
+
+int CustomLegendItem::valueWidth(QFontMetrics const &metrics) const {
+  // a gap after the name, then room for the widest values: "−8.88×10⁻¹⁰" or "−8888.888"
+  return metrics.horizontalAdvance(QStringLiteral("  ")) + metrics.horizontalAdvance(QStringLiteral("−8.88×10⁻¹⁰"));
 }
 
 void CustomLegendItem::setPen(QPen const &pen) {
@@ -50,27 +52,20 @@ void CustomLegendItem::draw(QCPPainter *painter) {
     textRect.height(),
     iconSize.height()); // if text has smaller height than icon, center text vertically in icon height, else align tops
 
-  // draw value
-  if (m_value_visibility) {
-    painter->drawText(mRect.x() + iconSize.width() + mParentLegend->iconTextPadding(),
-                      mRect.y(),
-                      m_value_paddding,
-                      textHeight,
-                      Qt::TextDontClip | Qt::AlignRight,
-                      utils::formatScientific(m_value, 1)
-                      // QString::number(m_value, 'f', 1)
-                      );
-  }
-
-  size_t const totalTextPadding{m_value_visibility ? (m_value_paddding + m_label_paddding) : 0U};
-
   // draw label
-  painter->drawText(mRect.x() + iconSize.width() + mParentLegend->iconTextPadding() + totalTextPadding,
-                    mRect.y(),
-                    textRect.width(),
-                    textHeight,
-                    Qt::TextDontClip,
-                    m_label);
+  int const textLeft{mRect.x() + iconSize.width() + mParentLegend->iconTextPadding()};
+  painter->drawText(textLeft, mRect.y(), textRect.width(), textHeight, Qt::TextDontClip, m_label);
+
+  // draw value, after the name (in bold: it is what changes)
+  if (m_value_visibility && !m_valueText.isEmpty()) {
+    int const gap{painter->fontMetrics().horizontalAdvance(QStringLiteral("  "))};
+    painter->save();
+    QFont bold = getFont();
+    bold.setBold(true);
+    painter->setFont(bold);
+    painter->drawText(textLeft + textRect.width() + gap, mRect.y(), valueWidth(painter->fontMetrics()), textHeight, Qt::TextDontClip, m_valueText);
+    painter->restore();
+  }
 
   // draw icon:
   painter->save();
@@ -105,9 +100,11 @@ QSize CustomLegendItem::minimumOuterSizeHint() const {
   // same (scaled) icon width as draw() uses, so the label is not cut by the next item
   QSize const        iconSize{static_cast<int>(mParentLegend->iconSize().width() * utils::ssf()), mParentLegend->iconSize().height()};
   QRect const        textRect{fontMetrics.boundingRect(0, 0, 0, iconSize.height(), Qt::TextDontClip, m_label)};
-  size_t const       totalTextPadding{m_value_visibility ? (m_value_paddding + m_label_paddding) : 0U};
+  QFont bold = getFont();
+  bold.setBold(true);
+  int const valueRoom{m_value_visibility ? valueWidth(QFontMetrics(bold)) : 0};
 
-  result.setWidth(iconSize.width() + mParentLegend->iconTextPadding() + totalTextPadding + textRect.width());
+  result.setWidth(iconSize.width() + mParentLegend->iconTextPadding() + textRect.width() + valueRoom);
   result.setHeight(qMax(textRect.height(), iconSize.height()));
   result.rwidth() += mMargins.left() + mMargins.right();
   result.rheight() += mMargins.top() + mMargins.bottom();
@@ -121,15 +118,15 @@ DataViewerLegend::DataViewerLegend(QCustomPlot *plot) : m_plot{plot}, m_valueVis
 
     // add time label and time value element in layout
     m_timeLay = new QCPLayoutInset();
-    m_timeLay->setMinimumSize(10 * utils::ssf(), 20 * utils::ssf());
+    m_timeLay->setMinimumSize(theme::dp(18), theme::dp(37));
     m_legend->addElement(0, 0, m_timeLay);
 
     m_timeValue = new QCPTextElement(m_plot, "00:00:00");
     m_timeLabel = new QCPTextElement(m_plot, QObject::tr("Time"));
-    m_timeValue->setTextColor(Qt::black);
+    m_timeValue->setTextColor(theme::colors().text);
     m_timeValue->setTextFlags(Qt::AlignLeft);
     m_timeValue->setLayer("legend");
-    m_timeLabel->setTextColor(Qt::black);
+    m_timeLabel->setTextColor(theme::colors().text);
     m_timeLabel->setTextFlags(Qt::AlignLeft);
     m_timeLabel->setLayer("legend");
 
@@ -196,12 +193,18 @@ void DataViewerLegend::setStyle(int index, QVariantMap const &stateMapVariant) {
   legendElement->setPen(iconPen);
 }
 
-void DataViewerLegend::setValues(QDateTime const &timeStamp, QVector<double> const &values) {
+void DataViewerLegend::setValueTexts(QStringList const &texts) {
   // by channel, independent of the items' positions in the legend grid
-  for (size_t i{0U}; (i < m_legendElements.size()) && (i < static_cast<size_t>(values.size())); ++i) {
-    m_legendElements[i]->setValue(values[static_cast<int>(i)]);
+  for (size_t i{0U}; i < m_legendElements.size(); ++i) {
+    m_legendElements[i]->setValueText(texts.value(static_cast<int>(i)));
   }
-  m_timeValue->setText(timeStamp.toString("hh:mm:ss"));
+}
+
+void DataViewerLegend::setItemValuesVisible(bool visible) {
+  m_valueVisible = visible;
+  for (CustomLegendItem *item : m_legendElements) {
+    item->setValueVisible(visible);
+  }
 }
 
 void DataViewerLegend::setVisible(bool value) {
@@ -254,6 +257,6 @@ void DataViewerLegend::updateTimePosition() {
   m_timeLabel->setMargins(
     QMargins(m_legend->iconSize().width() * utils::ssf() + m_legend->iconTextPadding() + totalTextPadding, 2, 0, 2));
 
-  m_timeValue->setMargins(QMargins(36 * utils::ssf(), 2, 0, 2));
+  m_timeValue->setMargins(QMargins(theme::dp(68), theme::dp(4), 0, theme::dp(4)));
 }
 }

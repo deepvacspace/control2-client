@@ -148,6 +148,7 @@ signals:
 
 protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
+  void showEvent(QShowEvent *event) override; // the data that came while hidden drawn now
 
 private:
   void applyStyles();
@@ -159,6 +160,9 @@ private:
   void updateValueCursor(QPointF const &pos);
   // crosshair at (x, y) of the time / value axes; label and circle at sample `index` of `graph` (-1: none)
   void showCursor(double x, double y, int graph, int index);
+  // Labels and Tooltip both on: the labels tell each line's value at the cursor (time x)
+  void updateLegendValueMode();
+  void showLegendValues(double x);
   void initGraphs(uint16_t graphCount);
   void mouseEventHeadler(QMouseEvent *event);
   void wheelEventHandler(QWheelEvent *event);
@@ -212,7 +216,8 @@ private:
   int                        m_setpointChannel{-1};
   QVector<double>            m_setpointTimes;
   QVector<double>            m_setpointValues;
-  void                       updateSetpointLine();
+  // from: the first sample of the channel's line replaced (updateData: the ones before it are drawn already)
+  void                       updateSetpointLine(qsizetype from = 0);
   int                        m_smoothing{1};
   bool                       m_relativeTime{false};
   bool                       m_scatter{false};
@@ -230,6 +235,7 @@ private:
   QPointF                    m_pinchB;
   QCPRange                   m_pinchX;
   QCPRange                   m_pinchY;
+  QCPRange                   m_pinchY2; // the logarithmic axis at the pinch's start
   qint64                     m_lastTapMs{0};
   QPointF                    m_lastTapPos;
   QSharedPointer<QCPAxisTicker> m_clockTicker;
@@ -246,9 +252,16 @@ private:
   ControlMode m_controlMode;
   double      m_fitStart{qQNaN()};
   void        fitValues(double from, double to); // the value axes to the lines between these times
+  void        fitAxis(QCPAxis *axis, double from, double to); // one value axis to its lines between these times
+  // the logarithmic axis (pressure) moved and zoomed along with the values, in decades as it is drawn
+  [[nodiscard]] bool logAxisShown() const;
+  void               zoomLogAxis(double anchorPixelY, double mul); // anchor NaN: about its middle
+  void               moveLogAxis(double fraction);                 // by a fraction of its height (up: positive)
+  void               setLogRange(double lowerDecade, double upperDecade);
   ControlMode m_controlModeOnPress;
   bool        m_labelsVisible{false};
   bool        m_valuesVisible{false};
+  bool        m_legendValues{false}; // the labels show the values at the cursor
   QPointF     m_pointPress;
   QPointF     m_pointRelease;
 
@@ -259,6 +272,13 @@ private:
 
   QTimer           m_renderTimer;
   std::atomic_bool m_dirtyForUi{false}; // or just bool if same thread
+
+  // what the lines hold: updateData adds only the newer samples to it (m_drawnCount 0: all of it again)
+  DataHolder const *m_drawnHolder{nullptr};
+  qsizetype         m_drawnCount{0}; // the data's samples then
+  double            m_drawnFirst{0.0};
+  double            m_drawnLast{0.0};
+  qsizetype         m_setpointCount{0}; // samples of the setpoint channel's line
 
   // bool m_isCursorActive{false};
 };

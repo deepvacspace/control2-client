@@ -13,6 +13,7 @@ class QLabel;
 class QTimer;
 
 namespace deepvaccontrol {
+class DataHolder;
 struct ResHolder;
 
 /**
@@ -45,6 +46,13 @@ private:
   QMap<int, QCPGraph *>   m_graphs; // by channel (state) index
   QLabel      *m_title;
   QTimer      *m_timer;
+  // what is drawn: a refresh adds only the newer samples to it
+  DataHolder const *m_drawnHolder{nullptr};
+  qsizetype         m_drawnCount{0}; // the recording's samples then
+  double            m_drawnLast{0.0};
+  bool              m_drawnRunning{false};
+  double            m_drawnJobStart{0.0};
+  QMap<int, bool>   m_drawnLines;
 };
 
 }

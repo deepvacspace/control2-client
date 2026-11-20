@@ -28,10 +28,9 @@ constexpr int    REFRESH_MS{2000};
 HomeTrend::HomeTrend(ResHolder *resHolder, QWidget *parent)
     : QFrame{parent}, m_resHolder{resHolder}, m_plot{new QCustomPlot(this)}, m_timer{new QTimer(this)} {
   setObjectName("homeCard");
-  double const ssf{utils::ssf()};
   auto        *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(14 * ssf, 12 * ssf, 14 * ssf, 10 * ssf);
-  lay->setSpacing(4 * ssf);
+  lay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(20));
+  lay->setSpacing(theme::dp(8));
   m_title = new QLabel(this);
   m_title->setObjectName("cardTitle");
   lay->addWidget(m_title);
@@ -42,7 +41,7 @@ HomeTrend::HomeTrend(ResHolder *resHolder, QWidget *parent)
   m_plot->xAxis->setTicker(ticker);
   m_plot->legend->setVisible(true);
   m_plot->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignTop | Qt::AlignLeft);
-  m_plot->setMinimumHeight(static_cast<int>(160 * ssf));
+  m_plot->setMinimumHeight(theme::dp(300));
   m_plot->setInteractions({}); // a glance, not a tool: the Analysis page is for exploring
   m_plot->xAxis->setLabel(tr("Time"));
   m_plot->yAxis->setLabel(tr("Temperature, °C"));
@@ -82,6 +81,7 @@ void HomeTrend::setStyles(QVariantList const &styles) {
   m_styles = styles;
   m_plot->clearGraphs();
   m_graphs.clear();
+  m_drawnCount = 0;
   for (int i{0}; i < m_styles.size(); ++i) {
     QVariantMap const style = m_styles[i].toMap();
     if (!style.contains(QStringLiteral("visible"))) {
@@ -102,6 +102,7 @@ void HomeTrend::setStyle(int index, QVariantMap const &style) {
   }
   m_styles[index] = style;
   applyStyle(index);
+  m_drawnCount = 0; // its unit may have changed: all of it again
   refresh();
 }
 
@@ -142,37 +143,67 @@ void HomeTrend::refresh() {
   auto const                     data   = m_resHolder->dataManager ? m_resHolder->dataManager->getIntervalToAdd() : nullptr;
   QVector<double> const          all    = data ? data->getTimes() : QVector<double>{};
   QVector<QVector<double>> const states = data ? data->getStates() : QVector<QVector<double>>{};
-  qsizetype                      first{0};
-  while ((first < all.size()) && (all[first] < from)) {
-    ++first;
+  qsizetype const                n{all.size()};
+  qsizetype const                first{std::lower_bound(all.cbegin(), all.cend(), from) - all.cbegin()}; // the times are in order
+
+  // the lines drawn: a setpoint only means something while a job runs
+  QMap<int, bool> drawnLines;
+  for (auto it = m_graphs.cbegin(); it != m_graphs.cend(); ++it) {
+    QVariantMap const style = m_styles.value(it.key()).toMap();
+    bool const        setpoint{style.value(QStringLiteral("name")).toString().endsWith(QStringLiteral("_ref"))};
+    drawnLines.insert(it.key(), style.value(QStringLiteral("visible")).toBool() && (!setpoint || running) && (it.key() < states.size()));
   }
-  QVector<double> const times = all.mid(first);
-  int                   shown{0};
-  QStringList           otherUnits;
+  // only the samples newer than the last drawing (and the last one drawn, replaced when its time came again), the
+  // older ones out of the window dropped; all of it for another recording, job or choice of lines
+  bool const continues{data && (data.get() == m_drawnHolder) && (running == m_drawnRunning) && (!running || (jobStart == m_drawnJobStart))
+                       && (drawnLines == m_drawnLines) && (m_drawnCount > 1) && (m_drawnCount <= n) && (all[m_drawnCount - 1] == m_drawnLast)};
+  qsizetype const       start{continues ? std::max(first, m_drawnCount - 1) : first};
+  QVector<double> const times = all.mid(start);
+  m_drawnHolder               = data.get();
+  m_drawnCount                = n;
+  m_drawnLast                 = (n > 0) ? all.last() : qQNaN();
+  m_drawnRunning              = running;
+  m_drawnJobStart             = jobStart;
+  m_drawnLines                = drawnLines;
+
+  int         shown{0};
+  QStringList otherUnits;
   for (auto it = m_graphs.cbegin(); it != m_graphs.cend(); ++it) {
     QVariantMap const style = m_styles.value(it.key()).toMap();
     QString const     name  = style.value(QStringLiteral("name")).toString();
     QString const     label = style.value(QStringLiteral("label")).toString();
-    bool const        torr{pressure::isPressureChannel(name)};
-    // a setpoint only means something while a job runs
-    bool const      setpoint{name.endsWith(QStringLiteral("_ref"))};
-    bool const      drawn{style.value(QStringLiteral("visible")).toBool() && (!setpoint || running)};
-    QVector<double> values;
-    values.reserve(times.size());
-    for (qsizetype i{first}; i < all.size(); ++i) {
-      double value{(drawn && (it.key() < states.size())) ? states[it.key()].value(i, qQNaN()) : qQNaN()};
-      if (torr) {
-        value = pressure::toTorr(value, label);
-        value = (value > 0.0) ? value : qQNaN(); // none at or below zero on the logarithmic axis
+    bool const        drawn{drawnLines.value(it.key())};
+    QCPGraph         *graph = it.value();
+    if (!drawn) {
+      graph->data()->clear();
+    } else {
+      // the pressure in Torr: its unit's factor once (pressure::toTorr reads the unit from the label)
+      bool const             torr{pressure::isPressureChannel(name)};
+      double const           factor{torr ? pressure::toTorr(1.0, label) : 1.0};
+      QVector<double> const &channel = states[it.key()];
+      QVector<double>        values;
+      values.reserve(times.size());
+      for (qsizetype i{start}; i < n; ++i) {
+        double value{channel.value(i, qQNaN())};
+        if (torr) {
+          value = (std::isfinite(value) && (std::fabs(value) <= 1e9)) ? value * factor : qQNaN(); // as pressure::toTorr
+          value = (value > 0.0) ? value : qQNaN(); // none at or below zero on the logarithmic axis
+        }
+        values << value;
       }
-      values << value;
+      if (continues) {
+        graph->data()->removeBefore(from);
+        graph->data()->removeAfter(all[start - 1]);
+        graph->addData(times, values, true);
+      } else {
+        graph->setData(times, values, true);
+      }
     }
-    it.value()->setData(times, values, true);
-    it.value()->setVisible(drawn);
+    graph->setVisible(drawn);
     if (drawn) {
-      it.value()->addToLegend();
+      graph->addToLegend();
       ++shown;
-      if (it.value()->valueAxis() == m_otherAxis) {
+      if (graph->valueAxis() == m_otherAxis) {
         otherUnits << pressure::unitOf(label);
       }
     } else {

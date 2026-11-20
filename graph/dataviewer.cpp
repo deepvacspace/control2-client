@@ -1,5 +1,7 @@
 #include "dataviewer.h"
 
+#include <numeric>
+
 #include "theme.h"
 
 #include <QHBoxLayout>
@@ -81,9 +83,14 @@ QString durationText(double seconds) {
     .arg(total % 60, 2, 10, QLatin1Char('0'));
 }
 
+// the samples a centred moving average spans (odd)
+int averageWindow(int samples) {
+  return (samples % 2 == 0) ? samples + 1 : samples;
+}
+
 // centred moving average ignoring NaN, NaN gaps are kept
 QVector<double> smoothed(QVector<double> const &y, int samples) {
-  int const window{(samples % 2 == 0) ? samples + 1 : samples};
+  int const window{averageWindow(samples)};
   if ((window <= 1) || (y.size() < window)) {
     return y;
   }
@@ -123,7 +130,7 @@ QVariantMap shownStyle(QVariantMap style) {
 QString formatValue(double value) {
   double const absValue{std::fabs(value)};
   if ((absValue != 0.0) && ((absValue < 1e-2) || (absValue >= 1e6))) {
-    return QString::number(value, 'e', 2);
+    return utils::formatScientific(value, 2, false);
   }
   return QString::number(value, 'f', absValue >= 100 ? 1 : 3);
 }
@@ -136,6 +143,7 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
     , m_legendController(m_plot)
     , m_useLogAxis{addSecondLogAxis} {
   m_plot->setAutoAddPlottableToLegend(false);
+  m_plot->setNoAntialiasingOnDrag(true); // dragged: drawn plainer, so it follows the finger
   auto mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
   mainLay->addWidget(m_plot);
@@ -151,6 +159,9 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   if (m_useLogAxis) { // the pressure's (titled by the lines on it, see updateAxisTitles)
     theme::setupPressureAxis(m_plot->yAxis2);
     m_plot->yAxis2->setRange(1e-7, 1e3);
+    // dragging and box zoom move it with the values (QCustomPlot keeps it logarithmic)
+    m_plot->axisRect()->setRangeDragAxes({m_plot->xAxis}, {m_plot->yAxis, m_plot->yAxis2});
+    m_plot->axisRect()->setRangeZoomAxes({m_plot->xAxis}, {m_plot->yAxis, m_plot->yAxis2});
   }
 
   connect(m_plot, &QCustomPlot::mousePress, this, &DataViewer::mouseEventHeadler);
@@ -191,6 +202,7 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   // value label: over the legend box
   m_plot->addLayer("cursor", m_plot->layer("legend"), QCustomPlot::limAbove);
   m_plot->layer("cursor")->setMode(QCPLayer::lmBuffered);
+  m_plot->layer("legend")->setMode(QCPLayer::lmBuffered); // its values follow the cursor without redrawing the lines
 
   m_cursor = new QCPItemStraightLine(m_plot);
   m_cursor->setLayer("cursor");
@@ -234,9 +246,8 @@ DataViewer::DataViewer(Logger *logger, bool addSecondLogAxis, QWidget *parent)
   m_textItem->setPositionAlignment(Qt::AlignRight | Qt::AlignTop);
   m_textItem->position->setType(QCPItemPosition::ptAxisRectRatio);
   m_textItem->position->setCoords(0.98, 0.0);
-  m_textItem->setColor(QColor{128, 128, 128, 160});
+  m_textItem->setProperty("themedLabel", true); // colours from theme::stylePlot(), again when the theme changes
   theme::stylePlot(m_plot);
-  m_textItem->setBrush(QBrush(QColor(theme::colors().panel.red(), theme::colors().panel.green(), theme::colors().panel.blue(), 200)));
   {
     QFont font;
     font.setBold(true);
@@ -315,7 +326,8 @@ void DataViewer::onDataChanged() {
 }
 
 void DataViewer::onRenderTick() {
-  if (!m_data) {
+  // hidden (another page or tab): kept for when it shows again
+  if (!m_data || !isVisible()) {
     return;
   }
 
@@ -324,16 +336,27 @@ void DataViewer::onRenderTick() {
   }
 }
 
+void DataViewer::showEvent(QShowEvent *event) {
+  QWidget::showEvent(event);
+  if (m_data && m_dirtyForUi.exchange(false, std::memory_order_relaxed)) {
+    updateData();
+  }
+}
+
 void DataViewer::setStyles(QVariantList const &stateListVariant) {
   // the pressure drawn in Torr: its factor from the unit of its label (the styles keep the label, e.g. for exports)
-  QVariantList shown;
-  m_torrScale.clear();
+  QVariantList    shown;
+  QVector<double> scales;
   for (QVariant const &style : stateListVariant) {
     QVariantMap const map = style.toMap();
     shown << shownStyle(map);
-    m_torrScale << (pressure::isPressureChannel(map.value(QStringLiteral("name")).toString())
-                      ? pressure::toTorr(1.0, map.value(QStringLiteral("label")).toString())
-                      : 1.0);
+    scales << (pressure::isPressureChannel(map.value(QStringLiteral("name")).toString())
+                 ? pressure::toTorr(1.0, map.value(QStringLiteral("label")).toString())
+                 : 1.0);
+  }
+  if (scales != m_torrScale) {
+    m_torrScale  = scales;
+    m_drawnCount = 0; // the lines in other units: all of them again with the next data
   }
   m_legendController.setStyles(shown);
   if (m_compactLegend) {
@@ -445,6 +468,7 @@ void DataViewer::moveView(double addX, double addY) {
   QPointF const addition(fabs(m_currentView.width()) * addX, fabs(m_currentView.height()) * addY);
   m_currentView.moveCenter(m_currentView.center() + addition);
   limitView(m_currentView);
+  moveLogAxis(addY);
 
   if ((DataViewer::ControlMode::LEAD_FULL == m_controlMode) || (addX != 0.0)) {
     setControlMode(DataViewer::ControlMode::ZOOM);
@@ -467,6 +491,7 @@ void DataViewer::zoomView(double mulX, double mulY) {
   m_currentView.setTop(center.y() + halfHeight * mulY);
   m_currentView.setBottom(center.y() - halfHeight * mulY);
   limitView(m_currentView);
+  zoomLogAxis(qQNaN(), mulY);
 
   if (DataViewer::ControlMode::LEAD_FULL == m_controlMode) {
     setControlMode(DataViewer::ControlMode::ZOOM);
@@ -558,6 +583,7 @@ void DataViewer::setBoxZoomMode(bool enabled) {
 void DataViewer::setLabelsVisible(bool visible) {
   m_labelsVisible = visible;
   m_legendController.setVisible(visible || m_compactLegend);
+  updateLegendValueMode();
 }
 
 void DataViewer::setValuesVisible(bool visible) {
@@ -565,6 +591,40 @@ void DataViewer::setValuesVisible(bool visible) {
   if (!visible) {
     hideValueCursor();
   }
+  updateLegendValueMode();
+}
+
+void DataViewer::updateLegendValueMode() {
+  // Labels and Tooltip both on: each label also tells its line's value at the cursor
+  bool const on{m_labelsVisible && m_valuesVisible};
+  if (on == m_legendValues) {
+    return;
+  }
+  m_legendValues = on;
+  m_legendController.setValueTexts({});
+  m_legendController.setItemValuesVisible(on); // room for the values: the labels laid out again
+  m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DataViewer::showLegendValues(double x) {
+  if (!m_legendValues || !m_data) {
+    return;
+  }
+  // each visible line's sample closest to that time, if it has one close by
+  double const closeBy{m_plot->xAxis->range().size() * 0.04};
+  QStringList  texts;
+  for (int i{0}; i < m_plot->graphCount(); ++i) {
+    QCPGraph const *graph = m_plot->graph(i);
+    int const       index{graph->visible() ? nearestIndex(graph, x) : -1};
+    auto const      point = graph->data()->constBegin() + std::max(index, 0);
+    if ((index < 0) || (std::fabs(point->key - x) > closeBy)) {
+      texts << QStringLiteral("—");
+      continue;
+    }
+    texts << (m_logAxisDataIndexes.contains(i) ? utils::formatScientific(point->value, 2) : formatValue(point->value));
+  }
+  m_legendController.setValueTexts(texts);
+  m_plot->layer("legend")->replot();
 }
 
 void DataViewer::updateValueCursor(QPointF const &pos) {
@@ -660,6 +720,7 @@ void DataViewer::showCursor(double x, double y, int graphIndex, int index) {
   m_cursorH->point1->setCoords(0, y);
   m_cursorH->point2->setCoords(1, y);
   m_cursorH->setVisible(!std::isnan(y));
+  showLegendValues(x);
   if (index < 0) {
     m_tracer->setVisible(false);
     m_valueText->setVisible(false);
@@ -713,6 +774,10 @@ void DataViewer::hideValueCursor() {
   m_tracer->setVisible(false);
   m_valueText->setVisible(false);
   m_plot->layer("cursor")->replot();
+  if (m_legendValues) { // the labels without values until the cursor is back
+    m_legendController.setValueTexts({});
+    m_plot->layer("legend")->replot();
+  }
 }
 
 bool DataViewer::eventFilter(QObject *watched, QEvent *event) {
@@ -775,6 +840,7 @@ void DataViewer::handleTouch(QTouchEvent *event) {
       m_pinchB   = b;
       m_pinchX   = m_plot->xAxis->range();
       m_pinchY   = m_plot->yAxis->range();
+      m_pinchY2  = m_plot->yAxis2->range();
       setControlMode(ControlMode::ZOOM);
       return;
     }
@@ -798,6 +864,14 @@ void DataViewer::handleTouch(QTouchEvent *event) {
     double const yUpper{yAnchor + (nowMid.y() - area.top()) / area.height() * ySize};
     m_plot->xAxis->setRange(xLower, xLower + xSize);
     m_plot->yAxis->setRange(yUpper - ySize, yUpper);
+    if (logAxisShown() && (m_pinchY2.lower > 0.0)) { // the same in decades
+      double const lo{std::log10(m_pinchY2.lower)};
+      double const hi{std::log10(m_pinchY2.upper)};
+      double const anchor2{hi - (startMid.y() - area.top()) / area.height() * (hi - lo)};
+      double const size2{(hi - lo) * scaleY};
+      double const upper2{anchor2 + (nowMid.y() - area.top()) / area.height() * size2};
+      setLogRange(upper2 - size2, upper2);
+    }
     m_currentView = getRange();
     m_plot->replot(QCustomPlot::rpQueuedReplot);
     return;
@@ -1007,7 +1081,7 @@ void DataViewer::applyStyle(int index, QVariantMap const &stateVariantMap, bool 
 void DataViewer::updateData() {
   int const graphCount{m_plot->graphCount()};
 
-  auto const times = m_data->getTimes();
+  QVector<double> const times = m_data->getTimes();
   if (times.empty()) {
     qDebug() << "There are no data in DataHolder";
     return;
@@ -1015,20 +1089,54 @@ void DataViewer::updateData() {
 
   updateTimeOrigin();
   QVector<QVector<double>> const states = m_data->getStates();
+  qsizetype const                n{times.size()};
+  // only the samples newer than the last drawing (and the last one drawn: its time may have come again with other
+  // values); all of them for other data, or data that changed otherwise. Smoothed: also the ones the new samples
+  // reach in their window, smoothed with the samples before them (fewer samples than a window are drawn unsmoothed:
+  // all of them again once there are enough)
+  int const  window{(m_smoothing > 1) ? averageWindow(m_smoothing) : 1};
+  int const  half{window / 2};
+  bool const continues{(m_drawnHolder == m_data.get()) && (m_drawnCount > 1) && (m_drawnCount >= window) && (m_drawnCount <= n)
+                       && (times.first() == m_drawnFirst) && (times[m_drawnCount - 1] == m_drawnLast) && (graphCount > 0)
+                       && !m_plot->graph(0)->data()->isEmpty()};
+  qsizetype const from{continues ? std::max<qsizetype>(0, m_drawnCount - 1 - half) : 0};
+  qsizetype const context{std::max<qsizetype>(0, std::min<qsizetype>(from - half, n - window))};
+  QVector<double> const keys = times.mid(from);
   for (int i{0U}; i < graphCount; ++i) {
-    QVector<double> values = (m_smoothing > 1) ? smoothed(states[i], m_smoothing) : states[i];
-    double const    scale{m_torrScale.value(i, 1.0)}; // the pressure in Torr
+    if (i >= states.size()) {
+      m_plot->graph(i)->data()->clear();
+      continue;
+    }
+    QVector<double> values;
+    if (m_smoothing > 1) {
+      values = smoothed(states[i].mid(context), m_smoothing).mid(from - context);
+    } else {
+      values = states[i].mid(from);
+    }
+    double const scale{m_torrScale.value(i, 1.0)}; // the pressure in Torr
     if (scale != 1.0) {
       for (double &value : values) {
         value *= scale;
       }
     }
-    m_plot->graph(i)->setData(times, values, /*alreadySorted*/ true);
+    QCPGraph *graph = m_plot->graph(i);
+    if (from > 0) {
+      graph->data()->removeAfter(times[from - 1]);
+      graph->addData(keys, values, /*alreadySorted*/ true);
+    } else {
+      graph->setData(keys, values, /*alreadySorted*/ true);
+    }
   }
+  m_drawnHolder = m_data.get();
+  m_drawnCount  = n;
+  m_drawnFirst  = times.first();
+  m_drawnLast   = times.last();
 
   updateRange();
-  rebuildDecorations();
-  updateSetpointLine();
+  if (m_overlayMin || m_overlayMax || m_overlayAvg) {
+    rebuildDecorations(); // min / max / average follow the data (the other decorations do not)
+  }
+  updateSetpointLine(from);
   m_plot->replot(QCustomPlot::rpQueuedReplot);
   emit dataUpdated();
 }
@@ -1081,20 +1189,30 @@ void DataViewer::setSetpointSeries(QVector<double> const &times, QVector<double>
   updateSetpointLine();
 }
 
-void DataViewer::updateSetpointLine() {
+void DataViewer::updateSetpointLine(qsizetype from) {
   QVector<double> times  = m_setpointTimes;
   QVector<double> values = m_setpointValues;
-  if ((m_setpointChannel >= 0) && m_data) {
+  bool const      channel{(m_setpointChannel >= 0) && m_data};
+  if (channel) {
     times                                 = m_data->getTimes();
     QVector<QVector<double>> const states = m_data->getStates();
     values = (m_setpointChannel < states.size()) ? states[m_setpointChannel] : QVector<double>{};
   }
   bool const show{m_setpointVisible && !times.isEmpty() && (times.size() == values.size())};
   m_setpointCurve->setVisible(show);
-  if (show) {
-    m_setpointCurve->setData(times, values);
-  } else {
+  if (!show) {
     m_setpointCurve->data()->clear(); // no stale line of another tab
+    m_setpointCount = 0;
+  } else if (channel && (from > 0) && (m_setpointCount >= from) && (m_setpointCurve->dataCount() == m_setpointCount)) {
+    // the channel's newer samples only (the curve's parameter: the sample's index)
+    m_setpointCurve->data()->removeAfter(static_cast<double>(from - 1));
+    QVector<double> indexes(times.size() - from);
+    std::iota(indexes.begin(), indexes.end(), static_cast<double>(from));
+    m_setpointCurve->addData(indexes, times.mid(from), values.mid(from), /*alreadySorted*/ true);
+    m_setpointCount = times.size();
+  } else {
+    m_setpointCurve->setData(times, values);
+    m_setpointCount = channel ? times.size() : 0;
   }
   m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
@@ -1119,6 +1237,8 @@ void DataViewer::clear(QString const &text) {
     disconnect(m_updateDataConnection);
   }
   m_data.reset();
+  m_drawnHolder = nullptr;
+  m_drawnCount  = 0;
   hideValueCursor();
   for (int i{0}; i < m_plot->graphCount(); ++i) {
     m_plot->graph(i)->data()->clear();
@@ -1146,7 +1266,8 @@ void DataViewer::setSmoothingWindow(int samples) {
   if (samples == m_smoothing) {
     return;
   }
-  m_smoothing = samples;
+  m_smoothing  = samples;
+  m_drawnCount = 0; // every sample smoothed again
   if (m_data) {
     updateData();
   }
@@ -1171,7 +1292,7 @@ bool DataViewer::fittedToAll() const {
 }
 
 void DataViewer::setTimeRange(double from, double to) {
-  if (to <= from) {
+  if (!(to > from)) { // also when one of them is no number
     return;
   }
   setControlMode(ControlMode::ZOOM);
@@ -1183,29 +1304,81 @@ void DataViewer::setTimeRange(double from, double to) {
 
 void DataViewer::fitValues(double from, double to) {
   for (QCPAxis *axis : {m_plot->yAxis, m_plot->yAxis2}) {
-    QCPRange range;
-    bool     haveRange{false};
-    for (int i{0}; i < m_plot->graphCount(); ++i) {
-      QCPGraph *graph = m_plot->graph(i);
-      if ((graph->valueAxis() != axis) || !graph->visible()) {
-        continue;
-      }
-      bool           found{false};
-      QCPRange const graphRange = graph->getValueRange(found, axis == m_plot->yAxis2 ? QCP::sdPositive : QCP::sdBoth, QCPRange(from, to));
-      if (found) {
-        range     = haveRange ? QCPRange(std::min(range.lower, graphRange.lower), std::max(range.upper, graphRange.upper)) : graphRange;
-        haveRange = true;
-      }
+    fitAxis(axis, from, to);
+  }
+}
+
+void DataViewer::fitAxis(QCPAxis *axis, double from, double to) {
+  QCPRange range;
+  bool     haveRange{false};
+  for (int i{0}; i < m_plot->graphCount(); ++i) {
+    QCPGraph *graph = m_plot->graph(i);
+    if ((graph->valueAxis() != axis) || !graph->visible()) {
+      continue;
     }
-    if (haveRange) {
-      if (axis == m_plot->yAxis2) {
-        axis->setRange(range.lower / 1.5, range.upper * 1.5);
-      } else {
-        double const pad{range.size() > 0 ? range.size() * 0.05 : 1.0};
-        axis->setRange(range.lower - pad, range.upper + pad);
-      }
+    bool           found{false};
+    QCPRange const graphRange = graph->getValueRange(found, axis == m_plot->yAxis2 ? QCP::sdPositive : QCP::sdBoth, QCPRange(from, to));
+    if (found) {
+      range     = haveRange ? QCPRange(std::min(range.lower, graphRange.lower), std::max(range.upper, graphRange.upper)) : graphRange;
+      haveRange = true;
     }
   }
+  if (!haveRange) {
+    return;
+  }
+  if (axis == m_plot->yAxis2) {
+    axis->setRange(range.lower / 1.5, range.upper * 1.5);
+  } else {
+    double const pad{range.size() > 0 ? range.size() * 0.05 : 1.0};
+    axis->setRange(range.lower - pad, range.upper + pad);
+  }
+}
+
+bool DataViewer::logAxisShown() const {
+  return m_useLogAxis && m_plot->yAxis2->visible() && (m_plot->yAxis2->scaleType() == QCPAxis::stLogarithmic);
+}
+
+void DataViewer::setLogRange(double lowerDecade, double upperDecade) {
+  // from 1e-15 to 1e10, at least a fiftieth of a decade high
+  constexpr double MIN_DECADE{-15.0};
+  constexpr double MAX_DECADE{10.0};
+  constexpr double MIN_SIZE{0.02};
+  if (!std::isfinite(lowerDecade) || !std::isfinite(upperDecade)) {
+    return;
+  }
+  if (upperDecade - lowerDecade < MIN_SIZE) {
+    double const middle{(lowerDecade + upperDecade) / 2.0};
+    lowerDecade = middle - MIN_SIZE / 2.0;
+    upperDecade = middle + MIN_SIZE / 2.0;
+  }
+  double const size{std::min(upperDecade - lowerDecade, MAX_DECADE - MIN_DECADE)};
+  lowerDecade = std::clamp(lowerDecade, MIN_DECADE, MAX_DECADE - size);
+  m_plot->yAxis2->setRange(std::pow(10.0, lowerDecade), std::pow(10.0, lowerDecade + size));
+}
+
+void DataViewer::zoomLogAxis(double anchorPixelY, double mul) {
+  QCPRange const range = m_plot->yAxis2->range();
+  if (!logAxisShown() || (range.lower <= 0.0) || qFuzzyCompare(mul, 1.0)) {
+    return;
+  }
+  double const lo{std::log10(range.lower)};
+  double const hi{std::log10(range.upper)};
+  double const anchor{std::isnan(anchorPixelY) ? (lo + hi) / 2.0 : std::log10(m_plot->yAxis2->pixelToCoord(anchorPixelY))};
+  if (!std::isfinite(anchor)) {
+    return;
+  }
+  setLogRange(anchor - (anchor - lo) * mul, anchor + (hi - anchor) * mul);
+}
+
+void DataViewer::moveLogAxis(double fraction) {
+  QCPRange const range = m_plot->yAxis2->range();
+  if (!logAxisShown() || (range.lower <= 0.0) || (fraction == 0.0)) {
+    return;
+  }
+  double const lo{std::log10(range.lower)};
+  double const hi{std::log10(range.upper)};
+  double const shift{(hi - lo) * fraction};
+  setLogRange(lo + shift, hi + shift);
 }
 
 void DataViewer::rebuildDecorations() {
@@ -1404,6 +1577,9 @@ void DataViewer::updateRange() {
         break;
       }
       m_plot->yAxis->rescale(true);
+      if (logAxisShown()) { // the pressure to its values too, so that both sets of lines fill the chart
+        fitAxis(m_plot->yAxis2, m_plot->xAxis->range().lower, m_plot->xAxis->range().upper);
+      }
 
       if (m_plot->yAxis->range().size() > 4000) {
         m_plot->yAxis->setRange(-2000, 2000);
@@ -1436,12 +1612,13 @@ void DataViewer::initGraphs(uint16_t graphCount) {
   m_tracer->setGraph(nullptr); // its graph is deleted
   hideValueCursor();
   m_plot->clearGraphs();
+  m_drawnCount = 0;
 
   for (int i{0U}; i < graphCount; ++i) {
     auto desAxis = m_logAxisDataIndexes.contains(i) ? m_plot->yAxis2 : m_plot->yAxis;
     m_plot->addGraph(m_plot->xAxis, desAxis);
-    m_plot->graph()->setAdaptiveSampling(false);
-    // m_plot->graph()->setAntialiased(false);
+    // a long recording: the samples of each pixel column drawn as its lowest and highest (QCustomPlot), not one by one
+    m_plot->graph()->setAdaptiveSampling(true);
   }
   // the logarithmic axis only while it has lines
   if (m_useLogAxis) {
@@ -1523,6 +1700,7 @@ void DataViewer::zoomViewAt(QPointF const &pixelPos, double mulX, double mulY) {
   m_currentView.setTop(yAnchor + (yRange.upper - yAnchor) * mulY);
   m_currentView.setBottom(yAnchor - (yAnchor - yRange.lower) * mulY);
   limitView(m_currentView);
+  zoomLogAxis(pixelPos.y(), mulY);
 
   if (DataViewer::ControlMode::LEAD_FULL == m_controlMode) {
     setControlMode(DataViewer::ControlMode::ZOOM);
@@ -1560,7 +1738,7 @@ DataViewerDialog::DataViewerDialog(
   connect(closeBtn, &QPushButton::clicked, this, &QDialog::reject);
 
   setWindowTitle(tr("Preview"));
-  resize(600 * utils::ssf(), 400 * utils::ssf());
+  resize(theme::dp(1125), theme::dp(750));
   setAttribute(Qt::WA_DeleteOnClose);
 }
 
