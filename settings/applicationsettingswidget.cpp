@@ -14,6 +14,7 @@
 #include "messagedialog.h"
 #include "systemvalue.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -21,7 +22,7 @@ namespace {
 constexpr int DEFAULT_GRAPH_PERIOD_S{10};
 constexpr int DEFAULT_POLL_PERIOD_S{5};
 
-// the "temp" entry of control_params (the setpoint of program intervals and manual control)
+// the "temp" entry of control_params (the setpoint of program intervals)
 QVariantMap tempParam(QVariantMap const &settings) {
   for (QVariant const &entry : settings.value("control_params").toList()) {
     if (entry.toMap().value("name").toString() == QLatin1String("temp")) {
@@ -34,7 +35,6 @@ QVariantMap tempParam(QVariantMap const &settings) {
 
 ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder} {
-  double const      ssf{utils::ssf()};
   QVariantMap const settings = m_resHolder->settings->settingsMap();
   QVariantMap const appSettings = settings.value("app_settings").toMap();
   QVariantMap const temp        = tempParam(settings);
@@ -58,27 +58,27 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
   m_backupDays  = makeValue("backup_days", appSettings.value("backup_days", 1).toDouble(), 1, 365, 0);
 
   auto *pageLay = new QVBoxLayout(this);
-  pageLay->setContentsMargins(0, 8 * ssf, 0, 0);
+  pageLay->setContentsMargins(0, theme::dp(16), 0, 0);
   auto *card = new QFrame(this);
   card->setObjectName("pageCard");
   pageLay->addWidget(card);
   auto *cardLay = new QVBoxLayout(card);
-  cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  cardLay->setSpacing(8 * ssf);
+  cardLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  cardLay->setSpacing(theme::dp(16));
   auto *title = new QLabel(tr("Application"), card);
   title->setObjectName("cardTitle");
   cardLay->addWidget(title);
 
   auto *list    = new QWidget();
   auto *listLay = new QVBoxLayout(list);
-  listLay->setContentsMargins(0, 0, 4 * ssf, 0);
-  listLay->setSpacing(6 * ssf);
+  listLay->setContentsMargins(0, 0, theme::dp(8), 0);
+  listLay->setSpacing(theme::dp(12));
   QFont const fieldFont = font();
 
   auto section = [&](QString const &text) {
     auto *label = new QLabel(text.toUpper(), list);
     label->setProperty("muted", true);
-    listLay->addSpacing(6 * ssf);
+    listLay->addSpacing(theme::dp(12));
     listLay->addWidget(label);
   };
   // a row: what it is, when it applies, the field and its unit
@@ -86,10 +86,10 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
     auto *row = new QFrame(list);
     row->setObjectName("outputRow");
     auto *rowLay = new QHBoxLayout(row);
-    rowLay->setContentsMargins(12 * ssf, 6 * ssf, 10 * ssf, 6 * ssf);
-    rowLay->setSpacing(10 * ssf);
+    rowLay->setContentsMargins(theme::dp(24), theme::dp(12), theme::dp(20), theme::dp(12));
+    rowLay->setSpacing(theme::dp(20));
     auto *texts = new QVBoxLayout();
-    texts->setSpacing(1 * ssf);
+    texts->setSpacing(theme::dp(4));
     auto *labelWidget = new QLabel(label, row);
     labelWidget->setObjectName("rowTitle");
     auto *noteWidget = new QLabel(note, row);
@@ -102,14 +102,14 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
     rowLay->addWidget(field);
     auto *unitWidget = new QLabel(unit, row);
     unitWidget->setProperty("muted", true);
-    unitWidget->setFixedWidth(40 * ssf);
+    unitWidget->setFixedWidth(theme::dp(75));
     rowLay->addWidget(unitWidget);
     listLay->addWidget(row);
   };
   auto numField = [&](SystemValue *value) {
     auto *field = new LineEditNum(value);
     field->setFont(fieldFont);
-    field->setFixedSize(130 * ssf, 30 * ssf);
+    field->setFixedSize(theme::dp(243), theme::dp(56));
     return field;
   };
 
@@ -122,9 +122,9 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
          numField(m_backupDays), tr("days"));
 
   section(tr("Setpoint limits"));
-  addRow(tr("Lowest setpoint"), tr("Lowest temperature accepted in Manual control and program intervals. Applies on the next start."),
+  addRow(tr("Lowest setpoint"), tr("Lowest temperature accepted in program intervals. Applies on the next start."),
          numField(m_tempMin), QStringLiteral("°C"));
-  addRow(tr("Highest setpoint"), tr("Highest temperature accepted in Manual control and program intervals. Applies on the next start."),
+  addRow(tr("Highest setpoint"), tr("Highest temperature accepted in program intervals. Applies on the next start."),
          numField(m_tempMax), QStringLiteral("°C"));
 
   section(tr("Default Program Control"));
@@ -132,10 +132,10 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
          numField(m_defaultTemp), QStringLiteral("°C"));
   m_defaultDuration = new LineEditTime(static_cast<quint64>(program.value("duration", 3600).toULongLong()), 1, 3599999, true);
   m_defaultDuration->setFont(fieldFont);
-  m_defaultDuration->setFixedSize(130 * ssf, 30 * ssf);
+  m_defaultDuration->setFixedSize(theme::dp(243), theme::dp(56));
   for (LineEditNum *part : m_defaultDuration->findChildren<LineEditNum *>()) {
     part->setFont(fieldFont);
-    part->setFixedHeight(30 * ssf);
+    part->setFixedHeight(theme::dp(56));
   }
   addRow(tr("Duration"), tr("Length of that interval. Applies on the next start."), m_defaultDuration, QString());
 
@@ -154,7 +154,7 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
       button->setProperty("segment", true);
       button->setProperty("segmentFirst", i == 0);
       button->setProperty("segmentLast", i == texts.size() - 1);
-      button->setFixedSize(65 * ssf, 30 * ssf);
+      button->setFixedSize(theme::dp(121), theme::dp(56));
       group->addButton(button, i);
       segments->addWidget(button);
     }
@@ -178,7 +178,7 @@ ApplicationSettingsWidget::ApplicationSettingsWidget(ResHolder *resHolder, QWidg
   buttons->addStretch();
   auto *saveBtn = new QPushButton(tr("Save"), card);
   saveBtn->setObjectName("primaryButton");
-  saveBtn->setFixedSize(190 * ssf, 32 * ssf);
+  saveBtn->setFixedSize(theme::dp(356), theme::dp(60));
   buttons->addWidget(saveBtn);
   cardLay->addLayout(buttons);
   connect(saveBtn, &QPushButton::clicked, this, &ApplicationSettingsWidget::save);

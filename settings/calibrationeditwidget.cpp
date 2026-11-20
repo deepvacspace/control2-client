@@ -8,6 +8,7 @@
 
 #include "labelplus.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 CalibrationEditWidget::CalibrationEditWidget(
@@ -17,10 +18,9 @@ CalibrationEditWidget::CalibrationEditWidget(
   m_correctedSysValue = new SystemValue{"", 0.0f, this};
   m_deltaSysValue     = new SystemValue{"", 0.0f, this};
 
-  double const ssf{utils::ssf()};
   auto        *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->setSpacing(6 * ssf);
+  mainLay->setSpacing(theme::dp(12));
 
   auto muted = [this](QString const &text) {
     auto *label = new QLabel(text, this);
@@ -29,8 +29,8 @@ CalibrationEditWidget::CalibrationEditWidget(
   };
   // live readings side by side
   auto *readings = new QGridLayout();
-  readings->setHorizontalSpacing(24 * ssf);
-  readings->setVerticalSpacing(2 * ssf);
+  readings->setHorizontalSpacing(theme::dp(44));
+  readings->setVerticalSpacing(theme::dp(4));
   QFont bigFont = font();
   bigFont.setBold(true);
   bigFont.setPointSizeF(font().pointSizeF() * 1.5);
@@ -46,10 +46,10 @@ CalibrationEditWidget::CalibrationEditWidget(
   mainLay->addLayout(readings);
   auto *divider = new QFrame(this);
   divider->setObjectName("cardDivider");
-  divider->setFixedHeight(qMax(1, static_cast<int>(1 * ssf)));
-  mainLay->addSpacing(6 * ssf);
+  divider->setFixedHeight(qMax(1, theme::dp(1)));
+  mainLay->addSpacing(theme::dp(12));
   mainLay->addWidget(divider);
-  mainLay->addSpacing(6 * ssf);
+  mainLay->addSpacing(theme::dp(12));
 
   m_valueSysValue->setMin(model->getMin());
   m_valueSysValue->setMax(model->getMax());
@@ -70,36 +70,35 @@ CalibrationEditWidget::CalibrationEditWidget(
 
   // the selected point
   auto *fields = new QGridLayout();
-  fields->setHorizontalSpacing(12 * ssf);
-  fields->setVerticalSpacing(8 * ssf);
+  fields->setHorizontalSpacing(theme::dp(24));
+  fields->setVerticalSpacing(theme::dp(16));
   int row{0};
   for (auto const &[title, edit] : {std::pair{tr("Chamber sensor"), m_valueEdit}, std::pair{tr("External reference"), m_correctedEdit},
                                     std::pair{tr("Correction"), m_deltaEdit}}) {
     auto *label = new QLabel(title, this);
     label->setObjectName("rowTitle");
     edit->setFont(font());
-    edit->setFixedSize(150 * ssf, 30 * ssf);
+    edit->setFixedSize(theme::dp(281), theme::dp(56));
     fields->addWidget(label, row, 0);
     fields->addWidget(edit, row, 1);
     ++row;
   }
   fields->setColumnStretch(2, 1);
   mainLay->addLayout(fields);
-  mainLay->addSpacing(10 * ssf);
+  mainLay->addSpacing(theme::dp(20));
 
   m_addBtn = new QPushButton(tr("Add point"), this);
   m_addBtn->setObjectName("primaryButton");
   m_delBtn = new QPushButton(tr("Delete point"), this);
   m_delBtn->setProperty("outline", true);
   auto *buttons = new QHBoxLayout();
-  buttons->setSpacing(8 * ssf);
+  buttons->setSpacing(theme::dp(16));
   for (auto &btn : {m_addBtn, m_delBtn}) {
-    btn->setMinimumSize(130 * ssf, 30 * ssf);
+    btn->setMinimumSize(theme::dp(243), theme::dp(56));
     buttons->addWidget(btn);
   }
   buttons->addStretch();
   mainLay->addLayout(buttons);
-  mainLay->addStretch();
 
   connect(m_model, &CalibrationModel::indexSelected, this, &CalibrationEditWidget::updateGui);
   connect(m_model, &CalibrationModel::sizeChanged, this, &CalibrationEditWidget::handleSizeChanged);

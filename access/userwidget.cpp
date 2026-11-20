@@ -65,14 +65,14 @@ void UserWidget::initGui() {
   double const ssf{utils::ssf()};
   auto        *mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setSpacing(theme::dp(20));
 
   auto makeCard = [this, ssf](QString const &title) {
     auto *card = new QFrame(this);
     card->setObjectName("pageCard");
     auto *lay = new QVBoxLayout(card);
-    lay->setContentsMargins(16 * ssf, 12 * ssf, 16 * ssf, 14 * ssf);
-    lay->setSpacing(6 * ssf);
+    lay->setContentsMargins(theme::dp(32), theme::dp(24), theme::dp(32), theme::dp(28));
+    lay->setSpacing(theme::dp(12));
     auto *label = new QLabel(title, card);
     label->setProperty("muted", true);
     lay->addWidget(label);
@@ -81,7 +81,7 @@ void UserWidget::initGui() {
 
   // ---- left: current user and what each level may do
   auto *leftLay = new QVBoxLayout();
-  leftLay->setSpacing(10 * ssf);
+  leftLay->setSpacing(theme::dp(20));
   mainLay->addLayout(leftLay, 1);
 
   auto *currentCard = makeCard(tr("Current user"));
@@ -98,7 +98,7 @@ void UserWidget::initGui() {
   m_loggedInSince->setProperty("muted", true);
   currentLay->addWidget(m_currentName);
   currentLay->addWidget(m_currentLevel, 0, Qt::AlignLeft);
-  currentLay->addSpacing(6 * ssf);
+  currentLay->addSpacing(theme::dp(12));
   currentLay->addWidget(m_loggedInSince);
   currentLay->addStretch();
   leftLay->addWidget(currentCard, 2);
@@ -107,13 +107,13 @@ void UserWidget::initGui() {
   auto *levelsLay  = static_cast<QVBoxLayout *>(levelsCard->layout());
   QList<std::pair<int, QString>> const levels{
     {AccessManager::AccessLevel::SPECTATOR_0,
-     tr("Home, Analysis, AI, System and the Users tab of Settings. Cannot start or stop the chamber.")},
-    {AccessManager::AccessLevel::USER_START_1, tr("Observer, plus Program control: programs and quick setpoints.")},
+     tr("Analysis, AI, System and the Users tab of Settings. Cannot start or stop the chamber.")},
+    {AccessManager::AccessLevel::USER_START_1, tr("Observer, plus Control: starting and stopping programs.")},
     {AccessManager::AccessLevel::USER_EDIT_2, tr("Level 1, plus run the AI Advisor.")},
     {AccessManager::AccessLevel::USER_ADMIN_3, tr("Everything, including all of Settings.")},
   };
   for (auto const &[level, text] : levels) {
-    levelsLay->addSpacing(8 * ssf);
+    levelsLay->addSpacing(theme::dp(16));
     auto *name = new QLabel(levelName(level), levelsCard);
     QFont font = name->font();
     font.setBold(true);
@@ -151,17 +151,19 @@ void UserWidget::initGui() {
   m_delUserBtn  = new QPushButton(tr("Delete user"), usersCard);
   m_delUserBtn->setProperty("outline", true);
   auto *buttonsLay = new QHBoxLayout();
-  buttonsLay->setSpacing(8 * ssf);
+  buttonsLay->setSpacing(theme::dp(16));
   for (QPushButton *button : {m_selectUserBtn, m_addUserBtn, m_editUserBtn, m_delUserBtn}) {
-    button->setFixedSize(110 * ssf, 34 * ssf);
+    button->setFixedSize(theme::dp(206), theme::dp(63));
     buttonsLay->addWidget(button);
   }
   buttonsLay->addStretch();
+  // the note under the buttons, as wide as the card (beside them it was cut off at the card's edge)
   auto *hint = new QLabel(tr("User changes are written to the log and recorded as experiment events."), usersCard);
   hint->setProperty("muted", true);
-  buttonsLay->addWidget(hint);
-  usersLay->addSpacing(6 * ssf);
+  hint->setWordWrap(true);
+  usersLay->addSpacing(theme::dp(12));
   usersLay->addLayout(buttonsLay);
+  usersLay->addWidget(hint);
   mainLay->addWidget(usersCard, 2);
 
   m_editUserBtn->setEnabled(false);

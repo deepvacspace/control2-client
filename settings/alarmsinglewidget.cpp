@@ -79,11 +79,10 @@ void AlarmSingleWidget::updateSelection() {
 }
 
 void AlarmSingleWidget::initGui() {
-  double const ssf{utils::ssf()};
   setObjectName("outputRow");
   auto *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(12 * ssf, 6 * ssf, 10 * ssf, 6 * ssf);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(theme::dp(24), theme::dp(12), theme::dp(20), theme::dp(12));
+  mainLay->setSpacing(theme::dp(20));
 
   auto *description = new QLabel(m_label, this);
   description->setObjectName("rowTitle");
@@ -91,10 +90,10 @@ void AlarmSingleWidget::initGui() {
 
   curState = new QLabel(this);
   curState->setAlignment(Qt::AlignCenter);
-  curState->setFixedSize(70 * ssf, 26 * ssf);
+  curState->setFixedSize(theme::dp(131), theme::dp(48));
   curState->setToolTip(tr("State of the alarm input"));
   mainLay->addWidget(curState);
-  mainLay->addSpacing(10 * ssf);
+  mainLay->addSpacing(theme::dp(20));
 
   // trigger condition: one segmented control
   auto *group    = new QButtonGroup(this);
@@ -108,7 +107,7 @@ void AlarmSingleWidget::initGui() {
     button->setProperty("segment", true);
     button->setProperty("segmentFirst", i == 0);
     button->setProperty("segmentLast", i == buttons.size() - 1);
-    button->setFixedSize(80 * ssf, 28 * ssf);
+    button->setFixedSize(theme::dp(150), theme::dp(52));
     group->addButton(button, i);
     segments->addWidget(button);
     *buttons[i] = button;

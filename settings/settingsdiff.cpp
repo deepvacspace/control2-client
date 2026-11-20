@@ -72,9 +72,9 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
     table->setItem(i, 2, new QTableWidgetItem(inLocal ? QString::number(local[diffName]) : ""));
 
     if (inPlc != inLocal) {
-      table->item(i, 0)->setBackground(QBrush(QColor(255, 0, 0, 50)));
-      table->item(i, 1)->setBackground(QBrush(QColor(255, 0, 0, 50)));
-      table->item(i, 2)->setBackground(QBrush(QColor(255, 0, 0, 50)));
+      table->item(i, 0)->setBackground(QBrush(QColor(212, 18, 46, 50)));
+      table->item(i, 1)->setBackground(QBrush(QColor(212, 18, 46, 50)));
+      table->item(i, 2)->setBackground(QBrush(QColor(212, 18, 46, 50)));
       auto font = table->itemAt(i, 0)->font();
       font.setBold(true);
       table->item(i, 0)->setFont(font);
@@ -83,9 +83,9 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
       uniquePlc += static_cast<int>(inPlc);
       uniqueLocal += static_cast<int>(inLocal);
     } else {
-      table->item(i, 0)->setBackground(QBrush(QColor(255, 255, 0, 50)));
-      table->item(i, 1)->setBackground(QBrush(QColor(255, 255, 0, 50)));
-      table->item(i, 2)->setBackground(QBrush(QColor(255, 255, 0, 50)));
+      table->item(i, 0)->setBackground(QBrush(QColor(242, 166, 12, 50)));
+      table->item(i, 1)->setBackground(QBrush(QColor(242, 166, 12, 50)));
+      table->item(i, 2)->setBackground(QBrush(QColor(242, 166, 12, 50)));
     }
   }
 

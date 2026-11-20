@@ -16,6 +16,7 @@
 #include "dialogs/messagedialog.h"
 #include "sqlitedb.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -60,7 +61,7 @@ DataWidget::DataWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent},
   auto *restoreBtn = new QPushButton(tr("Restore selected backup…"), this);
   auto *refreshBtn = new QPushButton(tr("Refresh"), this);
   for (QPushButton *button : {backupBtn, restoreBtn, refreshBtn}) {
-    button->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+    button->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
     button->setFocusPolicy(Qt::NoFocus);
     buttons->addWidget(button);
   }
@@ -135,7 +136,7 @@ void DataWidget::restoreSelected() {
     bool const ok = BackupService::restore(fileName, backupPath, &error);
     refresh();
     (new MessageDialog(tr("Restore"),
-                       ok ? tr("Restored. Reopen the Data analysis / Manual pages to see the restored data.")
+                       ok ? tr("Restored. Reopen the Analysis page to see the restored data.")
                           : tr("Restore failed: %1").arg(error)))
       ->open();
   });

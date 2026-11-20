@@ -21,6 +21,7 @@
 #include "resholder.h"
 #include "sharedrunsdialog.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -28,10 +29,10 @@ namespace {
 constexpr int DEFAULT_OPC_PORT{4840};
 constexpr int DEFAULT_OPC_PERIOD_MS{500};
 
-QString const COLOR_OK{"#16a34a"};
-QString const COLOR_WAIT{"#d97706"};
-QString const COLOR_OFF{"#94a3b8"};
-QString const COLOR_ERR{"#dc2626"};
+QString const COLOR_OK{"#19b26b"};
+QString const COLOR_WAIT{"#f2a60c"};
+QString const COLOR_OFF{"#a9afba"};
+QString const COLOR_ERR{"#d4122e"};
 
 QString statusHtml(QString const &color, QString const &text) {
   return QStringLiteral("<span style=\"color:%1; font-size:large;\">●</span>&nbsp;%2").arg(color, text.toHtmlEscaped());
@@ -39,7 +40,7 @@ QString statusHtml(QString const &color, QString const &text) {
 
 QPushButton *makeButton(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
-  button->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  button->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
@@ -47,18 +48,17 @@ QPushButton *makeButton(QString const &text, QWidget *parent) {
 LineEditNum *makePortEdit(QWidget *parent) {
   auto *edit = new LineEditNum(1, 65535, 0, false, parent);
   edit->setFont(parent->font()); // the plain field font, not the large keypad digits
-  edit->setFixedSize(110 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  edit->setFixedSize(theme::dp(206), theme::dp(UI_BTN_HEIGHT));
   return edit;
 }
 
 // a card with its title, like the other settings tabs
 QFrame *makeCard(QString const &title, QWidget *parent) {
-  double const ssf{utils::ssf()};
   auto        *card = new QFrame(parent);
   card->setObjectName("pageCard");
   auto *lay = new QVBoxLayout(card);
-  lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  lay->setSpacing(8 * ssf);
+  lay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  lay->setSpacing(theme::dp(16));
   auto *label = new QLabel(title, card);
   label->setObjectName("cardTitle");
   lay->addWidget(label);
@@ -67,8 +67,8 @@ QFrame *makeCard(QString const &title, QWidget *parent) {
 
 LineEditScreen *makeTextEdit(QWidget *parent) {
   auto *edit = new LineEditScreen(parent, VirtualKeyboard::EN);
-  edit->setMinimumWidth(180 * utils::ssf());
-  edit->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf()); // as tall as the port fields and buttons
+  edit->setMinimumWidth(theme::dp(337));
+  edit->setFixedHeight(theme::dp(UI_BTN_HEIGHT)); // as tall as the port fields and buttons
   return edit;
 }
 
@@ -104,8 +104,8 @@ ConnectionsWidget::ConnectionsWidget(ResHolder *resHolder, Page page, QWidget *p
 
   auto *content = new QWidget(this);
   auto *columns = new QHBoxLayout(content);
-  columns->setContentsMargins(0, 8 * utils::ssf(), 0, 0);
-  columns->setSpacing(12 * utils::ssf());
+  columns->setContentsMargins(0, theme::dp(16), 0, 0);
+  columns->setSpacing(theme::dp(24));
 
   auto *left  = new QVBoxLayout();
   auto *right = new QVBoxLayout();
@@ -163,7 +163,7 @@ QWidget *ConnectionsWidget::buildChamberBox() {
   lay->addWidget(m_chamberStatus);
 
   m_chamberList = new QListWidget(box);
-  m_chamberList->setMinimumHeight(180 * utils::ssf());
+  m_chamberList->setMinimumHeight(theme::dp(337));
   m_chamberList->setStyleSheet(QStringLiteral("QListWidget::item { height: %1px; }").arg(static_cast<int>(34 * utils::ssf())));
   connect(m_chamberList, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
     QVariantMap const chamber = item->data(Qt::UserRole).toMap();
@@ -387,7 +387,7 @@ QWidget *ConnectionsWidget::buildOpcBox() {
   m_opcRootName->setToolTip(tr("Name of the root object clients browse to"));
 
   m_opcPeriod = new QComboBox(box);
-  m_opcPeriod->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  m_opcPeriod->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
   int const period{opc.value("period_ms", DEFAULT_OPC_PERIOD_MS).toInt()};
   QList<int> periods{100, 200, 250, 500, 1000, 2000};
   if (!periods.contains(period)) {
@@ -412,7 +412,7 @@ QWidget *ConnectionsWidget::buildOpcBox() {
 
   lay->addWidget(new QLabel(tr("Published variables"), box));
   m_opcTags = new QListWidget(box);
-  m_opcTags->setMinimumHeight(160 * utils::ssf());
+  m_opcTags->setMinimumHeight(theme::dp(300));
   QStringList publishedStates;
   for (QVariant const &tag : opc["tags"].toList()) {
     publishedStates.push_back(tag.toMap()["state"].toString());
@@ -536,7 +536,7 @@ QWidget *ConnectionsWidget::buildSharingBox() {
   auto *cards = new QWidget(this);
   auto *cardsLay = new QVBoxLayout(cards);
   cardsLay->setContentsMargins(0, 0, 0, 0);
-  cardsLay->setSpacing(12 * utils::ssf());
+  cardsLay->setSpacing(theme::dp(24));
   QFrame *box = makeCard(tr("Host data transfer"), cards);
   auto   *lay = static_cast<QVBoxLayout *>(box->layout());
   cardsLay->addWidget(box);
@@ -573,7 +573,7 @@ QWidget *ConnectionsWidget::buildSharingBox() {
 
   auto *peersRow = new QHBoxLayout();
   m_peers        = new QListWidget(box);
-  m_peers->setMaximumHeight(80 * utils::ssf());
+  m_peers->setMaximumHeight(theme::dp(150));
   auto *removePeerBtn = makeButton(tr("Remove device"), box);
   peersRow->addWidget(m_peers, 1);
   peersRow->addWidget(removePeerBtn, 0, Qt::AlignTop);
@@ -634,6 +634,7 @@ QWidget *ConnectionsWidget::buildSharingBox() {
   auto *sharedBtn = makeButton(tr("Shared experiments…"), box);
   m_disconnectBtn = makeButton(tr("Disconnect"), box);
   m_autoSync      = new QCheckBox(tr("Every 5 min"), box);
+  m_autoSync->setStyleSheet(QStringLiteral("QCheckBox::indicator { width: %1px; height: %1px; }").arg(theme::dp(26)));
   m_autoSync->setChecked(collab->autoSync());
   syncRow->addWidget(m_syncBtn);
   syncRow->addWidget(m_autoSync);

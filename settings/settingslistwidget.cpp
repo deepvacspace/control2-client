@@ -1,7 +1,7 @@
 #include "settingslistwidget.h"
 
 #include <QFrame>
-#include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QScrollArea>
 #include <QVBoxLayout>
@@ -9,35 +9,33 @@
 #include "lineeditnum.h"
 #include "lineedittime.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 SettingsListWidget::SettingsListWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
-  double const ssf{utils::ssf()};
   auto        *pageLay = new QVBoxLayout(this);
-  pageLay->setContentsMargins(0, 8 * ssf, 0, 0);
+  pageLay->setContentsMargins(0, theme::dp(16), 0, 0);
   auto *card = new QFrame(this);
   card->setObjectName("pageCard");
   pageLay->addWidget(card);
   auto *cardLay = new QVBoxLayout(card);
-  cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  cardLay->setSpacing(8 * ssf);
+  cardLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  cardLay->setSpacing(theme::dp(16));
   auto *title = new QLabel(tr("Operating parameters"), card);
   title->setObjectName("cardTitle");
   cardLay->addWidget(title);
 
-  // rows in two columns, scrolled when they do not fit
+  // one row under the other (as Settings ▸ Application), scrolled when they do not fit
   auto *list    = new QWidget();
-  auto *listLay = new QGridLayout(list);
-  listLay->setContentsMargins(0, 0, 4 * ssf, 0);
-  listLay->setHorizontalSpacing(10 * ssf);
-  listLay->setVerticalSpacing(6 * ssf);
+  auto *listLay = new QVBoxLayout(list);
+  listLay->setContentsMargins(0, 0, theme::dp(8), 0);
+  listLay->setSpacing(theme::dp(12));
 
   SystemValueList &settingsValueList{resHolder->settings->plcSettingsSystemValueList()};
   QStringList      settingsOrder{settingsValueList.getNames()};
 
   QStringList const ignoreList{"alarm_cfg_1", "alarm_cfg_2"};
   QFont const       fieldFont = font();
-  int               shown{0};
   // in same order as in settings.json
   for (int i{0U}; i < settingsValueList.size(); ++i) {
     auto const settingName{settingsOrder[i]};
@@ -59,10 +57,10 @@ SettingsListWidget::SettingsListWidget(ResHolder *resHolder, QWidget *parent) : 
     auto *row = new QFrame(list);
     row->setObjectName("outputRow");
     auto *rowLay = new QHBoxLayout(row);
-    rowLay->setContentsMargins(12 * ssf, 6 * ssf, 10 * ssf, 6 * ssf);
-    rowLay->setSpacing(10 * ssf);
+    rowLay->setContentsMargins(theme::dp(24), theme::dp(12), theme::dp(20), theme::dp(12));
+    rowLay->setSpacing(theme::dp(20));
     auto *texts = new QVBoxLayout();
-    texts->setSpacing(1 * ssf);
+    texts->setSpacing(theme::dp(4));
     auto *labelWidget = new QLabel(label, row);
     labelWidget->setObjectName("rowTitle");
     labelWidget->setWordWrap(true);
@@ -79,30 +77,27 @@ SettingsListWidget::SettingsListWidget(ResHolder *resHolder, QWidget *parent) : 
       auto *timeField = new LineEditTime(settingSysValue, true, row);
       // same look as the number fields (the inner hour / minute / second boxes as well)
       timeField->setFont(fieldFont);
-      timeField->setFixedSize(130 * ssf, 30 * ssf);
+      timeField->setFixedSize(theme::dp(243), theme::dp(56));
       for (LineEditNum *part : timeField->findChildren<LineEditNum *>()) {
         part->setFont(fieldFont);
-        part->setFixedHeight(30 * ssf);
+        part->setFixedHeight(theme::dp(56));
       }
       editField = timeField;
     } else {
       auto *numField = new LineEditNum(settingSysValue, row);
       numField->setFont(fieldFont);
-      numField->setFixedSize(130 * ssf, 30 * ssf);
+      numField->setFixedSize(theme::dp(243), theme::dp(56));
       editField = numField;
     }
     rowLay->addWidget(editField);
     auto *unitWidget = new QLabel(unit, row);
     unitWidget->setProperty("muted", true);
-    unitWidget->setFixedWidth(40 * ssf);
+    unitWidget->setFixedWidth(theme::dp(75));
     rowLay->addWidget(unitWidget);
 
-    listLay->addWidget(row, shown / 2, shown % 2);
-    ++shown;
+    listLay->addWidget(row);
   }
-  listLay->setRowStretch((shown + 1) / 2, 1);
-  listLay->setColumnStretch(0, 1);
-  listLay->setColumnStretch(1, 1);
+  listLay->addStretch(1);
 
   auto *scroll = new QScrollArea(card);
   scroll->setWidgetResizable(true);

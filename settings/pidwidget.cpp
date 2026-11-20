@@ -88,29 +88,28 @@ void PidWidget::initGui() {
   if (0U == m_points) {
     return;
   }
-  double const ssf{utils::ssf()};
   auto        *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(0, theme::dp(16), 0, 0);
+  mainLay->setSpacing(theme::dp(20));
 
   // ---- gains per band
   auto *tableCard = new QFrame(this);
   tableCard->setObjectName("pageCard");
   auto *tableLay = new QVBoxLayout(tableCard);
-  tableLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  tableLay->setSpacing(4 * ssf);
+  tableLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  tableLay->setSpacing(theme::dp(8));
   auto *top   = new QHBoxLayout();
   auto *title = new QLabel(tr("Temperature PID coefficients"), tableCard);
   title->setObjectName("cardTitle");
   top->addWidget(title);
   top->addStretch();
   tableLay->addLayout(top);
-  tableLay->addSpacing(6 * ssf);
+  tableLay->addSpacing(theme::dp(12));
 
   auto addRow = [&](QFrame *row) {
     auto *grid = new QGridLayout(row);
-    grid->setContentsMargins(10 * ssf, 4 * ssf, 10 * ssf, 4 * ssf);
-    grid->setHorizontalSpacing(12 * ssf);
+    grid->setContentsMargins(theme::dp(20), theme::dp(8), theme::dp(20), theme::dp(8));
+    grid->setHorizontalSpacing(theme::dp(24));
     for (int column : {0, 1, 2, 3, 4}) {
       grid->setColumnStretch(column, column == 4 ? 3 : 2);
     }
@@ -152,16 +151,14 @@ void PidWidget::initGui() {
     double min, max;
     int    prec;
   };
-  QList<Gain> const gains{{0, 50, 1}, {0, 1000, 0}, {0, 20, 3}};
+  QList<Gain> const gains{{0, 50, 0}, {0, 1000, 0}, {0, 20, 3}};
   for (int g{0}; g < gains.size(); ++g) {
     for (quint32 i{0U}; i < m_points; ++i) {
       auto *lineEdit = new LineEditNum(gains[g].min, gains[g].max, gains[g].prec, false, m_rows[i]);
-      QFont font     = lineEdit->font();
-      font.setPointSizeF(QWidget::font().pointSizeF() * 1.15);
-      lineEdit->setFont(font);
-      lineEdit->setMinimumWidth(70 * ssf);
+      lineEdit->setFont(QWidget::font()); // the page's font
+      lineEdit->setMinimumWidth(theme::dp(131));
       lineEdit->setMaximumWidth(QWIDGETSIZE_MAX);
-      lineEdit->setFixedHeight(30 * ssf);
+      lineEdit->setFixedHeight(theme::dp(56));
       grids[i]->addWidget(lineEdit, 0, 1 + g);
       m_fields.push_back(lineEdit);
     }

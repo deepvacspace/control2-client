@@ -94,7 +94,7 @@ void SettingsWidget::initGui() {
   // tabWidget / buttons
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->setSpacing(3 * utils::ssf());
+  mainLay->setSpacing(theme::dp(4));
 
   auto *tabWidget = new QTabWidget(this);
   m_tabWidget     = tabWidget;
@@ -163,7 +163,7 @@ void SettingsWidget::initGui() {
   auto *getBtn  = new QPushButton(tr("Get settings from PLC"), this);
   sendBtn->setObjectName("primaryButton");
   for (QPushButton *button : {getBtn, sendBtn}) {
-    button->setFixedSize(190 * utils::ssf(), 32 * utils::ssf());
+    button->setFixedSize(theme::dp(356), theme::dp(60));
   }
 
   btnsLay->addWidget(getBtn);

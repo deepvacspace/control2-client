@@ -7,23 +7,24 @@
 #include "alarmsinglewidget.h"
 #include "systemvalue.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 AlarmListWidget::AlarmListWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   double const ssf{utils::ssf()};
   auto        *pageLay = new QVBoxLayout(this);
-  pageLay->setContentsMargins(0, 8 * ssf, 0, 0);
+  pageLay->setContentsMargins(0, theme::dp(16), 0, 0);
   auto *card = new QFrame(this);
   card->setObjectName("pageCard");
   pageLay->addWidget(card);
   auto *cardLay = new QVBoxLayout(card);
-  cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  cardLay->setSpacing(8 * ssf);
+  cardLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  cardLay->setSpacing(theme::dp(16));
 
   // header: title; column captions over the input state and the trigger condition
   auto *header = new QHBoxLayout();
-  header->setContentsMargins(0, 0, 10 * ssf, 0);
-  header->setSpacing(10 * ssf);
+  header->setContentsMargins(0, 0, theme::dp(20), 0);
+  header->setSpacing(theme::dp(20));
   auto *title = new QLabel(tr("Alarms"), card);
   title->setObjectName("cardTitle");
   header->addWidget(title, 1);
@@ -38,12 +39,12 @@ AlarmListWidget::AlarmListWidget(ResHolder *resHolder, QWidget *parent) : QWidge
     return label;
   };
   header->addWidget(caption(tr("Input"), static_cast<int>(70 * ssf)));
-  header->addSpacing(10 * ssf);
+  header->addSpacing(theme::dp(20));
   header->addWidget(caption(tr("Trigger condition"), static_cast<int>(240 * ssf)));
   cardLay->addLayout(header);
 
   auto *mainLay = new QVBoxLayout();
-  mainLay->setSpacing(6 * ssf);
+  mainLay->setSpacing(theme::dp(12));
   cardLay->addLayout(mainLay);
 
   QVariantList const alarmLabelsVariantList = resHolder->settings->settingsMap()["alarms"].toList();

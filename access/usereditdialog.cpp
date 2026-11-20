@@ -7,6 +7,7 @@
 
 #include "messagedialog.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 AccessLevelWidget::AccessLevelWidget(QWidget *parent) {
@@ -111,8 +112,8 @@ void UserEditDialog::initGui() {
     }
   }
 
-  cancelBtn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
-  m_saveBtn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
+  cancelBtn->setFixedSize(theme::dp(187), theme::dp(93));
+  m_saveBtn->setFixedSize(theme::dp(187), theme::dp(93));
 
   setWindowTitle(m_addNew ? tr("Add new user") : tr("Edit user"));
   setAttribute(Qt::WA_DeleteOnClose);

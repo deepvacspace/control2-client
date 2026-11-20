@@ -18,28 +18,27 @@ CalibrationWidget::CalibrationWidget(
     : QWidget{parent}, m_calibModel{calibrationVariantMap} {
   double const ssf{utils::ssf()};
   auto        *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(0, theme::dp(16), 0, 0);
+  mainLay->setSpacing(theme::dp(20));
 
   auto makeCard = [this, ssf](QString const &title) {
     auto *card = new QFrame(this);
     card->setObjectName("pageCard");
     auto *lay = new QVBoxLayout(card);
-    lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-    lay->setSpacing(8 * ssf);
+    lay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+    lay->setSpacing(theme::dp(16));
     auto *label = new QLabel(title, card);
     label->setObjectName("cardTitle");
     lay->addWidget(label);
     return card;
   };
 
-  // selected point and live readings
+  // selected point and live readings (right, on top: as tall as it needs)
   auto *editCard = makeCard(tr("Calibration point"));
   auto *pointEdit = new CalibrationEditWidget(&m_calibModel, curSysValue, curRawSysValue, editCard);
   editCard->layout()->addWidget(pointEdit);
-  mainLay->addWidget(editCard, 4);
 
-  // all points
+  // all points (left, the page's whole height)
   auto *tableCard = makeCard(tr("Calibration points"));
   auto *tableView = new QTableView(tableCard);
   tableView->setObjectName("flatTable");
@@ -56,12 +55,13 @@ CalibrationWidget::CalibrationWidget(
   tableView->verticalHeader()->setDefaultSectionSize(static_cast<int>(28 * ssf));
 
   tableView->setModel(&m_calibModel);
-  tableCard->layout()->addWidget(tableView);
+  static_cast<QVBoxLayout *>(tableCard->layout())->addWidget(tableView, 1);
+  mainLay->addWidget(tableCard, 4);
 
-  // the correction per measured value: one straight section between neighbouring points
+  // the correction per measured value: one straight section between neighbouring points (right, under the form)
   auto *chartCard = makeCard(tr("Correction by section"));
   auto *plot      = new QCustomPlot(chartCard);
-  plot->setMinimumHeight(static_cast<int>(200 * ssf));
+  plot->setMinimumHeight(theme::dp(220)); // it takes the height the form leaves: the form is never pressed together
   plot->setInteractions({});
   plot->xAxis->setLabel(tr("Measured value"));
   plot->yAxis->setLabel(tr("Correction"));
@@ -115,10 +115,11 @@ CalibrationWidget::CalibrationWidget(
   connect(&m_calibModel, &CalibrationModel::indexSelected, plot, redraw);
   redraw();
 
+  // right: the point's form, the chart under it taking the rest
   auto *right = new QVBoxLayout();
-  right->setSpacing(10 * ssf);
-  right->addWidget(tableCard, 3);
-  right->addWidget(chartCard, 2);
+  right->setSpacing(theme::dp(20));
+  right->addWidget(editCard, 0);
+  right->addWidget(chartCard, 1);
   mainLay->addLayout(right, 5);
 
   connect(tableView, &QTableView::clicked, this, [this](QModelIndex const &current) {

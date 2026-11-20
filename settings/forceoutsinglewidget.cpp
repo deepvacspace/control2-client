@@ -11,23 +11,22 @@ namespace deepvaccontrol {
 ForceOutSingleWidget::ForceOutSingleWidget(
   int index, QString const &stateLabel, SystemValue *sysValue, ForceType type, QWidget *parent)
     : QFrame{parent}, m_index{index}, m_sysValue{sysValue} {
-  double const ssf{utils::ssf()};
   setObjectName("outputRow");
   auto *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(12 * ssf, 6 * ssf, 10 * ssf, 6 * ssf);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(theme::dp(24), theme::dp(12), theme::dp(20), theme::dp(12));
+  mainLay->setSpacing(theme::dp(20));
 
   // name and current state
   auto *label = new QLabel(stateLabel, this);
   label->setObjectName("rowTitle");
-  label->setMinimumWidth(200 * ssf);
+  label->setMinimumWidth(theme::dp(375));
   mainLay->addWidget(label, 1);
   m_stateBadge = new QLabel(this);
   m_stateBadge->setAlignment(Qt::AlignCenter);
-  m_stateBadge->setFixedWidth(44 * ssf);
+  m_stateBadge->setFixedWidth(theme::dp(82));
   m_stateBadge->setToolTip(tr("Current state of the output"));
   mainLay->addWidget(m_stateBadge);
-  mainLay->addSpacing(10 * ssf);
+  mainLay->addSpacing(theme::dp(20));
 
   // how it is forced: one segmented control
   m_modeGroup = new QButtonGroup(this);
@@ -44,14 +43,14 @@ ForceOutSingleWidget::ForceOutSingleWidget(
     button->setProperty("segment", true);
     button->setProperty("segmentFirst", mode == 0);
     button->setProperty("segmentLast", mode == modes.size() - 1);
-    button->setFixedSize(64 * ssf, 28 * ssf);
+    button->setFixedSize(theme::dp(120), theme::dp(52));
     m_modeGroup->addButton(button, mode);
     segments->addWidget(button);
   }
   m_modeGroup->button(0)->setToolTip(tr("Released: the PLC controls the output"));
   m_modeGroup->button(0)->setChecked(true);
   if (type != ForceType::DUTY) {
-    segments->addSpacing(64 * ssf); // rows line up with the rows that have a duty cycle
+    segments->addSpacing(theme::dp(120)); // rows line up with the rows that have a duty cycle
   }
   mainLay->addLayout(segments);
 
@@ -59,7 +58,7 @@ ForceOutSingleWidget::ForceOutSingleWidget(
   m_dutyBox    = new QWidget(this);
   auto *dutyLay = new QHBoxLayout(m_dutyBox);
   dutyLay->setContentsMargins(0, 0, 0, 0);
-  dutyLay->setSpacing(6 * ssf);
+  dutyLay->setSpacing(theme::dp(12));
   if (type == ForceType::DUTY) {
     duty   = new LineEditNum(0, 1, 3, true, m_dutyBox);
     period = new LineEditNum(0, 600, 1, true, m_dutyBox);
@@ -68,7 +67,7 @@ ForceOutSingleWidget::ForceOutSingleWidget(
     QFont fieldFont = font();
     for (LineEditNum *edit : {duty, period}) {
       edit->setFont(fieldFont);
-      edit->setFixedSize(70 * ssf, 28 * ssf);
+      edit->setFixedSize(theme::dp(131), theme::dp(52));
     }
     auto muted = [this](QString const &text) {
       auto *l = new QLabel(text, m_dutyBox);
@@ -82,7 +81,7 @@ ForceOutSingleWidget::ForceOutSingleWidget(
     connect(duty, &LineEditNum::userEditingFinished, this, [this] { m_setBtn->setVisible(true); });
     connect(period, &LineEditNum::userEditingFinished, this, [this] { m_setBtn->setVisible(true); });
   }
-  m_dutyBox->setFixedWidth(250 * ssf); // same width in every row, shown only for a duty cycle
+  m_dutyBox->setFixedWidth(theme::dp(468)); // same width in every row, shown only for a duty cycle
   m_dutyBox->setVisible(false);
   QSizePolicy keep = m_dutyBox->sizePolicy();
   keep.setRetainSizeWhenHidden(true);
@@ -92,7 +91,7 @@ ForceOutSingleWidget::ForceOutSingleWidget(
   // send the choice
   m_setBtn = new QPushButton(tr("Set"), this);
   m_setBtn->setObjectName("primaryButton");
-  m_setBtn->setFixedSize(70 * ssf, 28 * ssf);
+  m_setBtn->setFixedSize(theme::dp(131), theme::dp(52));
   QSizePolicy keepSet = m_setBtn->sizePolicy();
   keepSet.setRetainSizeWhenHidden(true);
   m_setBtn->setSizePolicy(keepSet);

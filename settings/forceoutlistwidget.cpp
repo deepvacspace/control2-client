@@ -1,4 +1,5 @@
 #include "forceoutlistwidget.h"
+#include "theme.h"
 
 #include <QVBoxLayout>
 
@@ -10,20 +11,19 @@ namespace deepvaccontrol {
 ForceOutListWidget::ForceOutListWidget(
   ResHolder *resHolder, SystemValue *outsSystVal, QVariantList const &forceOutVariantList, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_outsSystVal{outsSystVal} {
-  double const ssf{utils::ssf()};
   auto        *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
+  mainLay->setContentsMargins(0, theme::dp(16), 0, 0);
 
   auto *card = new QFrame(this);
   card->setObjectName("pageCard");
   mainLay->addWidget(card);
   auto *cardLay = new QVBoxLayout(card);
-  cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  cardLay->setSpacing(8 * ssf);
+  cardLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  cardLay->setSpacing(theme::dp(16));
 
   // header: title, note, all outputs at once
   auto *header = new QHBoxLayout();
-  header->setSpacing(8 * ssf);
+  header->setSpacing(theme::dp(16));
   auto *title = new QLabel(tr("Manual output control"), card);
   title->setObjectName("cardTitle");
   header->addWidget(title);
@@ -33,7 +33,7 @@ ForceOutListWidget::ForceOutListWidget(
   auto *setAllBtn = new QPushButton(tr("Set all outputs"), card);
   setAllBtn->setObjectName("primaryButton");
   for (QPushButton *button : {resetAllBtn, setAllBtn}) {
-    button->setMinimumSize(150 * ssf, 28 * ssf);
+    button->setMinimumSize(theme::dp(281), theme::dp(52));
     header->addWidget(button);
   }
   cardLay->addLayout(header);
@@ -41,8 +41,8 @@ ForceOutListWidget::ForceOutListWidget(
   // one row per output
   auto *list    = new QWidget();
   auto *listLay = new QVBoxLayout(list);
-  listLay->setContentsMargins(0, 0, 4 * ssf, 0);
-  listLay->setSpacing(6 * ssf);
+  listLay->setContentsMargins(0, 0, theme::dp(8), 0);
+  listLay->setSpacing(theme::dp(12));
   for (auto const &forceOutVariant : forceOutVariantList) {
     QVariantMap const forceOutVariantMap = forceOutVariant.toMap();
 
