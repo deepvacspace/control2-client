@@ -41,6 +41,8 @@ QString formatScientific(float v, int frac = 3);
 QString formatScientificRef(float v, int frac = 3);
 // fixed width: one decimal and a two-digit exponent ("1.0·E-02"), whatever the value; editable (parseNumber reads it)
 QString formatSciE(double v);
+// the same value as shown, not typed: one decimal in base 10 ("1.0×10⁻²")
+QString formatSci10(double v);
 // a number as typed or shown: "1.0·E-02", "−5,2"
 double  parseNumber(QString text, bool *ok = nullptr);
 

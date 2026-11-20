@@ -76,7 +76,7 @@ inline QString text(double torr) {
     return QStringLiteral("—");
   }
   if ((std::fabs(torr) < 1.0) && !qFuzzyIsNull(torr)) {
-    return utils::formatSciE(torr);
+    return utils::formatSci10(torr);
   }
   return QString::number(torr, 'f', std::fabs(torr) >= 10.0 ? 0 : 1).replace(QLatin1Char('-'), QChar(0x2212));
 }

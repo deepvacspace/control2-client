@@ -5,6 +5,8 @@
 #include <QToolTip>
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
+#include <QRegularExpression>
 #include <QMenu>
 #include <QLabel>
 #include <QHash>
@@ -23,19 +25,38 @@ namespace deepvaccontrol::theme {
 namespace {
 bool g_dark{false};
 
-Colors const NAVY{
-  QColor("#0b1524"), QColor("#0d1a2c"), QColor("#122138"), QColor("#0f1c30"), QColor("#22385a"), QColor("#e6edf7"),
-  QColor("#8193ad"), QColor("#3b82f6"), QColor("#22c55e"), QColor("#5aa9ff"), QColor("#5b6b82"), QColor("#ef4444"),
-  QColor("#f59e0b"), QColor("#38bdf8"), QColor("#facc15")};
+// the colours come from the Deepvac HMI colour guide (theme::guide)
 
-Colors const LIGHT{
-  QColor("#eef2f7"), QColor("#ffffff"), QColor("#ffffff"), QColor("#f5f7fa"), QColor("#cfd8e3"), QColor("#14213a"),
-  QColor("#5c6b80"), QColor("#2563eb"), QColor("#16a34a"), QColor("#2563eb"), QColor("#94a3b8"), QColor("#dc2626"),
-  QColor("#d97706"), QColor("#0284c7"), QColor("#ca8a04")};
+// the dark theme, as the light one: Slate pages and inner zones (rows, fields, the plot area) in Slate Raised cards,
+// Slate Line borders, Pearl text, Sky for the accent and cooling, Heat for heating
+Colors const NAVY{guide::slate, guide::slate, guide::slateRaised, guide::slate,       guide::slateLine, guide::pearl,
+                  guide::haze,  guide::sky,   guide::live,        guide::sky,         guide::steel,     guide::alarm,
+                  guide::heat,  guide::sky,   guide::connecting,  guide::slateLine};
 
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
+// the light theme: Plot pages and inner value zones, White cards, Border outlines, Slate text, Steel labels, Cobalt for
+// icons, buttons and what is selected (and cooling), Heat for heating, Fog for the tab strips
+Colors const LIGHT{guide::plot,  guide::white,  guide::white, guide::plot, guide::border, guide::slate,
+                   guide::steel, guide::cobalt, guide::live,  guide::idle, guide::noConnection, guide::alarm,
+                   guide::heat,  guide::cobalt, guide::connecting, guide::fog};
+
+// the navigation sidebar, in both themes: Slate, Slate Raised boxes (the status box, hovered buttons), Slate Line
+// dividers, Sky icons, Pearl labels
+Colors const SIDEBAR{guide::slate, guide::slate, guide::slateRaised, guide::slateRaised, guide::slateLine, guide::pearl,
+                     guide::haze,  guide::sky,   guide::live,        guide::sky,         guide::steel,     guide::alarm,
+                     guide::heat,  guide::sky,   guide::connecting,  guide::slateLine};
+
 }
+
+int dp(double designPx) {
+  return qMax(1, qRound(designPx * utils::ssf() * 1024.0 / 1920.0));
+}
+
+int gap() {
+  return dp(16);
+}
+
+int radius() {
+  return dp(8);
 }
 
 bool isDark() {
@@ -47,7 +68,20 @@ Colors const &colors() {
 }
 
 Colors const &sidebarColors() {
-  return NAVY;
+  return SIDEBAR;
+}
+
+QString monoFamily() {
+  static QString const family = [] {
+    int const         id{QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/JetBrainsMono-Medium.ttf"))};
+    QStringList const families = (id >= 0) ? QFontDatabase::applicationFontFamilies(id) : QStringList{};
+    return families.isEmpty() ? QStringLiteral("Consolas") : families.first();
+  }();
+  return family;
+}
+
+QColor selectedBackground() {
+  return g_dark ? QColor(NAVY.accent.red(), NAVY.accent.green(), NAVY.accent.blue(), 70) : guide::cobaltTint;
 }
 
 QPalette palette(bool dark) {
@@ -63,17 +97,17 @@ QPalette palette(bool dark) {
   p.setColor(QPalette::Text, c.text);
   p.setColor(QPalette::Button, c.panel);
   p.setColor(QPalette::ButtonText, c.text);
-  p.setColor(QPalette::BrightText, Qt::white);
-  p.setColor(QPalette::Light, c.border.lighter(130));
+  p.setColor(QPalette::BrightText, guide::white);
+  p.setColor(QPalette::Light, dark ? guide::steel : guide::white);
   p.setColor(QPalette::Midlight, c.border);
   p.setColor(QPalette::Mid, c.border);
-  p.setColor(QPalette::Dark, c.window.darker(120));
-  p.setColor(QPalette::Shadow, Qt::black);
+  p.setColor(QPalette::Dark, dark ? guide::slate : guide::fog);
+  p.setColor(QPalette::Shadow, guide::slate);
   p.setColor(QPalette::Link, c.accent);
   p.setColor(QPalette::Highlight, c.accent);
-  p.setColor(QPalette::HighlightedText, Qt::white);
+  p.setColor(QPalette::HighlightedText, guide::white);
   for (auto role : {QPalette::Text, QPalette::ButtonText, QPalette::WindowText}) {
-    p.setColor(QPalette::Disabled, role, c.muted.darker(dark ? 130 : 90));
+    p.setColor(QPalette::Disabled, role, dark ? guide::steel : guide::haze);
   }
   p.setColor(QPalette::Disabled, QPalette::Button, c.panel);
   return p;
@@ -96,17 +130,19 @@ QString checkImage(QColor const &color) {
   return QDir::fromNativeSeparators(path);
 }
 
-// the × of closable tabs
-QString closeImage(QColor const &color) {
-  QString const path = QDir::temp().filePath(QStringLiteral("deepvac_close_%1.png").arg(color.name().mid(1)));
+// the × of closable tabs; large: filling most of its square (the Analysis tabs)
+QString closeImage(QColor const &color, bool large = false) {
+  QString const path = QDir::temp().filePath(QStringLiteral("deepvac_close%2_%1.png").arg(color.name().mid(1), large ? QStringLiteral("L") : QString{}));
   if (!QFile::exists(path)) {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
     QPainter p(&pixmap);
     p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QPen(color, 3.4, Qt::SolidLine, Qt::RoundCap));
-    p.drawLine(QPointF(10, 10), QPointF(22, 22));
-    p.drawLine(QPointF(22, 10), QPointF(10, 22));
+    double const from{large ? 7.0 : 10.0};
+    double const to{32.0 - from};
+    p.setPen(QPen(color, large ? 3.0 : 3.4, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(from, from), QPointF(to, to));
+    p.drawLine(QPointF(to, from), QPointF(from, to));
     p.end();
     pixmap.save(path);
   }
@@ -132,9 +168,9 @@ QString chevronImage(QColor const &color) {
 // menus: a rounded card, roomy rows, a soft hover, thin separators, a tick for checked entries;
 // statistics: tables in a rounded box with small upper-case headings
 QString menuAndTableStyleSheet(Colors const &c, bool dark) {
-  QColor const hover = dark ? c.panel.lighter(135) : QColor::fromRgbF(0.945f, 0.957f, 0.973f);
-  QColor const line  = dark ? c.border : c.border.lighter(108);
-  QColor const pick  = QColor(c.accent.red(), c.accent.green(), c.accent.blue(), dark ? 50 : 26);
+  QColor const hover = dark ? guide::slateLine : guide::plot;
+  QColor const line  = c.border;
+  QColor const pick  = dark ? QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 50) : selectedBackground();
   return QStringLiteral(R"(
 QMenu { background: %1; color: %2; border: %3px solid %4; border-radius: %5px; padding: %6px; min-width: %20px; }
 QMenu::item { padding: %7px %8px %7px %9px; border-radius: %10px; background: transparent; margin: %3px 0; }
@@ -145,19 +181,18 @@ QMenu::indicator { width: %9px; height: %9px; }
 QMenu::indicator:checked { image: url(%14); }
 QFrame#statsCard { background: %1; border: %3px solid %4; border-radius: %5px; }
 QFrame#sideBar { background: transparent; border: none; }
-QFrame#sideRail { background: %1; border: %3px solid %4; border-radius: %16px; }
 QFrame#chartToolbar, QFrame#chartPad { background: %1; border: %3px solid %4; border-radius: %16px; }
 QToolButton#toolHandle { background: transparent; border: none; border-radius: %10px; color: %15; padding: 0 %10px; font-weight: bold; }
 QToolButton#toolHandle:hover { background: %11; }
-QToolButton#toolHandle[active="true"] { background: %17; color: %21; }
+QToolButton#toolHandle[active="true"] { background: %17; color: %2; }
 QToolButton#toolButton { background: transparent; border: none; border-radius: %10px; }
 QToolButton#toolButton:hover { background: %11; }
 QToolButton#toolButton:checked { background: %17; }
 QToolButton#toolButton:disabled { background: transparent; }
 QFrame#sidePanel { background: %1; border: %3px solid %4; border-radius: %16px; }
-QToolButton#railButton { background: transparent; border: none; border-radius: %16px; color: %15; padding: %10px 0; font-size: %19pt; }
+QToolButton#railButton { background: transparent; border: none; border-radius: %16px; color: %15; padding: %10px 0; font-size: %26pt; }
 QToolButton#railButton:hover { background: %11; }
-QToolButton#railButton:checked { background: %17; color: %21; font-weight: bold; }
+QToolButton#railButton:checked { background: %17; color: %2; font-weight: bold; }
 QToolButton#railButton:disabled { color: %12; }
 QToolButton#panelClose { background: %11; border: none; border-radius: %24px; color: %2; font-size: %25pt; padding: 0 0 %3px 0; }
 QToolButton#panelClose:hover, QToolButton#panelClose:pressed { background: %4; }
@@ -168,7 +203,7 @@ QPushButton#drawerSection, QPushButton#drawerSection:hover, QPushButton#drawerSe
   background: transparent; border: none; padding: 0; }
 QPushButton[softSegment="true"] { background: %1; color: %2; border: %3px solid %4; border-radius: 0; padding: %10px %18px; }
 QPushButton[softSegment="true"]:hover { border-color: %4; background: %11; }
-QPushButton[softSegment="true"]:checked { background: %17; color: %21; font-weight: bold; border-color: %4; }
+QPushButton[softSegment="true"]:checked { background: %17; color: %2; font-weight: bold; border-color: %4; }
 QPushButton[softSegment="true"][segmentFirst="true"] { border-top-left-radius: %10px; border-bottom-left-radius: %10px; }
 QPushButton[softSegment="true"][segmentLast="true"] { border-top-right-radius: %10px; border-bottom-right-radius: %10px; }
 QPushButton[link="true"], QPushButton[link="true"]:hover, QPushButton[link="true"]:pressed {
@@ -180,87 +215,101 @@ QComboBox[soft="true"]::down-arrow, QDateEdit[soft="true"]::down-arrow { image: 
 QLabel#statsTitle { color: %15; font-weight: bold; }
 QTableView#statsTable, QListWidget#statsList { background: %1; border: %3px solid %13; border-radius: %16px;
   selection-background-color: %17; selection-color: %2; outline: 0; }
-QTableView#statsTable::item { border: none; padding: 0 %18px; }
+QTableView#statsTable::item { border: none; padding: 0 %27px; }
 QTableView#statsTable::item:selected, QListWidget#statsList::item:selected { background: %17; color: %2; }
 QListWidget#statsList::item { padding: %7px %18px; }
 QTableView#statsTable QHeaderView { background: transparent; border: none; }
 QTableView#statsTable QHeaderView::section { background: transparent; color: %15; border: none; border-bottom: %3px solid %13;
-  padding: %7px %18px; font-weight: bold; font-size: %19pt; }
+  padding: %7px %27px; font-weight: bold; font-size: %19pt; }
 QTableView#statsTable QTableCornerButton::section { background: transparent; border: none; }
 )")
     .arg(c.panel.name(), c.text.name())
-    .arg(px(1))
+    .arg(dp(1))
     .arg(c.border.name())
-    .arg(px(10))
-    .arg(px(6))
-    .arg(px(8))
-    .arg(px(36))
-    .arg(px(14))
-    .arg(px(6))
+    .arg(dp(18))
+    .arg(dp(11))
+    .arg(dp(15))
+    .arg(dp(67))
+    .arg(dp(26))
+    .arg(dp(11))
     .arg(hover.name(), c.off.name(), line.name(), checkImage(c.accent), c.muted.name())
-    .arg(px(8))
+    .arg(dp(15))
     .arg(pick.name(QColor::HexArgb))
-    .arg(px(12))
+    .arg(dp(22))
     .arg(QApplication::font().pointSizeF() * 0.82, 0, 'f', 1) // small headings
-    .arg(px(170))
+    .arg(dp(318))
     .arg(c.accent.name())
-    .arg(px(24))
+    .arg(dp(45))
     .arg(chevronImage(c.muted))
-    .arg(px(10))                                                 // rounded square × of the side panels
-    .arg(QApplication::font().pointSizeF() * 1.35, 0, 'f', 1);
+    .arg(dp(18))                                                 // rounded square × of the side panels
+    .arg(QApplication::font().pointSizeF() * 1.35, 0, 'f', 1)
+    .arg(QApplication::font().pointSizeF() * 0.62, 0, 'f', 1) // the rail buttons' names, as the live status' captions
+    .arg(dp(12)); // either side of a statistics table's cell: twelve columns of text at the page's size fit
 }
 }
 
-// Analysis: the panes' tabs as pills (the selected one outlined in the accent), the + a round outlined button; the
-// channel rows of the side panel as cards with a dark tick, white boxes and roomy Show all / Hide all
+// Analysis: the panes' tabs in one rounded strip (plain labels between thin lines, the selected one a white box in
+// bold), the + a flat icon in it; Expand / Collapse a named button over the chart's top right; the chart and the
+// live status (with the options) in cards. The channel rows of the side
+// panel as cards with a dark tick, white boxes and roomy Show all / Hide all
 QString analysisStyleSheet(Colors const &c, bool dark) {
-  QColor const pick    = QColor(c.accent.red(), c.accent.green(), c.accent.blue(), dark ? 56 : 22);
-  QColor const closeBg = dark ? QColor(255, 255, 255, 26) : QColor(15, 23, 42, 14);
-  QColor const strong  = dark ? c.border.lighter(140) : c.border.darker(112);
-  return QStringLiteral(R"(
-QTabBar#paneTabs::tab { background: %1; color: %2; border: %3px solid %4; border-radius: %5px; height: %6px;
-  padding: 0 %7px; margin-right: %8px; min-width: %9px; }
-QTabBar#paneTabs::tab:hover { border-color: %10; }
-QTabBar#paneTabs::tab:selected { background: %11; color: %2; border: %12px solid %13; }
-QTabBar#paneTabs::close-button { image: url(%14); background: %15; border-radius: %26px; width: %17px; height: %17px;
-  margin-left: %8px; subcontrol-position: right; }
+  QColor const hover  = dark ? QColor(255, 255, 255, 20) : QColor(guide::slate.red(), guide::slate.green(), guide::slate.blue(), 12);
+  QColor const strong = dark ? guide::steel : guide::haze;
+  QString const tabs = QStringLiteral(R"(
+QFrame#paneHeader { background: %3; border: %4px solid %5; border-radius: %6px; }  /* Fog */
+QTabBar#paneTabs::tab { background: transparent; color: %2; border: none; border-right: %4px solid %5; border-radius: 0;
+  height: %7px; padding: 0 %8px; margin: 0; min-width: %9px; }
+QTabBar#paneTabs::tab:hover:!selected { background: %10; }
+QTabBar#paneTabs::tab:selected { background: %1; color: %2; font-weight: bold; border: %4px solid %5; border-radius: %11px; }
+QTabBar#paneTabs::close-button { image: url(%12); background: transparent; border-radius: %11px; width: %13px; height: %13px;
+  margin-left: %14px; subcontrol-position: right; }
 QTabBar#paneTabs::close-button:hover { background: %10; }
-QToolButton#tabAdd { background: %1; color: %13; border: %12px solid %13; border-radius: %18px; font-size: %27pt; padding: 0 0 %3px 0; }
-QToolButton#tabAdd:hover, QToolButton#tabAdd:pressed { background: %11; }
-QFrame#channelRow { background: %19; border: none; border-radius: %20px; }
-QFrame#channelRow QCheckBox::indicator { width: %21px; height: %21px; border: %12px solid %10; border-radius: %16px; background: %1; }
-QFrame#channelRow QCheckBox::indicator:checked { background: %2; border-color: %2; image: url(%22); }
-QFrame#channelRow QComboBox { background: %1; border: %3px solid %4; border-radius: %16px; padding: 0 0 0 %16px; }
-QFrame#channelRow QComboBox:disabled { background: %19; }
-QFrame#channelRow QComboBox::drop-down { border: none; width: %23px; }
-QFrame#channelRow QComboBox::down-arrow { image: url(%24); width: %25px; height: %25px; }
-QPushButton[panelFooter="true"] { border-radius: %20px; font-weight: bold; }
-QPushButton[panelFooter="true"]:!pressed { border-color: %10; }
+QToolButton#tabClose { background: transparent; border: none; border-radius: %11px; padding: 0; }
+QToolButton#tabClose:hover, QToolButton#tabClose:pressed { background: %10; }
+QToolButton#tabAdd, QToolButton#tabMore { background: transparent; border: none; border-radius: %11px; padding: 0; }
+QToolButton#liveToggle { background: transparent; border: none; border-radius: %11px; padding: 0; }
+QToolButton#tabAdd:hover, QToolButton#tabAdd:pressed, QToolButton#tabMore:hover, QToolButton#tabMore:pressed, QToolButton#liveToggle:hover, QToolButton#liveToggle:pressed { background: %10; }
+QFrame#chartCard, QFrame#sideColumn { background: %1; border: %4px solid %5; border-radius: %6px; }
+)")
+    .arg(c.panel.name(), c.text.name(), c.rule.name())
+    .arg(dp(1))
+    .arg(c.border.name())
+    .arg(dp(8))
+    .arg(dp(42))
+    .arg(dp(20))
+    .arg(dp(48))
+    .arg(hover.name(QColor::HexArgb))
+    .arg(dp(6))
+    .arg(closeImage(c.muted))
+    .arg(dp(24))
+    .arg(dp(8));
+  QString const channels = QStringLiteral(R"(
+QFrame#channelRow { background: %1; border: none; border-radius: %2px; }
+QFrame#channelRow QCheckBox::indicator, QCheckBox[boxed="true"]::indicator { width: %3px; height: %3px; border: %4px solid %5; border-radius: %6px; background: %7; }
+QFrame#channelRow QCheckBox::indicator:checked, QCheckBox[boxed="true"]::indicator:checked { background: %8; border-color: %8; image: url(%9); }
+QCheckBox[boxed="true"] { spacing: %15px; font-weight: bold; }
+QFrame#channelRow QComboBox { background: %7; border: %10px solid %11; border-radius: %6px; padding: 0 0 0 %6px; }
+QFrame#channelRow QComboBox:disabled { background: %1; }
+QFrame#channelRow QComboBox::drop-down { border: none; width: %12px; }
+QFrame#channelRow QComboBox::down-arrow { image: url(%13); width: %14px; height: %14px; }
+QPushButton[panelFooter="true"] { border-radius: %2px; font-weight: bold; }
+QPushButton[panelFooter="true"]:!pressed { border-color: %5; }
 QPushButton#darkButton[panelFooter="true"] { border: none; }
 )")
-    .arg(c.panel.name(), c.text.name())
-    .arg(px(1.5))
-    .arg(c.border.name())
-    .arg(px(21))
-    .arg(px(42))
-    .arg(px(16))
-    .arg(px(8))
-    .arg(px(20))
-    .arg(strong.name(), pick.name(QColor::HexArgb))
-    .arg(px(2))
-    .arg(c.accent.name(), closeImage(c.text), closeBg.name(QColor::HexArgb))
-    .arg(px(6))
-    .arg(px(28))
-    .arg(px(21))
     .arg(c.panelAlt.name())
-    .arg(px(12))
-    .arg(px(20))
-    .arg(checkImage(c.panel))
-    .arg(px(20))
+    .arg(dp(22))
+    .arg(dp(37))
+    .arg(dp(3))
+    .arg(strong.name())
+    .arg(dp(11))
+    .arg(c.panel.name(), c.text.name(), checkImage(c.panel))
+    .arg(dp(2))
+    .arg(c.border.name())
+    .arg(dp(37))
     .arg(chevronImage(c.muted))
-    .arg(px(10))
-    .arg(px(8)) // the tabs' ×: a rounded square
-    .arg(QApplication::font().pointSizeF() * 1.5, 0, 'f', 1);
+    .arg(dp(18))
+    .arg(dp(14)); // a boxed check box: its tick to its text
+  return tabs + channels;
 }
 
 QString styleSheet(bool dark) {
@@ -307,11 +356,13 @@ QProgressBar#slimProgress::chunk { background: %8; border-radius: %6px; }
 QLabel#cardTitle { font-weight: bold; }
 QLabel[muted="true"] { color: %16; }
 QPushButton#primaryButton { background: %8; color: white; border: none; font-weight: bold; }
+QPushButton#primaryButton:hover { background: %25; }
+QPushButton#primaryButton:pressed { background: %26; }
 QPushButton#primaryButton:disabled { background: %14; color: %10; }
 QPushButton#darkButton { background: %2; color: %1; border: none; font-weight: bold; }
 QPushButton#darkButton:pressed { background: %10; }
 QPushButton#darkButton:disabled { background: %14; color: %10; }
-QPushButton#startButton { background: %22; color: #052e16; border: none; font-weight: bold; }
+QPushButton#startButton { background: %22; color: %23; border: none; font-weight: bold; }
 QPushButton#startButton:disabled { background: %14; color: %10; }
 QPushButton[outline="true"] { background: transparent; color: %13; border: %4px solid %13; }
 QPushButton[outline="true"]:disabled { color: %10; border-color: %3; }
@@ -346,20 +397,21 @@ QPushButton[segmentLast="true"] { border-top-right-radius: %15px; border-bottom-
 QLabel#rowTitle { font-weight: bold; }
 )");
   qss = qss.arg(c.panel.name(), c.text.name(), c.border.name())
-    .arg(px(1))
-    .arg(px(6))
-    .arg(px(4))
-    .arg(px(8))
-    .arg(c.accent.name(), (dark ? c.accent.darker(160) : c.accent.lighter(170)).name(), c.muted.name(),
-         c.border.darker(dark ? 120 : 105).name(), c.window.name(), c.danger.name(), c.panelAlt.name())
-    .arg(px(3))
+    .arg(dp(1))
+    .arg(dp(11))
+    .arg(dp(7))
+    .arg(dp(15))
+    .arg(c.accent.name(), (dark ? guide::cobaltPressed : selectedBackground()).name(), c.muted.name(),
+         c.border.name(), c.window.name(), c.danger.name(), c.panelAlt.name())
+    .arg(dp(5))
     .arg(c.muted.name(), c.panelAlt.name())
-    .arg(px(2))
-    .arg(px(8))
-    .arg(px(9))
-    .arg(px(4.5))
-    .arg(c.active.name(), dark ? QStringLiteral("#c084fc") : QStringLiteral("#7e22ce"),
-         QColor(c.accent.red(), c.accent.green(), c.accent.blue(), dark ? 45 : 30).name(QColor::HexArgb));
+    .arg(dp(3))
+    .arg(dp(15))
+    .arg(dp(16))
+    .arg(dp(8))
+    .arg(c.active.name(), guide::slate.name(), // the start button: Slate on Live
+         dark ? QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 45).name(QColor::HexArgb) : selectedBackground().name())
+    .arg((dark ? guide::cobalt : guide::cobaltPressed).name(), guide::cobaltPressed.name());
   return qss + menuAndTableStyleSheet(c, dark) + analysisStyleSheet(c, dark);
 }
 
@@ -381,10 +433,10 @@ public:
     if (event->type() == QEvent::Show) {
       if (auto *box = qobject_cast<QMessageBox *>(watched)) {
         if (auto *label = box->findChild<QLabel *>(QStringLiteral("qt_msgbox_label"))) {
-          label->setMinimumWidth(px(260));
+          label->setMinimumWidth(dp(487));
         }
         for (QAbstractButton *button : box->buttons()) {
-          button->setMinimumSize(px(60), px(20));
+          button->setMinimumSize(dp(112), dp(37));
         }
         static QHash<int, QString> const kinds{{QMessageBox::Warning, "warning"},
                                                {QMessageBox::Critical, "error"},
@@ -408,7 +460,34 @@ void apply(bool dark) {
   }
   g_dark = dark;
   QApplication::setPalette(palette(dark));
-  qApp->setStyleSheet(styleSheet(dark));
+  // every rounded corner the same (radius()); scroll bar handles and tick box / radio indicators keep their own
+  QString sheet = styleSheet(dark);
+  {
+    static QRegularExpression const corner{QStringLiteral("(border(?:-top|-bottom)?(?:-left|-right)?-radius:\\s*)(\\d+)px")};
+    QStringList rules = sheet.split(QLatin1Char('}'));
+    for (QString &rule : rules) {
+      QString const selector = rule.section(QLatin1Char('{'), 0, 0);
+      if (selector.contains(QLatin1String("QScrollBar")) || selector.contains(QLatin1String("::indicator"))) {
+        continue;
+      }
+      QString                         out;
+      qsizetype                       from{0};
+      QRegularExpressionMatchIterator it = corner.globalMatch(rule);
+      while (it.hasNext()) {
+        QRegularExpressionMatch const m = it.next();
+        out += rule.mid(from, m.capturedStart() - from) + m.captured(1)
+               + ((m.captured(2).toInt() > 0) ? QString::number(radius()) : m.captured(2)) + QStringLiteral("px");
+        from = m.capturedEnd();
+      }
+      rule = out + rule.mid(from);
+    }
+    sheet = rules.join(QLatin1Char('}'));
+  }
+  qApp->setStyleSheet(sheet);
+  // Setting a style sheet for the first time sets the application's style again, which brings the platform's own fonts
+  // back for tables, lists, menus and message boxes (9 pt on Windows, whatever the screen): their texts were tiny
+  // beside everything else. The application's font again clears them, so they follow the screen's scale too
+  QApplication::setFont(QApplication::font());
   // tooltips of widgets with style sheets of their own fall back to the native look: the palette and font of the
   // application for them too
   {
@@ -441,8 +520,10 @@ void setThemedIcon(QWidget *target, QString const &kind, int size, QString const
   Colors const &c     = colors();
   QColor const  color = (role == QLatin1String("muted"))    ? c.muted
                         : (role == QLatin1String("danger")) ? c.danger
-                        : (role == QLatin1String("accent")) ? c.accent
-                                                            : c.text;
+                        : (role == QLatin1String("text"))   ? c.text
+                        : (role == QLatin1String("heat"))   ? c.heat
+                        : (role == QLatin1String("cold"))   ? c.cold
+                                                            : c.accent; // "icon", "accent": the icons are Cobalt
   QIcon const   icon  = menuIcon(kind, color, color, size);
   target->setProperty("themeIcon", kind);
   target->setProperty("themeIconSize", size);
@@ -460,18 +541,30 @@ void stylePlot(QCustomPlot *plot) {
     return;
   }
   Colors const &c = colors();
-  plot->setBackground(c.panelAlt);
+  // the chart colours of the guide: Axis lines, Tick text labels and titles, a dashed Grid (on the dark theme the
+  // dark set: Haze, Slate Line)
+  QColor const axisColor = g_dark ? guide::haze : guide::axis;
+  QColor const tickColor = g_dark ? guide::haze : guide::tickText;
+  QColor const gridColor = g_dark ? guide::slateLine : guide::grid;
+  plot->setBackground(c.panel); // the card's; the plot area inside the axes Plot
   for (QCPAxisRect *rect : plot->axisRects()) {
     rect->setBackground(c.panelAlt);
     for (QCPAxis *axis : rect->axes()) {
-      axis->setBasePen(QPen(c.muted, 1));
-      axis->setTickPen(QPen(c.muted, 1));
-      axis->setSubTickPen(QPen(c.muted, 1));
-      axis->setTickLabelColor(c.muted);
-      axis->setLabelColor(c.muted);
-      axis->grid()->setPen(QPen(c.border, 1, Qt::DotLine));
-      axis->grid()->setSubGridPen(QPen(c.border.darker(120), 1, Qt::DotLine));
-      axis->grid()->setZeroLinePen(QPen(c.border.lighter(140), 1));
+      axis->setBasePen(QPen(axisColor, 1));
+      axis->setTickPen(QPen(axisColor, 1));
+      axis->setSubTickPen(QPen(axisColor, 1));
+      axis->setTickLabelColor(tickColor);
+      axis->setLabelColor(tickColor);
+      axis->grid()->setPen(QPen(gridColor, 1, Qt::DashLine));
+      axis->grid()->setSubGridPen(QPen(gridColor, 1, Qt::DashLine));
+      axis->grid()->setZeroLinePen(QPen(c.border, 1));
+    }
+  }
+  // labels marked "themedLabel" (the date in the corner of the live chart): Tick text on the card's colour
+  for (int i{0}; i < plot->itemCount(); ++i) {
+    if (auto *text = qobject_cast<QCPItemText *>(plot->item(i)); text && text->property("themedLabel").toBool()) {
+      text->setColor(tickColor);
+      text->setBrush(QColor(c.panel.red(), c.panel.green(), c.panel.blue(), 200));
     }
   }
   if (plot->legend) {
@@ -529,7 +622,7 @@ void setupPressureAxis(QCPAxis *axis) {
 QPixmap dialogIcon(QString const &kind, int size) {
   Colors const &c     = colors();
   QColor const  color = (kind == QLatin1String("error"))     ? c.danger
-                        : (kind == QLatin1String("warning")) ? QColor(245, 158, 11)
+                        : (kind == QLatin1String("warning")) ? guide::connecting
                                                              : c.accent;
   qreal const   dpr   = qApp->devicePixelRatio();
   QPixmap       pixmap(QSize(size, size) * dpr);
@@ -547,7 +640,7 @@ QPixmap dialogIcon(QString const &kind, int size) {
   font.setBold(true);
   font.setPixelSize(static_cast<int>(size * 0.46));
   p.setFont(font);
-  p.setPen(Qt::white);
+  p.setPen(guide::white);
   QString const glyph = (kind == QLatin1String("question")) ? QStringLiteral("?")
                         : (kind == QLatin1String("info"))   ? QStringLiteral("i")
                                                             : QStringLiteral("!");
@@ -571,12 +664,12 @@ QTabBar::tab { background: transparent; color: %3; border: none; border-bottom: 
 QTabBar::tab:hover { color: %8; }
 QTabBar::tab:selected { color: %8; font-weight: bold; border-bottom: %4px solid %9; }
 )")
-    .arg(px(1))
+    .arg(dp(1))
     .arg(c.border.name(), c.muted.name())
-    .arg(px(2))
-    .arg(px(6))
-    .arg(px(12))
-    .arg(px(4))
+    .arg(dp(3))
+    .arg(dp(11))
+    .arg(dp(22))
+    .arg(dp(7))
     .arg(c.text.name(), c.accent.name());
 }
 
@@ -588,10 +681,11 @@ QString adaptStyleSheet(QString qss) {
   QList<std::pair<QString, QString>> const replacements{
     {"background-color: white", "background-color: " + c.panelAlt.name()},
     {"selection-background-color: white", "selection-background-color: " + c.accent.name()},
-    {"selection-background-color: #d7dfef", "selection-background-color: " + c.accent.darker(150).name()},
-    {"selection-color: black", "selection-color: white"},
-    {"color: black", "color: " + c.text.name()},
-    {"rgb(220, 220, 220)", c.border.name()},
+    {"selection-background-color: #dce6ff", "selection-background-color: " + guide::cobaltPressed.name()},
+    {"selection-color: #1e2633", "selection-color: " + guide::pearl.name()},
+    {"color: #1e2633", "color: " + c.text.name()},
+    {"solid #1e2633", "solid " + c.text.name()},
+    {"#d9dee5", c.border.name()},
   };
   for (auto const &[from, to] : replacements) {
     qss.replace(from, to, Qt::CaseInsensitive);
@@ -687,6 +781,9 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
   } else if (kind == "plus") {
     p.drawLine(pt(0.5, 0.2), pt(0.5, 0.8));
     p.drawLine(pt(0.2, 0.5), pt(0.8, 0.5));
+  } else if (kind == "close") { // ×
+    p.drawLine(pt(0.24, 0.24), pt(0.76, 0.76));
+    p.drawLine(pt(0.76, 0.24), pt(0.24, 0.76));
   } else if (kind == "minus") {
     p.drawLine(pt(0.2, 0.5), pt(0.8, 0.5));
   } else if (kind == "up" || kind == "down" || kind == "left" || kind == "right") {
@@ -796,6 +893,17 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
                                        std::tuple{0.86, 0.86, -1, -1}}) {
       p.drawLine(pt(x, y), pt(x + dx * 0.24, y));
       p.drawLine(pt(x, y), pt(x, y + dy * 0.24));
+    }
+  } else if ((kind == "expand") || (kind == "shrink")) { // arrows to the corners (out), or from them (in)
+    bool const out{kind == "expand"};
+    for (auto const &[dx, dy] : {std::pair{-1, -1}, std::pair{1, -1}, std::pair{-1, 1}, std::pair{1, 1}}) {
+      QPointF const inner = pt(0.5 + dx * 0.1, 0.5 + dy * 0.1);
+      QPointF const outer = pt(0.5 + dx * 0.36, 0.5 + dy * 0.36);
+      p.drawLine(inner, outer);
+      QPointF const tip  = out ? outer : inner;
+      double const  back{out ? -1.0 : 1.0}; // the arrowhead's legs go back along the line
+      p.drawLine(tip, tip + QPointF(back * dx * s * 0.16, 0));
+      p.drawLine(tip, tip + QPointF(0, back * dy * s * 0.16));
     }
   } else if (kind == "stats") { // bars
     p.drawLine(pt(0.12, 0.88), pt(0.88, 0.88));
@@ -933,11 +1041,40 @@ void drawIcon(QPainter &p, QString const &kind, QColor const &color, double s) {
     p.setBrush(color);
     p.drawEllipse(QRectF(pt(0.34, 0.6), pt(0.66, 0.92)));
     p.drawLine(pt(0.5, 0.35), pt(0.5, 0.65));
-  } else if (kind == "snowflake") {
-    for (int k{0}; k < 3; ++k) {
-      double const a{k * 3.14159265 / 3.0};
-      p.drawLine(pt(0.5 + 0.38 * std::cos(a), 0.5 + 0.38 * std::sin(a)), pt(0.5 - 0.38 * std::cos(a), 0.5 - 0.38 * std::sin(a)));
+  } else if (kind == "snowflake") { // six arms, each with a branch either side near its end
+    for (int k{0}; k < 6; ++k) {
+      double const a{k * 3.14159265 / 3.0 - 3.14159265 / 2.0};
+      QPointF const tip{pt(0.5 + 0.4 * std::cos(a), 0.5 + 0.4 * std::sin(a))};
+      QPointF const fork{pt(0.5 + 0.25 * std::cos(a), 0.5 + 0.25 * std::sin(a))};
+      p.drawLine(pt(0.5, 0.5), tip);
+      for (double const side : {-0.7, 0.7}) {
+        p.drawLine(fork, fork + QPointF(0.12 * s * std::cos(a + side), 0.12 * s * std::sin(a + side)));
+      }
     }
+  } else if (kind == "flame") { // heating
+    QPainterPath flame;
+    flame.moveTo(pt(0.5, 0.9));
+    flame.cubicTo(pt(0.24, 0.9), pt(0.16, 0.66), pt(0.28, 0.48));
+    flame.cubicTo(pt(0.34, 0.6), pt(0.4, 0.62), pt(0.42, 0.58));
+    flame.cubicTo(pt(0.38, 0.38), pt(0.46, 0.2), pt(0.58, 0.1));
+    flame.cubicTo(pt(0.6, 0.3), pt(0.84, 0.44), pt(0.8, 0.66));
+    flame.cubicTo(pt(0.78, 0.82), pt(0.66, 0.9), pt(0.5, 0.9));
+    p.drawPath(flame);
+  } else if (kind == "air") { // venting: three lines of wind, their ends curled
+    QPainterPath wind;
+    wind.moveTo(pt(0.1, 0.34));
+    wind.lineTo(pt(0.6, 0.34));
+    wind.cubicTo(pt(0.8, 0.34), pt(0.8, 0.1), pt(0.62, 0.14));
+    wind.moveTo(pt(0.1, 0.54));
+    wind.lineTo(pt(0.76, 0.54));
+    wind.cubicTo(pt(0.96, 0.54), pt(0.96, 0.8), pt(0.78, 0.76));
+    wind.moveTo(pt(0.1, 0.74));
+    wind.lineTo(pt(0.44, 0.74));
+    p.drawPath(wind);
+  } else if (kind == "clock") {
+    p.drawEllipse(QRectF(pt(0.12, 0.12), pt(0.88, 0.88)));
+    p.drawLine(pt(0.5, 0.5), pt(0.5, 0.26));
+    p.drawLine(pt(0.5, 0.5), pt(0.66, 0.6));
   } else if (kind == "heater") { // three heat waves
     for (double const x : {0.3, 0.5, 0.7}) {
       QPainterPath wave;

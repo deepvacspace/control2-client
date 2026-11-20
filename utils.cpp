@@ -102,43 +102,11 @@ QString readStyleFromFile(QString const &filepath) {
 }
 
 QPalette lightPalette() {
-  QPalette palette;
-  palette.setColor(QPalette::Window, QColor(240, 240, 240));
-  palette.setColor(QPalette::WindowText, Qt::black);
-  palette.setColor(QPalette::Base, Qt::white);
-  palette.setColor(QPalette::AlternateBase, QColor(233, 233, 233));
-  palette.setColor(QPalette::ToolTipBase, Qt::white);
-  palette.setColor(QPalette::ToolTipText, Qt::black);
-  palette.setColor(QPalette::Text, Qt::black);
-  palette.setColor(QPalette::Button, QColor(240, 240, 240));
-  palette.setColor(QPalette::ButtonText, Qt::black);
-  palette.setColor(QPalette::BrightText, Qt::white);
-  palette.setColor(QPalette::Link, QColor(0, 0, 255));
-  palette.setColor(QPalette::Highlight, QColor(0, 120, 215));
-  palette.setColor(QPalette::HighlightedText, Qt::white);
-  palette.setColor(QPalette::Disabled, QPalette::Text, QColor(120, 120, 120));
-  palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(120, 120, 120));
-  return palette;
+  return theme::palette(false);
 }
 
 QPalette darkPalette() {
-  QPalette palette;
-  palette.setColor(QPalette::Window, QColor(45, 45, 45));
-  palette.setColor(QPalette::WindowText, Qt::white);
-  palette.setColor(QPalette::Base, QColor(30, 30, 30));
-  palette.setColor(QPalette::AlternateBase, QColor(45, 45, 45));
-  palette.setColor(QPalette::ToolTipBase, Qt::white);
-  palette.setColor(QPalette::ToolTipText, Qt::white);
-  palette.setColor(QPalette::Text, Qt::white);
-  palette.setColor(QPalette::Button, QColor(53, 53, 53));
-  palette.setColor(QPalette::ButtonText, Qt::white);
-  palette.setColor(QPalette::BrightText, Qt::red);
-  palette.setColor(QPalette::Link, QColor(42, 130, 218));
-  palette.setColor(QPalette::Highlight, QColor(42, 130, 218));
-  palette.setColor(QPalette::HighlightedText, Qt::black);
-  palette.setColor(QPalette::Disabled, QPalette::Text, QColor(127, 127, 127));
-  palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(127, 127, 127));
-  return palette;
+  return theme::palette(true);
 }
 
 bool isDarkMode() {
@@ -292,8 +260,7 @@ QString formatScientific(double v, int frac, bool fixedWhenReadable) {
     m = QStringLiteral("0");
   }
 
-  // Middle dot (∙) by default; можно заменить на × (u'×') если хотите
-  return m + u'∙' + QStringLiteral("10") + toSuperscript(exp10);
+  return m + u'×' + QStringLiteral("10") + toSuperscript(exp10);
 }
 
 // Convenience overload for float
@@ -315,6 +282,20 @@ QString formatSciE(double v) {
   }
   QString text = QString::number(v, 'E', 1); // "1.0E-02"
   return text.insert(text.indexOf(QLatin1Char('E')), QChar(0x00B7));
+}
+
+QString formatSci10(double v) {
+  if (!std::isfinite(v)) {
+    return QStringLiteral("--");
+  }
+  // rounded as formatSciE rounds it ("9.96E-03" -> "1.0E-02"), then written in base 10
+  QString const   text = QString::number(v, 'E', 1);
+  qsizetype const e    = text.indexOf(QLatin1Char('E'));
+  QString         mant = text.left(e);
+  if (mant.startsWith(QLatin1Char('-'))) {
+    mant.replace(0, 1, QChar(0x2212));
+  }
+  return mant + QChar(0x00D7) + QStringLiteral("10") + toSuperscript(text.mid(e + 1).toInt());
 }
 
 double parseNumber(QString text, bool *ok) {
