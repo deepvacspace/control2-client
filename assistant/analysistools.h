@@ -62,6 +62,13 @@ public:
   QJsonObject plotRun(QJsonObject const &args);
   QJsonObject generateReport(QJsonObject const &args);
   QJsonObject exportData(QJsonObject const &args); // CSV of a run, stage or time range in the export folder
+  // the saved experiments with the same program setpoints (else the same final one), their stored KPIs against this one's
+  QJsonObject similarRuns(QJsonObject const &args) const;
+  // the main setpoint step of a run as measured, against what the twin predicts with the AI Advisor's PID
+  QJsonObject improveRun(QJsonObject const &args);
+
+  // the AI Advisor (ChamberTools::suggestPid): target, start, minutes and the PID to compare with (kp, ki, kd)
+  void setPidAdvisor(std::function<QJsonObject(QJsonObject const &)> advisor);
 
 private:
   struct Loaded {
@@ -71,6 +78,7 @@ private:
     QVector<ChannelInfo>                  channels;
     QVector<double>                       times; // elapsed s
     core::ExperimentAnalysis              analysis;
+    QString                               stamp; // what it was read and analysed from (stampOf): kept while that holds
 
     [[nodiscard]] QVector<double> series(QString const &name) const;
   };
@@ -78,6 +86,12 @@ private:
 
   LoadedPtr load(QString const &reference, QString &error);
   LoadedPtr load(ExperimentRun const &run, QString &error);
+  // the run as listed (its end and samples) and its variable rules: a kept analysis is of these
+  [[nodiscard]] QString stampOf(ExperimentRun const &run) const;
+  // the stage a tool was asked for: "3" or 3, "last_hold", ...
+  [[nodiscard]] static QString stageSelector(QJsonObject const &args);
+  // "#N" of every experiment saved in the experiment database, by its database key
+  [[nodiscard]] QHash<QString, QString> storedIds() const;
   // stage index from "3", "last", "last_hold", "hold:2", "ramp:-1", "final stabilization", ...; -1 + error
   static int selectStage(core::ExperimentAnalysis const &analysis, QString const &selector, QString &error);
   QJsonObject runHeader(Loaded const &loaded) const;
@@ -85,6 +99,7 @@ private:
   ExperimentLibrary  *m_library;
   AnalysisNotesStore *m_notes;
   AnalysisViewer      m_viewer;
+  std::function<QJsonObject(QJsonObject const &)> m_pidAdvisor;
   QHash<QString, LoadedPtr> m_cache;
   QStringList               m_cacheOrder; // most recent last
 };

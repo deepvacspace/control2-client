@@ -1,5 +1,7 @@
 #include "toolregistry.h"
 
+#include <algorithm>
+#include <cmath>
 #include <exception>
 
 namespace deepvaccontrol::assistant {
@@ -25,6 +27,59 @@ bool matchesType(QJsonValue const &value, QString const &type) {
     return value.isObject();
   }
   return true;
+}
+
+// The arguments as meant: a small model sends "3" for 3, 3 for "3", one value where a list is asked for, and null or
+// "" for what it leaves out. Read so instead of failing the call (what cannot be read stays, for validate() to name)
+QJsonObject normalized(QJsonObject const &schema, QJsonObject const &arguments) {
+  QJsonObject const properties = schema.value(QLatin1String("properties")).toObject();
+  QStringList       required;
+  for (QJsonValue const &name : schema.value(QLatin1String("required")).toArray()) {
+    required << name.toString();
+  }
+  QJsonObject result;
+  for (auto it = arguments.constBegin(); it != arguments.constEnd(); ++it) {
+    QJsonValue value = it.value();
+    // left out
+    if (value.isNull() || (value.isString() && value.toString().trimmed().isEmpty() && !required.contains(it.key()))) {
+      continue;
+    }
+    QJsonValue const type = properties.value(it.key()).toObject().value(QLatin1String("type"));
+    QStringList      types;
+    for (QJsonValue const &candidate : type.isArray() ? type.toArray() : QJsonArray{type}) {
+      types << candidate.toString();
+    }
+    bool const fits{type.isUndefined()
+                    || std::any_of(types.cbegin(), types.cend(), [&value](QString const &t) { return matchesType(value, t); })};
+    if (!fits) {
+      bool const wantsNumber{types.contains(QLatin1String("number")) || types.contains(QLatin1String("integer"))};
+      if (value.isString() && wantsNumber) {
+        // "20", "0,5", "−40 °C"
+        QString text = value.toString();
+        text.remove(QStringLiteral("°C")).remove(QChar(0x00B0)).replace(QChar(0x2212), QLatin1Char('-')).replace(QLatin1Char(','), QLatin1Char('.'));
+        bool         ok{false};
+        double const number{text.trimmed().toDouble(&ok)};
+        if (ok && (types.contains(QLatin1String("number")) || (number == std::floor(number)))) {
+          value = number;
+        }
+      } else if (value.isDouble() && types.contains(QLatin1String("string"))) {
+        double const number{value.toDouble()};
+        value = (number == std::floor(number)) && (std::fabs(number) < 1e15) ? QString::number(static_cast<qint64>(number))
+                                                                              : QString::number(number, 'g', 12);
+      } else if (value.isBool() && types.contains(QLatin1String("string"))) {
+        value = value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+      } else if (value.isString() && types.contains(QLatin1String("boolean"))) {
+        QString const text = value.toString().trimmed().toLower();
+        if ((text == QLatin1String("true")) || (text == QLatin1String("false"))) {
+          value = (text == QLatin1String("true"));
+        }
+      } else if ((value.isString() || value.isDouble()) && types.contains(QLatin1String("array"))) {
+        value = QJsonArray{value};
+      }
+    }
+    result.insert(it.key(), value);
+  }
+  return result;
 }
 }
 
@@ -83,11 +138,12 @@ QJsonObject ToolRegistry::call(QString const &name, QJsonObject const &arguments
   if (tool == m_tools.cend()) {
     return QJsonObject{{"error", QStringLiteral("unknown tool '%1'. Available tools: %2").arg(name, names().join(QStringLiteral(", ")))}};
   }
-  if (QString const invalid = validate(tool->parameters, arguments); !invalid.isEmpty()) {
+  QJsonObject const given = normalized(tool->parameters, arguments);
+  if (QString const invalid = validate(tool->parameters, given); !invalid.isEmpty()) {
     return QJsonObject{{"error", invalid}};
   }
   try {
-    return tool->handler(arguments);
+    return tool->handler(given);
   } catch (std::exception const &exception) {
     return QJsonObject{{"error", QStringLiteral("%1 failed: %2").arg(name, QString::fromUtf8(exception.what()))}};
   } catch (...) {

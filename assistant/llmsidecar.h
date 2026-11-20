@@ -60,6 +60,7 @@ signals:
 
 private:
   void setState(State state, QString const &message);
+  void launch(); // our own server process, then waiting for its model
   void poll();
 
   LlmClient    *m_client;

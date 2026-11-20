@@ -373,17 +373,51 @@ AnalysisTools::LoadedPtr AnalysisTools::load(QString const &reference, QString &
   return run ? load(*run, error) : nullptr;
 }
 
+QString AnalysisTools::stampOf(ExperimentRun const &run) const {
+  QString stamp = QStringLiteral("%1|%2").arg(run.end, 0, 'f', 0).arg(run.samples);
+  if (m_notes) {
+    for (auto const &rule : m_notes->rules(run.key)) {
+      stamp += QStringLiteral("|%1:%2:%3:%4").arg(rule.id, rule.channel).arg(rule.lo).arg(rule.hi);
+    }
+  }
+  return stamp;
+}
+
+QString AnalysisTools::stageSelector(QJsonObject const &args) {
+  QJsonValue const value = args.value(QLatin1String("stage"));
+  return value.isDouble() ? QString::number(value.toInt()) : value.toString();
+}
+
+QHash<QString, QString> AnalysisTools::storedIds() const {
+  QHash<QString, QString>      ids;
+  QVector<ExperimentRun> const all = runs();
+  for (qsizetype i{0}; i < all.size(); ++i) {
+    if (!all[i].storeKey.isEmpty()) {
+      ids.insert(all[i].storeKey, QStringLiteral("#%1").arg(i + 1));
+    }
+  }
+  return ids;
+}
+
 AnalysisTools::LoadedPtr AnalysisTools::load(ExperimentRun const &run, QString &error) {
+  // a time range reaching into the last minutes (a day that is still going on) is read again every time; a kept
+  // experiment only while it is as it was read (not longer since, the same variable rules)
+  bool const    growing{run.custom && (run.end > static_cast<double>(QDateTime::currentSecsSinceEpoch()) - 120.0)};
+  QString const stamp = stampOf(run);
   if (LoadedPtr cached = m_cache.value(run.key)) {
     m_cacheOrder.removeAll(run.key);
-    m_cacheOrder.push_back(run.key);
-    return cached;
+    if (!growing && (cached->stamp == stamp)) {
+      m_cacheOrder.push_back(run.key);
+      return cached;
+    }
+    m_cache.remove(run.key);
   }
   auto data = m_library->load(run, &error);
   if (!data) {
     return nullptr;
   }
   auto loaded      = std::make_shared<Loaded>();
+  loaded->stamp    = stamp;
   loaded->run      = data->run;
   loaded->data     = data;
   loaded->channels = m_library->channels(*data);
@@ -518,9 +552,17 @@ void AnalysisTools::registerTools(ToolRegistry &registry) {
                 [this](QJsonObject const &a) { return kpis(a); }});
   registry.add({"get_stages", "Stages of a run (setpoint step, ramp, hold) with KPIs.", schema({{"run", run}}, {"run"}),
                 [this](QJsonObject const &a) { return stages(a); }});
-  registry.add({"get_anomalies", "Anomalies detected in a run.",
-                schema({{"run", run}, {"min_severity", property("string", "info, warning (default), critical")}}, {"run"}),
+  registry.add({"get_anomalies", "Anomalies detected in a run (or those overlapping a time range).",
+                schema({{"run", run}, {"min_severity", property("string", "info, warning (default), critical")}, {"from_s", from}, {"to_s", to}}, {"run"}),
                 [this](QJsonObject const &a) { return anomalies(a); }});
+  registry.add({"find_similar_runs",
+                "Saved runs with the same program setpoints as this one, and how this run's KPIs compare with theirs "
+                "(better or worse than usual, the best of them).",
+                schema({{"run", run}}, {"run"}), [this](QJsonObject const &a) { return similarRuns(a); }});
+  registry.add({"improve_run",
+                "How a run could have gone better: its main setpoint step as measured, against the digital twin with the "
+                "AI Advisor's best PID. Only a suggestion. Takes some seconds.",
+                schema({{"run", run}, {"stage", stage}}, {"run"}), [this](QJsonObject const &a) { return improveRun(a); }});
   registry.add({"compare_runs", "Compare 2-5 runs, whole runs or one stage of each.",
                 schema({{"runs", QJsonObject{{"type", "array"}, {"items", QJsonObject{{"type", QJsonArray{"string", "integer"}}}}, {"description", "first = reference"}}},
                         {"stage", stage},
@@ -641,7 +683,9 @@ QJsonObject AnalysisTools::runSummary(QJsonObject const &args) {
     kpi.insert("settling_time_s", seconds(a.run.settlingTimeS));
     kpi.insert("settling_note", "overshoot/undershoot: worst step; settling: last setpoint, from its step");
     result.insert("kpis", kpi);
-    double const steady{core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
+    double const steady{a.run.stages.isEmpty()
+                          ? core::NaN
+                          : core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
     result.insert("control", QJsonObject{{"time_steady", percent(steady)},
                                          {"output_saturated", percent(a.saturation.fraction)},
                                          {"windup_s", seconds(a.saturation.windupS)},
@@ -675,7 +719,9 @@ QJsonObject AnalysisTools::runSummary(QJsonObject const &args) {
   }
   QVector<QStringList> rows;
   if (a.hasControl) {
-    double const steady{core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
+    double const steady{a.run.stages.isEmpty()
+                          ? core::NaN
+                          : core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
     facts << wholeRunError(a.run, QStringLiteral(", steady-state error %1").arg(fmt(a.run.overall.steadyStateError, DEG)))
           << QStringLiteral("Worst step overshoot %1; the last setpoint step settled after %2.").arg(fmt(a.run.overshoot, DEG), hms(a.run.settlingTimeS))
           << QStringLiteral("Steady %1 of the time; control output saturated %2 of the time; P / I / D share %3 / %4 / %5.")
@@ -683,9 +729,11 @@ QJsonObject AnalysisTools::runSummary(QJsonObject const &args) {
     for (int k{0}; k < a.run.stages.size(); ++k) {
       rows.push_back(stageRow(a, k));
     }
-    facts << QStringLiteral("%1 stages; the final stabilization is %2, %3.")
-               .arg(a.run.stages.size())
-               .arg(stageLabel(a, static_cast<int>(a.run.stages.size()) - 1), spanText(a.run.stages.last().segment));
+    if (!a.run.stages.isEmpty()) {
+      facts << QStringLiteral("%1 stages; the final stabilization is %2, %3.")
+                 .arg(a.run.stages.size())
+                 .arg(stageLabel(a, static_cast<int>(a.run.stages.size()) - 1), spanText(a.run.stages.last().segment));
+    }
   } else {
     facts << QStringLiteral("No setpoint (temp_ref) recorded, so no control KPIs or stages.");
   }
@@ -745,12 +793,7 @@ QJsonObject AnalysisTools::daySummary(QJsonObject const &args) {
   };
 
   // the experiments saved that day, with their number in the experiment list
-  QHash<QString, QString> ids;
-  for (ExperimentRun const &run : runs()) {
-    if (!run.storeKey.isEmpty()) {
-      ids.insert(run.storeKey, runId(run));
-    }
-  }
+  QHash<QString, QString> const ids = storedIds();
   struct Item {
     double      start;
     double      end;
@@ -806,6 +849,44 @@ QJsonObject AnalysisTools::daySummary(QJsonObject const &args) {
     items.push_back({span.start, span.end, QStringLiteral("%1 %2").arg(ids.value(span.key, QStringLiteral("experiment")), kind.isEmpty() ? QStringLiteral("experiment") : kind),
                      QStringLiteral("%1 → %2 (min %3, max %4)").arg(fmt(first, DEG), fmt(last, DEG), fmt(low, DEG), fmt(high, DEG)),
                      details.join(QStringLiteral(" · ")), json});
+  }
+  // the experiments of the list that are not saved in the database (found in the day's recording): of the day too, so
+  // the day agrees with the experiment list
+  {
+    QVector<ExperimentRun> const       listed = runs();
+    QVector<std::pair<double, double>> found;
+    for (qsizetype i{0}; i < listed.size(); ++i) {
+      ExperimentRun const &run = listed[i];
+      if (!run.storeKey.isEmpty() || run.custom || (run.end < from) || (run.start > to) || !(run.duration() > 0.0)) {
+        continue;
+      }
+      bool const saved{std::any_of(experimentSpans.cbegin(), experimentSpans.cend(), [&run](std::pair<double, double> const &span) {
+        return std::min(span.second, run.end) - std::max(span.first, run.start) > 0.5 * run.duration();
+      })};
+      if (saved) {
+        continue;
+      }
+      found.push_back({run.start, run.end});
+      double low{core::NaN};
+      double high{core::NaN};
+      rangeOf(run.start, run.end, low, high);
+      double const  first{valueNear(run.start)};
+      double const  last{valueNear(run.end - 1.0)};
+      QString const id = QStringLiteral("#%1").arg(i + 1);
+      QJsonObject const json{{"run", id},
+                             {"from", clock(run.start)},
+                             {"to", clock(run.end)},
+                             {"duration", hms(run.end - run.start)},
+                             {"kind", "recorded, not saved in the experiment database"},
+                             {"temp_start", num(first)},
+                             {"temp_end", num(last)},
+                             {"temp_min", num(low)},
+                             {"temp_max", num(high)}};
+      items.push_back({run.start, run.end, QStringLiteral("%1 experiment").arg(id),
+                       QStringLiteral("%1 → %2 (min %3, max %4)").arg(fmt(first, DEG), fmt(last, DEG), fmt(low, DEG), fmt(high, DEG)),
+                       QStringLiteral("recorded, not saved in the experiment database"), json});
+    }
+    experimentSpans += found;
   }
   std::sort(experimentSpans.begin(), experimentSpans.end());
 
@@ -937,7 +1018,7 @@ QJsonObject AnalysisTools::exportData(QJsonObject const &args) {
   double to{optionalNumber(args, "to_s")};
   QString part = QStringLiteral("all");
   if (args.contains("stage")) {
-    int const index{selectStage(loaded->analysis, args.value("stage").toString(), error)};
+    int const index{selectStage(loaded->analysis, stageSelector(args), error)};
     if (index < 0) {
       return QJsonObject{{"error", error}};
     }
@@ -1051,7 +1132,7 @@ QJsonObject AnalysisTools::statistics(QJsonObject const &args) {
   double to{optionalNumber(args, "to_s")};
   QJsonObject result = runHeader(*loaded);
   if (args.contains("stage")) {
-    int const index{selectStage(loaded->analysis, args.value("stage").toString(), error)};
+    int const index{selectStage(loaded->analysis, stageSelector(args), error)};
     if (index < 0) {
       return QJsonObject{{"error", error}};
     }
@@ -1113,7 +1194,7 @@ QJsonObject AnalysisTools::kpis(QJsonObject const &args) {
     return QJsonObject{{"error", "this run has no temp / temp_ref, so no control KPIs"}};
   }
   if (args.contains("stage")) {
-    int const index{selectStage(a, args.value("stage").toString(), error)};
+    int const index{selectStage(a, stageSelector(args), error)};
     if (index < 0) {
       return QJsonObject{{"error", error}};
     }
@@ -1228,9 +1309,16 @@ QJsonObject AnalysisTools::anomalies(QJsonObject const &args) {
   } else if (minimum == QLatin1String("critical")) {
     threshold = core::Anomaly::Severity::CRITICAL;
   }
+  // a time range: the anomalies overlapping it
+  double const from{optionalNumber(args, "from_s")};
+  double const to{optionalNumber(args, "to_s")};
+  bool const   ranged{std::isfinite(from) || std::isfinite(to)};
+  auto const   shown = [&](core::Anomaly const &x) {
+    return (x.severity >= threshold) && (!std::isfinite(to) || (x.start <= to)) && (!std::isfinite(from) || (x.end >= from));
+  };
   QJsonArray list;
   for (core::Anomaly const &x : loaded->analysis.anomalies) {
-    if (x.severity >= threshold) {
+    if (shown(x)) {
       list.push_back(anomalyJson(x));
     }
   }
@@ -1243,9 +1331,15 @@ QJsonObject AnalysisTools::anomalies(QJsonObject const &args) {
                       .arg(runId(loaded->run))
                       .arg(loaded->analysis.anomalies.size())
                       .arg(counts[0], counts[1], counts[2])};
+  if (ranged) {
+    facts << QStringLiteral("Between %1 and %2 after the start: %3 at %4 level or above.")
+               .arg(hms(std::isfinite(from) ? from : 0.0), std::isfinite(to) ? hms(to) : QStringLiteral("the end"))
+               .arg(list.size())
+               .arg(minimum);
+  }
   QVector<QStringList> rows;
   for (core::Anomaly const &x : loaded->analysis.anomalies) {
-    if (x.severity >= threshold) {
+    if (shown(x)) {
       facts << anomalyText(x) + QLatin1Char('.');
       rows.push_back({core::Anomaly::severityName(x.severity), core::Anomaly::kindName(x.kind), x.channel,
                       x.start < 0.5 ? QStringLiteral("0 s") : hms(x.start), hms(x.end - x.start), x.detail});
@@ -1282,7 +1376,7 @@ QJsonObject AnalysisTools::compareRuns(QJsonObject const &args) {
 
   // ---- one stage of each run
   if (args.contains("stage")) {
-    QString const selector = args.value("stage").toString();
+    QString const selector = stageSelector(args);
     QJsonArray    stagesJson;
     QVector<int>  indexes;
     for (LoadedPtr const &one : std::as_const(loaded)) {
@@ -1611,12 +1705,7 @@ QJsonObject AnalysisTools::rankRuns(QJsonObject const &args) const {
     return QJsonObject{{"error", "the experiment list is still being scanned, try again in a few seconds"}};
   }
   // only runs saved in the experiment database have their KPIs stored
-  QHash<QString, QString> ids;
-  for (ExperimentRun const &run : runs()) {
-    if (!run.storeKey.isEmpty()) {
-      ids.insert(run.storeKey, runId(run));
-    }
-  }
+  QHash<QString, QString> const ids = storedIds();
   QVector<storage::StoredRun> stored;
   for (storage::StoredRun const &run : storage::RunStore::list()) {
     if (ids.contains(run.key) && std::isfinite(metric->get(run))) {
@@ -1749,7 +1838,7 @@ QJsonObject AnalysisTools::plotRun(QJsonObject const &args) {
   double to{optionalNumber(args, "to_s")};
   int    shownStage{-1};
   if (args.contains("stage")) {
-    shownStage = selectStage(loaded->analysis, args.value("stage").toString(), error);
+    shownStage = selectStage(loaded->analysis, stageSelector(args), error);
     if (shownStage < 0) {
       return QJsonObject{{"error", error}};
     }
@@ -1821,6 +1910,252 @@ QJsonObject AnalysisTools::generateReport(QJsonObject const &args) {
   }
   QJsonObject result{{"run", runId(*run)}, {"title", run->title}, {"report", path}, {"format", pdf ? "pdf" : "html"}};
   result.insert("card", makeCard(QStringLiteral("Report"), {QStringLiteral("%1 report of experiment %2 written to %3.").arg(pdf ? "PDF" : "HTML", runId(*run), path)}));
+  return result;
+}
+
+// ------------------------------------------------------------------ similar runs, improvement
+
+void AnalysisTools::setPidAdvisor(std::function<QJsonObject(QJsonObject const &)> advisor) {
+  m_pidAdvisor = std::move(advisor);
+}
+
+QJsonObject AnalysisTools::similarRuns(QJsonObject const &args) const {
+  QString                            error;
+  std::optional<ExperimentRun> const run = resolve(referenceOf(args.value("run")), error);
+  if (!run) {
+    return QJsonObject{{"error", error}};
+  }
+  QString const id = runId(*run);
+  if (run->storeKey.isEmpty() || run->setpointTemps.isEmpty()) {
+    return QJsonObject{{"error", QStringLiteral("the program of experiment %1 was not recorded (only experiments saved in the experiment "
+                                                "database with their program have it), so experiments with the same setpoints cannot be found")
+                                   .arg(id)}};
+  }
+  auto const sameTemps = [](QVector<double> const &a, QVector<double> const &b) {
+    if (a.size() != b.size()) {
+      return false;
+    }
+    for (qsizetype i{0}; i < a.size(); ++i) {
+      if (std::fabs(a[i] - b[i]) > 0.05) {
+        return false;
+      }
+    }
+    return true;
+  };
+  // the same setpoints in the same order; none: the same final setpoint
+  QVector<ExperimentRun> similar;
+  QVector<ExperimentRun> sameFinal;
+  for (ExperimentRun const &other : runs()) {
+    if ((other.key == run->key) || other.storeKey.isEmpty() || other.setpointTemps.isEmpty()) {
+      continue;
+    }
+    if (sameTemps(other.setpointTemps, run->setpointTemps)) {
+      similar.push_back(other);
+    } else if (std::fabs(other.setpointTemps.last() - run->setpointTemps.last()) <= 0.05) {
+      sameFinal.push_back(other);
+    }
+  }
+  bool const exact{!similar.isEmpty()};
+  if (!exact) {
+    similar = sameFinal;
+  }
+  // newest first, at most MAX_SIMILAR
+  constexpr qsizetype MAX_SIMILAR{10};
+  std::reverse(similar.begin(), similar.end());
+  similar.resize(std::min(similar.size(), MAX_SIMILAR));
+
+  QString const what = exact ? QStringLiteral("the same setpoints (%1)").arg(run->setpoints)
+                             : QStringLiteral("the same final setpoint (%1)").arg(fmt(run->setpointTemps.last(), DEG));
+  if (similar.isEmpty()) {
+    QStringList const facts{
+      QStringLiteral("No other saved experiment has the setpoints of experiment %1 (%2), or its final setpoint.").arg(id, run->setpoints)};
+    return QJsonObject{{"run", id}, {"similar", QJsonArray{}}, {"card", makeCard(QStringLiteral("Experiments like %1").arg(id), facts)}};
+  }
+
+  // their KPIs as stored in the experiment database
+  QHash<QString, storage::StoredRun> stored;
+  for (storage::StoredRun const &each : storage::RunStore::list()) {
+    stored.insert(each.key, each);
+  }
+  storage::StoredRun const self = stored.value(run->storeKey);
+  struct Metric {
+    char const *key;
+    char const *label;
+    double (*get)(storage::StoredRun const &);
+    bool duration;
+  };
+  static Metric const metrics[]{
+    {"tail_mae", "Error over the last 5 min", [](storage::StoredRun const &r) { return r.tailMae; }, false},
+    {"overshoot", "Worst step overshoot", [](storage::StoredRun const &r) { return r.overshoot; }, false},
+    {"settling", "Settling of the last step", [](storage::StoredRun const &r) { return r.settleTimeS; }, true},
+  };
+  auto const text = [](Metric const &m, double value) { return m.duration ? hms(value) : fmt(value, DEG, 3); };
+
+  QStringList facts{
+    QStringLiteral("Experiment %1 \"%2\": setpoints %3; error over the last 5 min %4, worst step overshoot %5, settling of the last step %6.")
+      .arg(id, run->title, run->setpoints, fmt(self.tailMae, DEG, 3), fmt(self.overshoot, DEG, 3), hms(self.settleTimeS)),
+    QStringLiteral("%1 other saved experiment(s) had %2.").arg(similar.size()).arg(what)};
+  QJsonObject comparison;
+  for (Metric const &m : metrics) {
+    double const    mine{m.get(self)};
+    QVector<double> values;
+    for (ExperimentRun const &other : std::as_const(similar)) {
+      if (double const v{m.get(stored.value(other.storeKey))}; std::isfinite(v)) {
+        values << v;
+      }
+    }
+    if (!std::isfinite(mine) || values.isEmpty()) {
+      continue;
+    }
+    std::sort(values.begin(), values.end());
+    qsizetype const half{values.size() / 2};
+    double const    median{(values.size() % 2) ? values[half] : (values[half - 1] + values[half]) / 2.0};
+    int const       rank{1 + static_cast<int>(std::count_if(values.cbegin(), values.cend(), [mine](double v) { return v < mine; }))};
+    // within 10 % (or 0.05 °C / 30 s) of the usual: about the same
+    double const  tolerance{std::max(0.10 * std::fabs(median), m.duration ? 30.0 : 0.05)};
+    QString const judgement = (std::fabs(mine - median) <= tolerance) ? QStringLiteral("about the same as usual")
+                              : (mine < median)                      ? QStringLiteral("better than usual")
+                                                                     : QStringLiteral("worse than usual");
+    facts << QStringLiteral("%1: %2 against a median of %3 for the others, %4 (rank %5 of %6, 1 = best).")
+               .arg(QString::fromLatin1(m.label), text(m, mine), text(m, median), judgement)
+               .arg(rank)
+               .arg(values.size() + 1);
+    comparison.insert(QString::fromLatin1(m.key), QJsonObject{{"this", m.duration ? seconds(mine) : num(mine)},
+                                                              {"median_of_others", m.duration ? seconds(median) : num(median)},
+                                                              {"rank", rank},
+                                                              {"of", static_cast<int>(values.size() + 1)},
+                                                              {"verdict", judgement}});
+  }
+  // the best of them by the error at the end
+  ExperimentRun const *best{nullptr};
+  for (ExperimentRun const &other : std::as_const(similar)) {
+    double const v{stored.value(other.storeKey).tailMae};
+    if (std::isfinite(v) && (!best || (v < stored.value(best->storeKey).tailMae))) {
+      best = &other;
+    }
+  }
+  if (best && std::isfinite(self.tailMae) && (stored.value(best->storeKey).tailMae < self.tailMae)) {
+    storage::StoredRun const b = stored.value(best->storeKey);
+    facts << QStringLiteral("Best of them: %1 \"%2\" (%3), error over the last 5 min %4, overshoot %5.")
+               .arg(runId(*best), best->title, dateTime(best->start), fmt(b.tailMae, DEG, 3), fmt(b.overshoot, DEG, 3));
+  } else if (best) {
+    facts << QStringLiteral("None of them ended with less error than experiment %1.").arg(id);
+  }
+
+  QJsonArray           list;
+  QVector<QStringList> rows{{id + QStringLiteral(" (this)"), run->title, dateTime(run->start), fmt(self.tailMae, DEG, 3),
+                             fmt(self.overshoot, DEG, 3), hms(self.settleTimeS)}};
+  for (ExperimentRun const &other : std::as_const(similar)) {
+    storage::StoredRun const r = stored.value(other.storeKey);
+    list.push_back(QJsonObject{{"run", runId(other)},
+                               {"title", other.title},
+                               {"tail_mae", num(r.tailMae)},
+                               {"overshoot", num(r.overshoot)},
+                               {"settling_s", seconds(r.settleTimeS)}});
+    rows.push_back({runId(other), other.title, dateTime(other.start), fmt(r.tailMae, DEG, 3), fmt(r.overshoot, DEG, 3), hms(r.settleTimeS)});
+  }
+  QJsonObject result{{"run", id}, {"match", exact ? "same setpoints" : "same final setpoint"}, {"similar", list}, {"comparison", comparison}};
+  result.insert("card", makeCard(QStringLiteral("Experiment %1 against similar experiments").arg(id), facts,
+                                 {"Run", "Title", "Start", "Tail MAE", "Overshoot", "Settling"}, rows));
+  return result;
+}
+
+QJsonObject AnalysisTools::improveRun(QJsonObject const &args) {
+  if (!m_pidAdvisor) {
+    return QJsonObject{{"error", "the AI Advisor is not available"}};
+  }
+  QString         error;
+  LoadedPtr const loaded = load(referenceOf(args.value("run")), error);
+  if (!loaded) {
+    return QJsonObject{{"error", error}};
+  }
+  core::ExperimentAnalysis const &a  = loaded->analysis;
+  QString const                   id = runId(loaded->run);
+  if (!a.hasControl || a.run.stages.isEmpty()) {
+    return QJsonObject{{"error", QStringLiteral("experiment %1 has no temperature setpoint (temp_ref) recorded: the improvement is "
+                                                "only worked out for the temperature control")
+                                   .arg(id)}};
+  }
+  QVector<double> const temps     = loaded->series(QStringLiteral("temp"));
+  auto const            startTemp = [&temps](core::Segment const &s) {
+    for (int i{s.first}; (i <= s.last) && (i < temps.size()); ++i) {
+      if (std::isfinite(temps[i])) {
+        return temps[i];
+      }
+    }
+    return core::NaN;
+  };
+  // the stage asked for, else the setpoint step with the largest change of temperature (the twin simulates steps)
+  int              index{-1};
+  QJsonValue const stageArg = args.value("stage");
+  if (stageArg.isDouble() || !stageArg.toString().isEmpty()) {
+    index = selectStage(a, stageArg.isDouble() ? QString::number(stageArg.toInt()) : stageArg.toString(), error);
+    if (index < 0) {
+      return QJsonObject{{"error", error}};
+    }
+  } else {
+    double largest{-1.0};
+    for (int k{0}; k < a.run.stages.size(); ++k) {
+      core::Segment const &s = a.run.stages[k].segment;
+      double const         change{std::fabs(s.referenceEnd - startTemp(s))};
+      if ((s.kind == core::Segment::Kind::SETPOINT) && std::isfinite(change) && (change >= largest)) {
+        largest = change;
+        index   = k;
+      }
+    }
+    if (index < 0) {
+      return QJsonObject{{"error", QStringLiteral("experiment %1 has no setpoint step (only ramps or holds): the digital twin simulates "
+                                                  "setpoint steps, so it cannot work out a better PID for it")
+                                     .arg(id)}};
+    }
+  }
+  core::StageAnalysis const &stage = a.run.stages[index];
+  core::Segment const       &s     = stage.segment;
+  double const               start{startTemp(s)};
+  double const               target{s.referenceEnd};
+  if (!std::isfinite(start) || !std::isfinite(target)) {
+    return QJsonObject{{"error", QStringLiteral("stage %1 of experiment %2 has no temperature recorded at its start").arg(index + 1).arg(id)}};
+  }
+  // the PID of that stage as recorded (else the experiment's)
+  core::StageDetail const detail = a.stageDetails.value(index);
+  double const            kp{std::isfinite(detail.kp) ? detail.kp : a.config.kp};
+  double const            ki{std::isfinite(detail.ki) ? detail.ki : a.config.ki};
+  double const            kd{std::isfinite(detail.kd) ? detail.kd : a.config.kd};
+  // as long as the setpoint stayed there (the hold after the step too)
+  double end{s.end};
+  for (int k{index + 1}; (k < a.run.stages.size()) && (std::fabs(a.run.stages[k].segment.referenceEnd - target) < 0.05); ++k) {
+    end = a.run.stages[k].segment.end;
+  }
+  double const minutes{std::clamp((end - s.start) / 60.0, 1.0, 120.0)};
+
+  QJsonObject advisorArgs{{"target", target}, {"start", start}, {"minutes", minutes}};
+  if (std::isfinite(kp) && std::isfinite(ki) && std::isfinite(kd)) {
+    advisorArgs.insert("kp", kp);
+    advisorArgs.insert("ki", ki);
+    advisorArgs.insert("kd", kd);
+  }
+  QJsonObject const advice = m_pidAdvisor(advisorArgs);
+
+  core::ControlKpis const &k = stage.kpis;
+  QStringList facts{QStringLiteral("Experiment %1, %2: from %3 to a setpoint of %4, %5, with Kp %6, Ki %7, Kd %8 (as recorded).")
+                      .arg(id, stageLabel(a, index), fmt(start, DEG), fmt(target, DEG), spanText(s), fmt(kp), fmt(ki), fmt(kd)),
+                    QStringLiteral("Measured: overshoot %1, settled after %2, error over the last 5 min %3.")
+                      .arg(fmt(k.overshoot, DEG, 3), hms(k.settlingTimeS), fmt(k.tailMae, DEG, 3))};
+  QJsonObject result = runHeader(*loaded);
+  result.insert("stage", stageJson(a, index, true));
+  if (advice.contains("error")) {
+    facts << QStringLiteral("The AI Advisor could not work out a better PID: %1.").arg(advice.value("error").toString());
+    result.insert("advisor_error", advice.value("error"));
+  } else {
+    for (QJsonValue const &fact : advice.value("card").toObject().value("facts").toArray()) {
+      facts << fact.toString();
+    }
+    QJsonObject advisor = advice;
+    advisor.remove("card");
+    result.insert("advisor", advisor);
+  }
+  facts << QStringLiteral("The twin simulates a step from %1 with no load; the real chamber may differ (ramps, DUT, pressure).").arg(fmt(start, DEG));
+  result.insert("card", makeCard(QStringLiteral("How experiment %1 could go better").arg(id), facts));
   return result;
 }
 

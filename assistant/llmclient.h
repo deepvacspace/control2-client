@@ -31,7 +31,7 @@ struct LlmReply {
 
 struct LlmOptions {
   double temperature{0.3};
-  int    maxTokens{400}; // tool calls are short and answers are a few sentences: long generations cost time
+  int    maxTokens{300}; // tool calls are short and answers are 1 to 3 sentences (a list: ten lines): long generations cost time
   bool   enableThinking{false}; // Qwen3 chat template switch (ignored by other templates)
 };
 

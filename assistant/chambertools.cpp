@@ -31,7 +31,7 @@ constexpr double WORK{2.0};
 constexpr double ALARM{4.0};
 constexpr int    RAMP_FLAG{9};
 constexpr int    AWAIT_FLAG{8};
-constexpr double HOLD_FOREVER_S{100.0 * 3600.0 - 1.0}; // a manual setpoint held "until stopped"
+constexpr double HOLD_FOREVER_S{100.0 * 3600.0 - 1.0}; // a setpoint held "until stopped" (HOLD_UNTIL_STOPPED)
 
 QString fmt(double value, QString const &unit = {}, int digits = 4) {
   if (!std::isfinite(value)) {
@@ -174,12 +174,17 @@ QJsonObject ChamberTools::liveStatus(QJsonObject const &) {
     double const     x{v ? static_cast<double>(v->getValue()) : NaN};
     return (std::isfinite(x) && std::fabs(x) < 1e9) ? x : NaN;
   };
+  // a whole number of the PLC (a step, a count, the status); -1 when it is not known
+  auto whole = [&value](char const *name) {
+    double const x{value(name)};
+    return std::isfinite(x) ? static_cast<int>(std::lround(x)) : -1;
+  };
   double const status{value("status_condition")};
   double const temp{value("temp")};
   double const ref{value("temp_ref")};
   double const output{value("temp_u")};
   bool const   working{status == WORK};
-  QString const statusText = core::statusName(static_cast<int>(status));
+  QString const statusText = core::statusName(whole("status_condition"));
 
   QJsonObject result{{"connection", connection}, {"status", statusText}, {"temperature", num(temp)}, {"setpoint", num(ref)},
                      {"control_output_percent", num(output)}};
@@ -200,10 +205,10 @@ QJsonObject ChamberTools::liveStatus(QJsonObject const &) {
   if (working) {
     double const elapsed{value("t_total")};
     double const intervalTime{value("t_interval")};
-    int const    interval{static_cast<int>(value("interval"))};
-    int const    intervals{static_cast<int>(value("intervals_count"))};
-    int const    cycle{static_cast<int>(value("cycle_cur"))};
-    int const    cycles{static_cast<int>(value("cycle_total"))};
+    int const    interval{whole("interval")};
+    int const    intervals{whole("intervals_count")};
+    int const    cycle{whole("cycle_cur")};
+    int const    cycles{whole("cycle_total")};
     result.insert("elapsed", hms(elapsed));
     facts << QStringLiteral("The job has run %1.").arg(hms(elapsed));
     // the rest of the program sent with the job: the current step, then the steps (and cycles) still to come
@@ -549,8 +554,15 @@ QJsonObject ChamberTools::suggestPid(QJsonObject const &args) {
     return QJsonObject{{"error", best.errorMessage.isEmpty() ? QStringLiteral("the search failed") : best.errorMessage}};
   }
 
-  // the same run with the current PID, for comparison
+  // the same run with the current PID (or the one given: an experiment's), for comparison
+  bool const  baseline{std::isfinite(numberArg(args, "kp")) && std::isfinite(numberArg(args, "ki")) && std::isfinite(numberArg(args, "kd"))};
+  QString const whose = baseline ? QStringLiteral("the experiment's PID") : QStringLiteral("the current PID");
   QJsonObject currentArgs{{"target", target}, {"start", start}, {"minutes", params.durationS / 60.0}};
+  if (baseline) {
+    currentArgs.insert("kp", numberArg(args, "kp"));
+    currentArgs.insert("ki", numberArg(args, "ki"));
+    currentArgs.insert("kd", numberArg(args, "kd"));
+  }
   QJsonObject const current = predictSetpoint(currentArgs);
   double const      near{timeToStayWithin(best.bestTrajectory, target, ai::NEAR_BAND)};
   bool const        valid{twin->envelope().containsPid(best.bestKp, best.bestKi, best.bestKd)};
@@ -575,9 +587,9 @@ QJsonObject ChamberTools::suggestPid(QJsonObject const &args) {
                                         : QStringLiteral("not within %1 in that time").arg(fmt(ai::NEAR_BAND, DEG)),
                     fmt(best.bestMetrics.overshootMax, DEG), fmt(best.bestMetrics.tailMae, DEG));
   } else {
-    facts << (same ? QStringLiteral("AI Advisor for %1 → %2 over %3: the current PID is already the best it found, so keep it.")
-                   : QStringLiteral("AI Advisor for %1 → %2 over %3: no PID found that does better than the current one, so keep it."))
-                 .arg(fmt(start, DEG), fmt(target, DEG), hms(params.durationS));
+    facts << (same ? QStringLiteral("AI Advisor for %1 → %2 over %3: %4 is already the best it found, so keep it.")
+                   : QStringLiteral("AI Advisor for %1 → %2 over %3: no PID found that does better than %4, so keep it."))
+                 .arg(fmt(start, DEG), fmt(target, DEG), hms(params.durationS), whose);
   }
   if (!reached) {
     facts << QStringLiteral("The twin predicts the chamber cannot get within %1 of %2 in %3 from %4 with any of these gains (it ends near %5): "
@@ -590,9 +602,9 @@ QJsonObject ChamberTools::suggestPid(QJsonObject const &args) {
     QString const reach = (current.value("time_within_2C").toString() == QLatin1String("not reached"))
                             ? QStringLiteral("not within %1 in that time").arg(fmt(ai::NEAR_BAND, DEG))
                             : QStringLiteral("within %1 after %2").arg(fmt(ai::NEAR_BAND, DEG), current.value("time_within_2C").toString());
-    facts << QStringLiteral("With the current PID (Kp %1, Ki %2, Kd %3): %4, overshoot %5, error over the last minutes %6.")
+    facts << QStringLiteral("Predicted with %7 (Kp %1, Ki %2, Kd %3): %4, overshoot %5, error over the last minutes %6.")
                .arg(fmt(pid.value("kp").toDouble()), fmt(pid.value("ki").toDouble()), fmt(pid.value("kd").toDouble()), reach,
-                    fmt(current.value("overshoot").toDouble(NaN), DEG), fmt(current.value("tail_mae").toDouble(NaN), DEG));
+                    fmt(current.value("overshoot").toDouble(NaN), DEG), fmt(current.value("tail_mae").toDouble(NaN), DEG), whose);
   }
   if (better) {
     facts << (valid ? QStringLiteral("Only a suggestion: nothing was changed. To use it, apply it from the AI Advisor or enter it in Settings → Temperature PID.")

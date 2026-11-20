@@ -37,7 +37,11 @@ QString lookupText(QString const &tool) {
     {"get_settings", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Reading the settings…")},
     {"predict_setpoint", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Simulating with the digital twin…")},
     {"suggest_pid", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Calculating PID coefficients…")},
-    {"export_data", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Exporting the data…")}};
+    {"export_data", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Exporting the data…")},
+    {"get_statistics", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Calculating the statistics…")},
+    {"list_channels", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Looking up the channels…")},
+    {"find_similar_runs", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Looking for similar experiments…")},
+    {"improve_run", QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Simulating with the digital twin…")}};
   char const *text = texts.value(tool, QT_TRANSLATE_NOOP("deepvaccontrol::assistant::AssistantSession", "Looking up the data…"));
   return QCoreApplication::translate("deepvaccontrol::assistant::AssistantSession", text);
 }
@@ -98,6 +102,7 @@ void AssistantSession::setServices(AnalysisServices *analysis, std::function<voi
   m_tools->registerTools(m_registry);
   m_chamberTools = std::make_unique<ChamberTools>(m_resHolder);
   m_chamberTools->registerTools(m_registry);
+  m_tools->setPidAdvisor([this](QJsonObject const &args) { return m_chamberTools->suggestPid(args); });
 }
 
 LlmSidecar::State AssistantSession::modelState() const {
