@@ -3,6 +3,8 @@
 #include <QObject>
 #include <cmath>
 
+#include "utils.h"
+
 namespace deepvaccontrol {
 
 core::ExperimentInput experimentInput(ExperimentData const &data, QStringList const &channelNames,
@@ -42,13 +44,13 @@ QString stageName(core::Segment::Kind kind) {
 QColor stageColor(core::Segment::Kind kind) {
   switch (kind) {
     case core::Segment::Kind::RAMP:
-      return QColor("#d97706");
+      return QColor("#f2a60c");
     case core::Segment::Kind::SETPOINT:
-      return QColor("#2563eb");
+      return QColor("#2760e6");
     case core::Segment::Kind::HOLD:
-      return QColor("#16a34a");
+      return QColor("#19b26b");
     default:
-      return QColor("#64748b");
+      return QColor("#5c6472");
   }
 }
 
@@ -85,11 +87,11 @@ QString severityName(core::Anomaly::Severity severity) {
 QColor severityColor(core::Anomaly::Severity severity) {
   switch (severity) {
     case core::Anomaly::Severity::INFO:
-      return QColor("#64748b");
+      return QColor("#5c6472");
     case core::Anomaly::Severity::WARNING:
-      return QColor("#d97706");
+      return QColor("#f2a60c");
     default:
-      return QColor("#dc2626");
+      return QColor("#d4122e");
   }
 }
 
@@ -99,7 +101,7 @@ QString number(double value, int precision) {
   }
   double const absValue{std::fabs(value)};
   if ((absValue != 0.0) && ((absValue < 1e-3) || (absValue >= 1e6))) {
-    return QString::number(value, 'e', 2);
+    return utils::formatScientific(value, 2, false);
   }
   return QString::number(value, 'f', absValue >= 100 ? 1 : precision > 2 ? 3 : precision);
 }

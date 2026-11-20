@@ -160,18 +160,18 @@ QString eventTypeName(QString const &type) {
 
 QColor eventColor(QString const &type) {
   if (type.startsWith(QLatin1String("alarm")) || type == QLatin1String(core::eventtype::APP_ERROR)) {
-    return QColor("#dc2626");
+    return QColor("#d4122e");
   }
   if (type.startsWith(QLatin1String("setpoint")) || type.startsWith(QLatin1String("ramp"))) {
-    return QColor("#2563eb");
+    return QColor("#2760e6");
   }
   if (type.startsWith(QLatin1String("pid"))) {
-    return QColor("#d97706");
+    return QColor("#f2a60c");
   }
   if (type.startsWith(QLatin1String("job")) || type.startsWith(QLatin1String("operator")) || type == QLatin1String(core::eventtype::USER_CHANGE)) {
-    return QColor("#16a34a");
+    return QColor("#19b26b");
   }
-  return QColor("#64748b");
+  return QColor("#5c6472");
 }
 
 QString integrityText(int integrity) {

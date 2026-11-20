@@ -5,11 +5,13 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QThread>
 #include <algorithm>
 #include <cmath>
 
 #include "constants.h"
+#include "pressureunits.h"
 #include "recordingfile.h"
 #include "runstore.h"
 #include "utils.h"
@@ -35,6 +37,105 @@ QVector<QColor> const FALLBACK_COLORS{QColor("#2563eb"),
                                       QColor("#475569"),
                                       QColor("#db2777"),
                                       QColor("#0284c7")};
+
+// what the program of a database run set: its temperatures in order (the same one twice in a row once), then its
+// pressures; plain: the same with ASCII numbers, for the filter ("-20")
+struct Setpoints {
+  QString         text;
+  QString         plain;
+  QVector<double> temps;
+};
+
+Setpoints programSetpoints(QJsonObject const &configuration) {
+  // a parameter is set in an interval when its bit (its place in control_params) is in the interval's flags; without
+  // the list (older runs) the temperature is taken as set
+  QStringList order;
+  QString     pressureLabel;
+  for (QJsonValue const &param : configuration.value("control_params").toArray()) {
+    order << param.toObject().value("name").toString();
+    if (order.last() == QLatin1String("pres")) {
+      pressureLabel = param.toObject().value("label").toString();
+    }
+  }
+  qsizetype const tempBit{order.indexOf(QStringLiteral("temp"))};
+  qsizetype const presBit{order.indexOf(QStringLiteral("pres"))};
+  QVector<double> temps;
+  QVector<double> pressures;
+  for (QJsonValue const &value : configuration.value("job").toObject().value("program").toObject().value("intervals").toArray()) {
+    QJsonObject const interval = value.toObject();
+    auto const        flags    = static_cast<quint32>(interval.value("flags").toDouble());
+    auto const        isSet    = [&](qsizetype bit) {
+      return order.isEmpty() ? true : ((bit >= 0) && ((flags >> bit) & 1U));
+    };
+    double const temp{interval.value("temp").toDouble(qQNaN())};
+    if (isSet(tempBit) && std::isfinite(temp) && (temps.isEmpty() || (temps.last() != temp))) {
+      temps << temp;
+    }
+    double const pres{interval.value("pres").toDouble(qQNaN())};
+    if (!order.isEmpty() && isSet(presBit) && std::isfinite(pres) && (pressures.isEmpty() || (pressures.last() != pres))) {
+      pressures << pres;
+    }
+  }
+  constexpr int MAX_SHOWN{4}; // longer programs (cycles) end in "…"
+  auto const join = [](QStringList parts) {
+    if (parts.size() > MAX_SHOWN) {
+      parts = parts.mid(0, MAX_SHOWN) << QStringLiteral("…");
+    }
+    return parts.join(QStringLiteral(" → "));
+  };
+  QStringList shown;
+  QStringList plain;
+  if (!temps.isEmpty()) {
+    QStringList values;
+    for (double const temp : std::as_const(temps)) {
+      QString const number = QString::number(std::round(temp * 10.0) / 10.0);
+      values << QString{number}.replace(QLatin1Char('-'), QChar(0x2212));
+      plain << number;
+    }
+    shown << QStringLiteral("%1 °C").arg(join(values));
+  }
+  if (!pressures.isEmpty()) {
+    QStringList values;
+    for (double const pres : std::as_const(pressures)) {
+      values << pressure::text(pressure::toTorr(pres, pressureLabel));
+      plain << QString::number(pres);
+    }
+    shown << QStringLiteral("%1 Torr").arg(join(values));
+  }
+  return {shown.join(QStringLiteral(" · ")), plain.join(QLatin1Char(' ')), temps};
+}
+
+// the experiments saved in the database, newest first (any thread: the database opens its own connection)
+QVector<ExperimentRun> readStoredRuns() {
+  QVector<ExperimentRun> result;
+  for (storage::StoredRun const &stored : storage::RunStore::list()) {
+    ExperimentRun run;
+    run.key      = QStringLiteral("db:%1").arg(stored.key);
+    run.storeKey = stored.key;
+    run.title    = stored.id;
+    run.start    = stored.startEpoch;
+    run.end      = stored.endEpoch;
+    run.samples  = stored.samples;
+    run.chamber  = stored.chamber;
+    if (stored.manifest.isValid()) {
+      QJsonObject const job       = stored.manifest.configuration.value("job").toObject();
+      Setpoints const   setpoints = programSetpoints(stored.manifest.configuration);
+      run.setpoints               = setpoints.text;
+      run.setpointTemps           = setpoints.temps;
+      run.details = QStringList{stored.manifest.metadata.searchText(), job.value("label").toString(), job.value("test_profile").toString(),
+                                stored.testProfile, setpoints.text, setpoints.plain}
+                      .join(QLatin1Char(' '))
+                      .simplified();
+    }
+    if (std::isnan(run.start)) {
+      // runs written by Deepvac Insight only carry text times
+      run.start = QDateTime::fromString(stored.startTime.chopped(4), "yyyy-MM-dd HH:mm:ss").toSecsSinceEpoch();
+      run.end   = run.start + (std::isnan(stored.durationS) ? 0.0 : stored.durationS);
+    }
+    result.push_back(run);
+  }
+  return result;
+}
 
 qint64 fileModified(QString const &path) {
   return QFileInfo(path).lastModified().toMSecsSinceEpoch();
@@ -119,8 +220,11 @@ void ExperimentLibrary::refresh() {
 
   auto cache  = std::make_shared<QHash<QString, FileSummary>>(m_summaryCache);
   auto result = std::make_shared<QVector<FileSummary>>();
+  auto stored = std::make_shared<QVector<ExperimentRun>>();
 
-  QThread *thread = QThread::create([paths, cache, result]() {
+  // in a thread: the files' summaries and the database's runs (with their manifests: long with many runs)
+  QThread *thread = QThread::create([paths, cache, result, stored]() {
+    *stored = readStoredRuns();
     QHash<QString, FileSummary> updated;
     for (QString const &path : paths) {
       QFileInfo const info(path);
@@ -144,9 +248,10 @@ void ExperimentLibrary::refresh() {
   });
   thread->setParent(this);
 
-  connect(thread, &QThread::finished, this, [this, thread, cache, result]() {
+  connect(thread, &QThread::finished, this, [this, thread, cache, result, stored]() {
     m_summaryCache = std::move(*cache);
     m_files        = std::move(*result);
+    m_storedRuns   = std::move(*stored);
     m_scanning     = false;
     thread->deleteLater();
     applySegmentation();
@@ -169,32 +274,7 @@ void ExperimentLibrary::setGapThresholdSec(double sec) {
 }
 
 void ExperimentLibrary::applySegmentation() {
-  m_runs = segment(m_files);
-
-  m_storedRuns.clear();
-  for (storage::StoredRun const &stored : storage::RunStore::list()) {
-    ExperimentRun run;
-    run.key      = QStringLiteral("db:%1").arg(stored.key);
-    run.storeKey = stored.key;
-    run.title    = stored.id;
-    run.start    = stored.startEpoch;
-    run.end      = stored.endEpoch;
-    run.samples  = stored.samples;
-    run.chamber  = stored.chamber;
-    if (stored.manifest.isValid()) {
-      QJsonObject const job = stored.manifest.configuration.value("job").toObject();
-      run.details = QStringList{stored.manifest.metadata.searchText(), job.value("label").toString(), job.value("test_profile").toString(),
-                                stored.testProfile}
-                      .join(QLatin1Char(' '))
-                      .simplified();
-    }
-    if (std::isnan(run.start)) {
-      // runs written by Deepvac Insight only carry text times
-      run.start = QDateTime::fromString(stored.startTime.chopped(4), "yyyy-MM-dd HH:mm:ss").toSecsSinceEpoch();
-      run.end   = run.start + (std::isnan(stored.durationS) ? 0.0 : stored.durationS);
-    }
-    m_storedRuns.push_back(run);
-  }
+  m_runs = segment(m_files); // the stored runs as the last scan read them
   emit runsChanged();
 }
 

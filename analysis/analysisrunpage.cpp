@@ -77,11 +77,11 @@ QVector<QColor> const COMPARE_COLORS{QColor("#2563eb"),
 QColor eventColor(int type) {
   switch (type) {
     case 1: // PLC
-      return QColor("#d97706");
+      return QColor("#f2a60c");
     case 2: // ERR
-      return QColor("#dc2626");
+      return QColor("#d4122e");
     default: // APP
-      return QColor("#64748b");
+      return QColor("#5c6472");
   }
 }
 
@@ -265,8 +265,8 @@ void AnalysisRunPage::buildUi() {
   setObjectName("pageCard");
   setAttribute(Qt::WA_StyledBackground);
   auto *root = new QVBoxLayout(this);
-  root->setContentsMargins(12 * utils::ssf(), 8 * utils::ssf(), 12 * utils::ssf(), 8 * utils::ssf());
-  root->setSpacing(6 * utils::ssf());
+  root->setContentsMargins(theme::dp(24), theme::dp(16), theme::dp(24), theme::dp(16));
+  root->setSpacing(theme::dp(12));
 
   // title on the left, the main tools on the right, everything else in the ⋮ menu
   m_titleLabel = new QLabel(tr("Loading…"), this);
@@ -286,8 +286,8 @@ void AnalysisRunPage::buildUi() {
 
   auto toolButton = [this](QString const &text, QString const &icon) {
     auto *button = new QPushButton(text, this);
-    button->setFixedHeight(static_cast<int>(30 * utils::ssf()));
-    button->setIconSize(QSize(16 * utils::ssf(), 16 * utils::ssf()));
+    button->setFixedHeight(theme::dp(56));
+    button->setIconSize(QSize(theme::dp(30), theme::dp(30)));
     button->setFocusPolicy(Qt::NoFocus);
     m_iconButtons.push_back({button, icon});
     return button;
@@ -320,7 +320,7 @@ void AnalysisRunPage::buildUi() {
   statisticsBtn->setToolTip(tr("Statistics of the visible range, experiment KPIs, stages, anomalies, comparison, events and record"));
 
   m_moreBtn = toolButton(QString(), "dots");
-  m_moreBtn->setFixedWidth(static_cast<int>(34 * utils::ssf()));
+  m_moreBtn->setFixedWidth(theme::dp(63));
   m_moreBtn->setToolTip(tr("More: line style, labels, view options, rules & notes, export"));
 
   // line / scatter (kept as a hidden combo: the ⋮ menu drives it)
@@ -386,7 +386,7 @@ void AnalysisRunPage::buildUi() {
   });
 
   auto *headerLay = new QHBoxLayout();
-  headerLay->setSpacing(6 * utils::ssf());
+  headerLay->setSpacing(theme::dp(12));
   headerLay->addWidget(m_titleLabel, 1);
   for (QPushButton *button : {m_compareBtn, m_channelsBtn, m_annotateBtn, resetBtn, statisticsBtn, m_moreBtn}) {
     headerLay->addWidget(button);
@@ -399,15 +399,15 @@ void AnalysisRunPage::buildUi() {
   m_chart = new AnalysisChart(this);
   m_chart->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   // the panels below share the height with the chart (splitter), so it may get smaller than elsewhere
-  m_chart->setMinimumHeight(120 * utils::ssf());
+  m_chart->setMinimumHeight(theme::dp(225));
   connect(m_chart, &AnalysisChart::annotationDrawn, this, &AnalysisRunPage::onAnnotationDrawn);
 
   // plot controls, grouped so a group never breaks across rows
   auto makeGroup = [this](std::initializer_list<QWidget *> widgets) {
     auto *group = new QWidget(this);
     auto *lay   = new QHBoxLayout(group);
-    lay->setContentsMargins(0, 0, 8 * utils::ssf(), 0);
-    lay->setSpacing(4 * utils::ssf());
+    lay->setContentsMargins(0, 0, theme::dp(16), 0);
+    lay->setSpacing(theme::dp(8));
     for (QWidget *widget : widgets) {
       lay->addWidget(widget);
     }
@@ -420,7 +420,7 @@ void AnalysisRunPage::buildUi() {
     spin->setSuffix(tr(" min"));
     spin->setRange(0, 0);
     spin->setMinimumHeight(buttonHeight());
-    spin->setMinimumWidth(100 * utils::ssf());
+    spin->setMinimumWidth(theme::dp(187));
     return spin;
   };
   m_fromSpin = makeTimeSpin();
@@ -478,7 +478,7 @@ void AnalysisRunPage::buildUi() {
   m_setpointCheck->setChecked(true);
   m_setpointEdit = new LineEditNum(-1'000'000, 1'000'000, 2, false, this);
   m_setpointEdit->setFont(font()); // same size as the range fields
-  m_setpointEdit->setFixedWidth(110 * utils::ssf());
+  m_setpointEdit->setFixedWidth(theme::dp(206));
   m_setpointEdit->setMinimumHeight(buttonHeight());
   m_setpointGroup = makeGroup({m_setpointCheck, m_setpointEdit});
   m_setpointGroup->setVisible(false);
@@ -498,7 +498,7 @@ void AnalysisRunPage::buildUi() {
   page->setWidget(pageContent);
   auto *pageLay = new QVBoxLayout(pageContent);
   pageLay->setContentsMargins(0, 0, 0, 0);
-  pageLay->setSpacing(6 * utils::ssf());
+  pageLay->setSpacing(theme::dp(12));
   m_chart->setParent(pageContent);
   pageLay->addWidget(m_chart);
   auto *controlsBox = new FlowBox(pageContent);
@@ -510,7 +510,7 @@ void AnalysisRunPage::buildUi() {
 
   // the chart fills the visible height
   auto *sizer = new ViewportSizer(page->viewport(), [this](QSize const &size) {
-    m_chart->setFixedHeight(qMax(static_cast<int>(200 * utils::ssf()), size.height()));
+    m_chart->setFixedHeight(qMax(theme::dp(375), size.height()));
   });
   (void)sizer;
 
@@ -520,7 +520,7 @@ void AnalysisRunPage::buildUi() {
     auto *dialog = new QDialog(this);
     dialog->setWindowTitle(title);
     auto *lay = new QVBoxLayout(dialog);
-    lay->setContentsMargins(14 * utils::ssf(), 12 * utils::ssf(), 14 * utils::ssf(), 12 * utils::ssf());
+    lay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(24));
     panel->setParent(dialog);
     lay->addWidget(panel);
     return dialog;
@@ -593,7 +593,7 @@ QWidget *AnalysisRunPage::buildNotesPanel() {
   // variable rules
   auto *rulesPage = new QWidget(panel);
   auto *rulesLay  = new QVBoxLayout(rulesPage);
-  rulesLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  rulesLay->setContentsMargins(0, theme::dp(8), 0, 0);
 
   m_ruleChannelCombo = new QComboBox(rulesPage);
   m_ruleChannelCombo->setMinimumHeight(buttonHeight());
@@ -606,7 +606,7 @@ QWidget *AnalysisRunPage::buildNotesPanel() {
   m_ruleHiEdit->setPlaceholderText(tr("max"));
   m_ruleLabelEdit->setPlaceholderText(tr("label"));
   for (QLineEdit *edit : {m_ruleLoEdit, m_ruleHiEdit, m_ruleLabelEdit}) {
-    edit->setFixedWidth(90 * utils::ssf());
+    edit->setFixedWidth(theme::dp(168));
     edit->setMinimumHeight(buttonHeight());
   }
   m_ruleColorCombo = makeColorCombo(rulesPage);
@@ -622,7 +622,7 @@ QWidget *AnalysisRunPage::buildNotesPanel() {
 
   auto *rulesListLay = new QHBoxLayout();
   m_rulesList        = new QListWidget(rulesPage);
-  m_rulesList->setMinimumHeight(100 * utils::ssf());
+  m_rulesList->setMinimumHeight(theme::dp(187));
   auto *removeRuleBtn = makeButton(tr("Remove"), rulesPage);
   connect(removeRuleBtn, &QPushButton::clicked, this, [this] {
     if (auto *item = m_rulesList->currentItem()) {
@@ -642,7 +642,7 @@ QWidget *AnalysisRunPage::buildAnnotationsPanel() {
   auto        *panel = new QWidget(this);
   auto        *lay   = new QVBoxLayout(panel);
   lay->setContentsMargins(0, 0, 0, 0);
-  lay->setSpacing(8 * ssf);
+  lay->setSpacing(theme::dp(16));
 
   auto *hint = new QLabel(tr("Annotations of this experiment's time span. To add one, press Annotate and drag across the chart."), panel);
   hint->setProperty("muted", true);
@@ -667,7 +667,7 @@ QWidget *AnalysisRunPage::buildAnnotationsPanel() {
   lay->addWidget(m_annotationsTable, 1);
 
   auto *buttons = new QHBoxLayout();
-  buttons->setSpacing(8 * ssf);
+  buttons->setSpacing(theme::dp(16));
   auto *showBtn   = makeButton(tr("Show on chart"), panel);
   auto *editBtn   = makeButton(tr("Edit…"), panel);
   auto *removeBtn = makeButton(tr("Remove"), panel);
@@ -675,7 +675,7 @@ QWidget *AnalysisRunPage::buildAnnotationsPanel() {
   auto *closeBtn = makeButton(tr("Close"), panel);
   closeBtn->setObjectName("primaryButton");
   for (QPushButton *button : {showBtn, editBtn, removeBtn, closeBtn}) {
-    button->setMinimumWidth(110 * ssf);
+    button->setMinimumWidth(theme::dp(206));
   }
   buttons->addWidget(showBtn);
   buttons->addWidget(editBtn);
@@ -749,8 +749,8 @@ void AnalysisRunPage::editAnnotation(int row) {
   dialog.setWindowTitle(tr("Edit annotation"));
   auto *lay  = new QVBoxLayout(&dialog);
   auto *grid = new QGridLayout();
-  grid->setHorizontalSpacing(10 * utils::ssf());
-  grid->setVerticalSpacing(8 * utils::ssf());
+  grid->setHorizontalSpacing(theme::dp(20));
+  grid->setVerticalSpacing(theme::dp(16));
   auto *labelEdit = new QLineEdit(current.label, &dialog);
   labelEdit->setMinimumHeight(buttonHeight());
   auto *colorCombo = makeColorCombo(&dialog);
@@ -793,7 +793,7 @@ void AnalysisRunPage::editAnnotation(int row) {
   lay->addLayout(buttons);
   connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
   connect(saveBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
-  dialog.resize(460 * utils::ssf(), dialog.sizeHint().height());
+  dialog.resize(theme::dp(862), dialog.sizeHint().height());
   if (dialog.exec() != QDialog::Accepted) {
     return;
   }
@@ -865,7 +865,7 @@ void AnalysisRunPage::load() {
   if (!m_data) {
     m_titleLabel->setText(m_run.title);
     m_statsLabel->setText(error);
-    m_statsLabel->setStyleSheet("color: #b03030;");
+    m_statsLabel->setStyleSheet("color: #d4122e;");
     m_statsLabel->setVisible(true);
     return;
   }
@@ -1064,13 +1064,12 @@ void AnalysisRunPage::editChannelStyle(int index) {
   auto *lay  = new QVBoxLayout(&dialog);
   auto *grid = new QGridLayout();
   lay->addLayout(grid);
-  double const ssf{utils::ssf()};
 
   auto color = std::make_shared<QColor>(channelColor(index));
   auto *colorBtn = new QPushButton(&dialog);
-  colorBtn->setFixedSize(static_cast<int>(40 * ssf), static_cast<int>(26 * ssf));
+  colorBtn->setFixedSize(theme::dp(75), theme::dp(48));
   auto *styleCombo = new QComboBox(&dialog);
-  styleCombo->setIconSize(QSize(static_cast<int>(80 * ssf), static_cast<int>(14 * ssf)));
+  styleCombo->setIconSize(QSize(theme::dp(150), theme::dp(26)));
   for (int style{Qt::SolidLine}; style < Qt::CustomDashLine; ++style) {
     styleCombo->addItem(QString{}, style);
   }
@@ -1083,7 +1082,7 @@ void AnalysisRunPage::editChannelStyle(int index) {
 
   // the colour swatch and the line previews follow the choices
   auto refresh = [colorBtn, styleCombo, widthCombo, color] {
-    colorBtn->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #94a3b8; border-radius: 3px;").arg(color->name()));
+    colorBtn->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #a9afba; border-radius: 3px;").arg(color->name()));
     for (int i{0}; i < styleCombo->count(); ++i) {
       styleCombo->setItemIcon(i, lineIcon(*color, static_cast<Qt::PenStyle>(styleCombo->itemData(i).toInt()),
                                           widthCombo->currentData().toInt()));
@@ -1300,7 +1299,7 @@ QString statText(double value, int precision = 4) {
   }
   double const absValue{std::fabs(value)};
   if ((absValue != 0.0) && ((absValue < 1e-3) || (absValue >= 1e6))) {
-    return QString::number(value, 'e', 2);
+    return utils::formatScientific(value, 2, false);
   }
   return QString::number(value, 'f', absValue >= 100 ? 1 : precision > 2 ? 3 : precision);
 }
@@ -1312,13 +1311,13 @@ QString secondsText(double seconds) {
 QColor stageColor(core::Segment::Kind kind) {
   switch (kind) {
     case core::Segment::Kind::RAMP:
-      return QColor("#d97706");
+      return QColor("#f2a60c");
     case core::Segment::Kind::SETPOINT:
-      return QColor("#2563eb");
+      return QColor("#2760e6");
     case core::Segment::Kind::HOLD:
-      return QColor("#16a34a");
+      return QColor("#19b26b");
     default:
-      return QColor("#64748b");
+      return QColor("#5c6472");
   }
 }
 
@@ -1343,7 +1342,7 @@ QTableWidget *makeTable(QStringList const &headers, int stretchColumn, QWidget *
   table->verticalHeader()->setVisible(false);
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
-  table->setMinimumHeight(90 * utils::ssf());
+  table->setMinimumHeight(theme::dp(168));
   return table;
 }
 }
@@ -1365,9 +1364,9 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
 
   auto *rangePage = new QWidget(panel);
   auto *rangeLay  = new QVBoxLayout(rangePage);
-  rangeLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  rangeLay->setContentsMargins(0, theme::dp(8), 0, 0);
   m_rangeLabel = new QLabel(rangePage);
-  m_rangeLabel->setStyleSheet("color: #64748b;");
+  m_rangeLabel->setStyleSheet("color: #5c6472;");
   m_rangeTable = makeTable({tr("Channel"), tr("n"), tr("Missing"), tr("Min"), tr("Max"), tr("Mean"), tr("Std"), tr("RMS"),
                             tr("Slope /min"), tr("P95")},
                            0,
@@ -1381,7 +1380,7 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
 
   auto *kpiPage = new QWidget(panel);
   auto *kpiLay  = new QVBoxLayout(kpiPage);
-  kpiLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  kpiLay->setContentsMargins(0, theme::dp(8), 0, 0);
   m_kpiLabel = new QLabel(kpiPage);
   m_kpiLabel->setWordWrap(true);
   m_kpiLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -1400,12 +1399,12 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
     }
   });
   auto *tilesLay = new QHBoxLayout();
-  tilesLay->setSpacing(16 * utils::ssf());
+  tilesLay->setSpacing(theme::dp(32));
   for (QString const &title : {tr("MAE"), tr("RMSE"), tr("Max error"), tr("Overshoot"), tr("Undershoot"), tr("Settling"), tr("Tail MAE")}) {
     auto *tile    = new QWidget(kpiPage);
     auto *tileLay = new QVBoxLayout(tile);
     tileLay->setContentsMargins(0, 0, 0, 0);
-    tileLay->setSpacing(1 * utils::ssf());
+    tileLay->setSpacing(theme::dp(4));
     auto *name = new QLabel(title, tile);
     name->setProperty("muted", true);
     auto *value = new QLabel(QStringLiteral("—"), tile);
@@ -1425,7 +1424,7 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
 
   auto *anomalyPage = new QWidget(panel);
   auto *anomalyLay  = new QVBoxLayout(anomalyPage);
-  anomalyLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  anomalyLay->setContentsMargins(0, theme::dp(8), 0, 0);
   m_anomalyLabel = new QLabel(anomalyPage);
   m_anomalyLabel->setWordWrap(true);
   m_anomalyTable = makeTable({tr("Severity"), tr("Type"), tr("Channel"), tr("Start"), tr("Duration"), tr("Detail")}, 5, anomalyPage);
@@ -1445,7 +1444,7 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
 
   auto *eventsPage = new QWidget(panel);
   auto *eventsLay  = new QVBoxLayout(eventsPage);
-  eventsLay->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  eventsLay->setContentsMargins(0, theme::dp(8), 0, 0);
   m_eventsLabel = new QLabel(eventsPage);
   m_eventsLabel->setWordWrap(true);
   m_eventsTable = makeTable({tr("Time"), tr("Event"), tr("Source"), tr("Details")}, 3, eventsPage);
@@ -1461,7 +1460,7 @@ QWidget *AnalysisRunPage::buildStatisticsPanel() {
   eventsLay->addWidget(m_eventsTable);
 
   m_recordView = new QTextBrowser(panel);
-  m_recordView->setMinimumHeight(90 * utils::ssf());
+  m_recordView->setMinimumHeight(theme::dp(168));
   m_recordView->setOpenLinks(false);
 
   panel->addTab(rangePage, tr("Selected range"));
@@ -1628,7 +1627,9 @@ void AnalysisRunPage::computeRunAnalysis() {
   for (double const setpoint : c.setpoints) {
     setpoints << statText(setpoint, 2);
   }
-  double const steadyShare{core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
+  double const steadyShare{a.run.stages.isEmpty()
+                             ? qQNaN()
+                             : core::steadyFraction(a.steady, a.run.stages.first().segment.start, a.run.stages.last().segment.end)};
   // headline KPIs as tiles (°C for the temperature errors)
   {
     auto degrees = [](double v) { return std::isfinite(v) ? statText(v) + QStringLiteral(" °C") : QStringLiteral("—"); };
@@ -1941,7 +1942,7 @@ void AnalysisRunPage::openChannelsMenu() {
     auto *swatch = new QPushButton(row);
     swatch->setFixedSize(18, 18);
     swatch->setFocusPolicy(Qt::NoFocus);
-    swatch->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #94a3b8; border-radius: 3px;")
+    swatch->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #a9afba; border-radius: 3px;")
                             .arg(channelColor(i).name()));
     swatch->setToolTip(tr("Colour, line style and width"));
     connect(swatch, &QPushButton::clicked, this, [this, i, menu]() {
@@ -2396,7 +2397,7 @@ QString AnalysisRunPage::recordHtml() const {
   auto table = [&esc](QStringList const &columns, QVector<QStringList> const &rows) {
     QString html = QStringLiteral("<table border='1' cellspacing='0' cellpadding='3'><tr>");
     for (QString const &column : columns) {
-      html += QStringLiteral("<th bgcolor='#e2e8f0'>%1</th>").arg(esc(column));
+      html += QStringLiteral("<th bgcolor='#e3e8ee'>%1</th>").arg(esc(column));
     }
     html += QStringLiteral("</tr>");
     for (QStringList const &row : rows) {
@@ -2511,7 +2512,7 @@ void AnalysisRunPage::saveToDatabase() {
   lay->addLayout(buttons);
   connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
   connect(saveBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
-  dialog.resize(520 * utils::ssf(), dialog.sizeHint().height());
+  dialog.resize(theme::dp(975), dialog.sizeHint().height());
   if ((dialog.exec() != QDialog::Accepted) || nameEdit->text().trimmed().isEmpty()) {
     return;
   }

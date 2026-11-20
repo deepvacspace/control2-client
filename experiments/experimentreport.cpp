@@ -36,7 +36,7 @@ QString dateTime(double epoch) {
 QString table(QStringList const &headers, QVector<QStringList> const &rows) {
   QString html = QStringLiteral("<table border=\"1\" cellspacing=\"0\" cellpadding=\"3\" width=\"100%\"><tr>");
   for (QString const &header : headers) {
-    html += QStringLiteral("<th bgcolor=\"#e2e8f0\" align=\"left\">%1</th>").arg(esc(header));
+    html += QStringLiteral("<th bgcolor=\"#e3e8ee\" align=\"left\">%1</th>").arg(esc(header));
   }
   html += QStringLiteral("</tr>");
   for (QStringList const &row : rows) {
@@ -57,7 +57,7 @@ QString facts(QVector<QPair<QString, QString>> const &items) {
   }
   QString html = QStringLiteral("<table border=\"1\" cellspacing=\"0\" cellpadding=\"3\">");
   for (QStringList const &row : rows) {
-    html += QStringLiteral("<tr><td bgcolor=\"#f1f5f9\">%1</td><td>%2</td></tr>").arg(row[0], row[1]);
+    html += QStringLiteral("<tr><td bgcolor=\"#f2f6f8\">%1</td><td>%2</td></tr>").arg(row[0], row[1]);
   }
   return html + QStringLiteral("</table>");
 }
@@ -97,7 +97,7 @@ QString html(ExperimentReportData const &data, bool embedImages) {
 
   // ---- header and summary
   body += QStringLiteral("<h1>%1</h1>").arg(esc(QObject::tr("Experiment report: %1").arg(data.run.title)));
-  body += QStringLiteral("<p><font color=\"#64748b\">%1</font></p>")
+  body += QStringLiteral("<p><font color=\"#5c6472\">%1</font></p>")
             .arg(esc(QObject::tr("Generated %1%2 by Deepvac Control")
                        .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm"),
                             data.author.isEmpty() ? QString() : QObject::tr(" for %1").arg(data.author))));
@@ -220,7 +220,7 @@ QString html(ExperimentReportData const &data, bool embedImages) {
   if (!data.charts.isEmpty()) {
     section(QObject::tr("Charts"));
     for (int i{0}; i < data.charts.size(); ++i) {
-      body += QStringLiteral("<p><img src=\"%1\" width=\"680\"><br><font color=\"#64748b\">%2</font></p>")
+      body += QStringLiteral("<p><img src=\"%1\" width=\"680\"><br><font color=\"#5c6472\">%2</font></p>")
                 .arg(imageSource(data.charts[i].second, i, embedImages), esc(data.charts[i].first));
     }
   }
@@ -351,10 +351,10 @@ QString html(ExperimentReportData const &data, bool embedImages) {
   }
 
   return QStringLiteral("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>%1</title>"
-                        "<style>body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#0f172a;max-width:1100px;margin:16px;}"
-                        "h1{font-size:16pt;}h2{font-size:13pt;margin-top:18px;border-bottom:1px solid #cbd5e1;}h3{font-size:11pt;}"
-                        "table{border-collapse:collapse;margin:4px 0;}td,th{border:1px solid #cbd5e1;padding:3px 6px;font-size:9pt;}"
-                        "th{background:#e2e8f0;text-align:left;}</style></head><body>%2</body></html>")
+                        "<style>body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1e2633;max-width:1100px;margin:16px;}"
+                        "h1{font-size:16pt;}h2{font-size:13pt;margin-top:18px;border-bottom:1px solid #d9dee5;}h3{font-size:11pt;}"
+                        "table{border-collapse:collapse;margin:4px 0;}td,th{border:1px solid #d9dee5;padding:3px 6px;font-size:9pt;}"
+                        "th{background:#e3e8ee;text-align:left;}</style></head><body>%2</body></html>")
     .arg(esc(data.run.title), body);
 }
 

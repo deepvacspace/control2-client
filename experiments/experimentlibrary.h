@@ -30,6 +30,8 @@ struct ExperimentRun {
   QString     storeKey;      // run saved in the experiment database (storage::RunStore)
   QString     chamber;       // database runs: chamber it was recorded on
   QString     details;       // database runs: DUT, operator, purpose, tags, job (searchable)
+  QString     setpoints;     // database runs: what the program set, "60 → −20 °C · 1.0·E-06 Torr" (empty: not recorded)
+  QVector<double> setpointTemps; // database runs: the program's temperatures in order, each change once (°C)
 
   [[nodiscard]] double duration() const {
     return end - start;

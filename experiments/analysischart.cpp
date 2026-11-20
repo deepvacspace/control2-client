@@ -22,7 +22,7 @@ QString formatValue(double value) {
   }
   double const absValue{std::fabs(value)};
   if ((absValue != 0.0) && ((absValue < 1e-2) || (absValue >= 1e6))) {
-    return QString::number(value, 'e', 2);
+    return utils::formatScientific(value, 2, false);
   }
   return QString::number(value, 'f', absValue >= 100 ? 1 : 3);
 }
@@ -76,7 +76,7 @@ AnalysisChart::AnalysisChart(QWidget *parent) : QWidget{parent}, m_plot{new QCus
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(m_plot);
-  setMinimumHeight(220 * utils::ssf());
+  setMinimumHeight(theme::dp(412));
 
   m_plot->setNoAntialiasingOnDrag(true);
   m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
@@ -111,14 +111,14 @@ AnalysisChart::AnalysisChart(QWidget *parent) : QWidget{parent}, m_plot{new QCus
   theme::stylePlot(m_plot);
   styleLegendBox();
 
-  m_plot->selectionRect()->setPen(QPen(QColor("#2563eb"), 1, Qt::DashLine));
-  m_plot->selectionRect()->setBrush(QBrush(QColor(37, 99, 235, 40)));
+  m_plot->selectionRect()->setPen(QPen(QColor("#2760e6"), 1, Qt::DashLine));
+  m_plot->selectionRect()->setBrush(QBrush(QColor(39, 96, 230, 40)));
 
   m_plot->addLayer(BANDS_LAYER, m_plot->layer("main"), QCustomPlot::limBelow);
   m_plot->addLayer(CROSSHAIR_LAYER, m_plot->layer("legend"), QCustomPlot::limAbove);
   m_plot->layer(CROSSHAIR_LAYER)->setMode(QCPLayer::lmBuffered);
 
-  QPen const crossPen(QColor("#64748b"), 1, Qt::DashLine);
+  QPen const crossPen(QColor("#686b70"), 1, Qt::DashLine);
   m_crossV = new QCPItemStraightLine(m_plot);
   m_crossH = new QCPItemStraightLine(m_plot);
   for (auto *line : {m_crossV, m_crossH}) {
@@ -397,7 +397,7 @@ void AnalysisChart::rebuild() {
     text->position->setType(QCPItemPosition::ptAxisRectRatio);
     text->position->setCoords(0.5, 0.5);
     text->setText(tr("No channels selected"));
-    text->setColor(QColor("#64748b"));
+    text->setColor(QColor("#5c6472"));
     m_decorations.push_back(text);
   }
 

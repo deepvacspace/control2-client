@@ -12,6 +12,7 @@
 #include "crosshairsynchub.h"
 #include "touchsupport.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -47,7 +48,7 @@ AnalysisEditorArea::AnalysisEditorArea(QWidget *parent)
                                     "and look at several experiments side by side."),
                                  this);
   placeholder->setAlignment(Qt::AlignCenter);
-  placeholder->setStyleSheet("color: #64748b;");
+  placeholder->setStyleSheet("color: #5c6472;");
   m_stack->addWidget(placeholder);
   m_stack->addWidget(m_root);
 
@@ -66,7 +67,7 @@ QTabWidget *AnalysisEditorArea::makeGroup() {
                          .arg(100 * utils::ssf())
                          .arg(36 * utils::ssf())
                          .arg(static_cast<int>(20 * utils::ssf())));
-  group->setMinimumSize(320 * utils::ssf(), 240 * utils::ssf());
+  group->setMinimumSize(theme::dp(600), theme::dp(450));
   {
     QFont font = group->tabBar()->font();
     font.setPointSizeF(font.pointSizeF() * 0.9); // smaller experiment tabs

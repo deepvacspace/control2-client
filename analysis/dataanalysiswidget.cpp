@@ -34,19 +34,19 @@ DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
     , m_editor{new AnalysisEditorArea(this)} {
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->setSpacing(4 * utils::ssf());
+  mainLay->setSpacing(theme::dp(8));
 
   // browser: hide button + filter | list | buttons
   m_browser = new QFrame(this);
   m_browser->setObjectName("pageCard");
   auto *browserLay = new QVBoxLayout(m_browser);
-  browserLay->setContentsMargins(10 * utils::ssf(), 10 * utils::ssf(), 10 * utils::ssf(), 10 * utils::ssf());
-  browserLay->setSpacing(8 * utils::ssf());
+  browserLay->setContentsMargins(theme::dp(20), theme::dp(20), theme::dp(20), theme::dp(20));
+  browserLay->setSpacing(theme::dp(16));
 
   auto *hideBtn = new QPushButton(QStringLiteral("‹"), m_browser);
-  hideBtn->setMinimumHeight(40 * utils::ssf());
+  hideBtn->setMinimumHeight(theme::dp(75));
   hideBtn->setFocusPolicy(Qt::NoFocus);
-  hideBtn->setFixedWidth(40 * utils::ssf());
+  hideBtn->setFixedWidth(theme::dp(75));
   hideBtn->setToolTip(tr("Hide the experiment list"));
 
   auto *list = new ExperimentBrowser(m_library, true, m_browser);
@@ -71,7 +71,7 @@ DataAnalysisWidget::DataAnalysisWidget(ResHolder *resHolder, QWidget *parent)
   auto *showStrip = new QPushButton(QStringLiteral("▶"), this);
   showStrip->setToolTip(tr("Show the experiment list"));
   showStrip->setFocusPolicy(Qt::NoFocus);
-  showStrip->setFixedWidth(24 * utils::ssf());
+  showStrip->setFixedWidth(theme::dp(45));
   showStrip->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
   showStrip->setVisible(false);
 

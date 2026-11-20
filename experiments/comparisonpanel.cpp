@@ -43,7 +43,7 @@ QTableWidget *makeTable(QWidget *parent) {
   table->verticalHeader()->setVisible(false);
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
-  table->setMinimumHeight(90 * utils::ssf());
+  table->setMinimumHeight(theme::dp(168));
   return table;
 }
 
@@ -85,7 +85,7 @@ QColor deltaColor(double delta, double reference, core::Better better) {
     return {};
   }
   bool const improved{(better == core::Better::LOWER) ? (delta < 0.0) : (delta > 0.0)};
-  return improved ? QColor("#16a34a") : QColor("#dc2626");
+  return improved ? QColor("#19b26b") : QColor("#d4122e");
 }
 
 QString deltaText(double delta, double reference, QString const &unit, QString const &key) {
@@ -135,7 +135,7 @@ QString htmlTable(QTableWidget const *table) {
 
 ComparisonPanel::ComparisonPanel(QWidget *parent) : QWidget{parent} {
   auto *root = new QVBoxLayout(this);
-  root->setContentsMargins(0, 4 * utils::ssf(), 0, 0);
+  root->setContentsMargins(0, theme::dp(8), 0, 0);
   m_stack = new QStackedWidget(this);
   root->addWidget(m_stack);
 
@@ -144,7 +144,7 @@ ComparisonPanel::ComparisonPanel(QWidget *parent) : QWidget{parent} {
                           m_stack);
   hint->setWordWrap(true);
   hint->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-  hint->setStyleSheet("color: #64748b;");
+  hint->setProperty("muted", true); // the theme's secondary text (Steel was hard to read on the dark theme)
   m_stack->addWidget(hint);
 
   auto *page = new QWidget(m_stack);
@@ -160,7 +160,7 @@ ComparisonPanel::ComparisonPanel(QWidget *parent) : QWidget{parent} {
   m_alignSpin->setRange(1, 999);
   m_alignSpin->setEnabled(false);
   m_anchorLabel = new QLabel(page);
-  m_anchorLabel->setStyleSheet("color: #64748b;");
+  m_anchorLabel->setProperty("muted", true);
   m_anchorLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   alignRow->addWidget(new QLabel(tr("Align on"), page));
   alignRow->addWidget(m_alignCombo);
@@ -345,7 +345,7 @@ void ComparisonPanel::fillConfiguration() {
         QFont             font = item->font();
         font.setBold(true);
         item->setFont(font);
-        item->setBackground(QColor("#fef3c7"));
+        item->setBackground(theme::selectedBackground()); // readable on both themes
       }
     }
   }

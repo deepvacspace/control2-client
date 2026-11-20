@@ -83,7 +83,8 @@ public:
       small.setPointSizeF(option.font.pointSizeF() * 0.82);
       p->setFont(small);
       p->setPen(c.muted);
-      p->drawText(bottom, Qt::AlignVCenter | Qt::AlignLeft, index.data(SUB_ROLE).toString());
+      p->drawText(bottom, Qt::AlignVCenter | Qt::AlignLeft,
+                  QFontMetrics(small).elidedText(index.data(SUB_ROLE).toString(), Qt::ElideRight, static_cast<int>(bottom.width())));
     } else {
       p->setFont(font);
       p->setPen(index.flags() == Qt::NoItemFlags ? c.muted : c.text);
@@ -97,7 +98,7 @@ public:
 
 QPushButton *makeButton(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
-  button->setMinimumHeight(40 * utils::ssf());
+  button->setMinimumHeight(theme::dp(75));
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
@@ -107,12 +108,12 @@ ExperimentBrowser::ExperimentBrowser(ExperimentLibrary *library, bool canSplit, 
     : QWidget{parent}, m_library{library}, m_canSplit{canSplit} {
   auto *lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
-  lay->setSpacing(8 * utils::ssf());
+  lay->setSpacing(theme::dp(16));
 
   m_filterEdit = new LineEditScreen(this, VirtualKeyboard::EN); // the on-screen keyboard on touch panels
   m_filterEdit->setPlaceholderText(tr("Filter: date, name, DUT…"));
   m_filterEdit->setClearButtonEnabled(true);
-  m_filterEdit->setMinimumHeight(34 * utils::ssf());
+  m_filterEdit->setMinimumHeight(theme::dp(63));
   connect(m_filterEdit, &QLineEdit::textChanged, this, &ExperimentBrowser::applyFilter);
   lay->addWidget(m_filterEdit);
 
@@ -170,7 +171,7 @@ ExperimentBrowser::ExperimentBrowser(ExperimentLibrary *library, bool canSplit, 
   connect(m_refreshBtn, &QPushButton::clicked, m_library, &ExperimentLibrary::refresh);
   connect(openRangeBtn, &QPushButton::clicked, this, &ExperimentBrowser::openCustomRange);
   m_buttonsLay = new QHBoxLayout();
-  m_buttonsLay->setSpacing(6 * utils::ssf());
+  m_buttonsLay->setSpacing(theme::dp(12));
   m_buttonsLay->addWidget(m_refreshBtn, 1);
   m_buttonsLay->addWidget(openRangeBtn, 1);
 
@@ -188,7 +189,7 @@ ExperimentBrowser::ExperimentBrowser(ExperimentLibrary *library, bool canSplit, 
 }
 
 void ExperimentBrowser::addButton(QPushButton *button) {
-  m_buttonsLay->addWidget(button);
+  m_buttonsLay->addWidget(button, 1);
 }
 
 void ExperimentBrowser::showEvent(QShowEvent *event) {
@@ -212,8 +213,10 @@ void ExperimentBrowser::populateTree() {
   for (int i{0}; i < all.size(); ++i) {
     numbers.insert(all[i].key, i + 1);
   }
+  // the setpoints first (what the experiment was about), when the program was recorded
   auto subtitle = [](ExperimentRun const &run) {
-    return tr("%1 · %2 samples").arg(ExperimentLibrary::formatDuration(run.duration())).arg(QLocale().toString(run.samples));
+    QString const text = tr("%1 · %2 samples").arg(ExperimentLibrary::formatDuration(run.duration())).arg(QLocale().toString(run.samples));
+    return run.setpoints.isEmpty() ? text : QStringLiteral("%1 · %2").arg(run.setpoints, text);
   };
 
   // experiments saved in the database (recorded here, imported or received from paired computers), newest first
@@ -252,7 +255,11 @@ void ExperimentBrowser::populateTree() {
       item->setData(0, RUN_KEY_ROLE, run.key);
       item->setData(0, SEARCH_ROLE, QStringList{QStringLiteral("#%1").arg(numbers.value(run.key)), run.title, run.chamber, run.details}.join(QLatin1Char(' ')));
       // the full name (shortened in the list)
-      item->setToolTip(0, run.chamber.isEmpty() ? run.title : tr("%1\nChamber: %2").arg(run.title, run.chamber));
+      QString tip = run.chamber.isEmpty() ? run.title : tr("%1\nChamber: %2").arg(run.title, run.chamber);
+      if (!run.setpoints.isEmpty()) {
+        tip += tr("\nSetpoint: %1").arg(run.setpoints);
+      }
+      item->setToolTip(0, tip);
       if (run.key == selectedKey) {
         selected = item;
       }
