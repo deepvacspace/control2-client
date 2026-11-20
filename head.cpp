@@ -31,10 +31,6 @@
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 QString valueText(float value, int prec, QString const &unit = {}) {
   if (std::isnan(value) || (value < -10e9) || (value > 10e9)) {
     return QStringLiteral("--");
@@ -90,7 +86,7 @@ void Head::initBaseGui() {
   // the chart or the chamber's diagram on the left (a switch in its corner), the readings beside it
   auto *mainLay = new QHBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
-  mainLay->setSpacing(px(10));
+  mainLay->setSpacing(theme::dp(20));
 
   m_leftStack = new QStackedWidget(this);
   m_trend     = new HomeTrend(m_resHolder, m_leftStack);
@@ -102,12 +98,12 @@ void Head::initBaseGui() {
   m_corner        = new QWidget(m_leftStack);
   auto *cornerLay = new QHBoxLayout(m_corner);
   cornerLay->setContentsMargins(0, 0, 0, 0);
-  cornerLay->setSpacing(px(6));
+  cornerLay->setSpacing(theme::dp(12));
   m_channelsBtn = new QPushButton(tr("Channels"), m_corner);
   m_viewSwitch  = new QPushButton(tr("Diagram"), m_corner);
   for (QPushButton *button : {m_channelsBtn, m_viewSwitch}) {
     button->setFocusPolicy(Qt::NoFocus);
-    button->setFixedHeight(px(26));
+    button->setFixedHeight(theme::dp(48));
     QFont font = button->font();
     font.setPointSizeF(font.pointSizeF() * 0.9);
     button->setFont(font);
@@ -129,15 +125,15 @@ void Head::initBaseGui() {
   m_channelsPanel = new QFrame(this);
   m_channelsPanel->setObjectName("sidePanel");
   auto *shadow = new QGraphicsDropShadowEffect(m_channelsPanel);
-  shadow->setBlurRadius(px(24));
-  shadow->setOffset(0, px(3));
-  shadow->setColor(QColor(15, 23, 42, 60));
+  shadow->setBlurRadius(theme::dp(45));
+  shadow->setOffset(0, theme::dp(5));
+  shadow->setColor(QColor(30, 38, 51, 60));
   m_channelsPanel->setGraphicsEffect(shadow);
   auto *panelLay = new QVBoxLayout(m_channelsPanel);
-  panelLay->setContentsMargins(px(18), px(14), px(10), px(14));
-  panelLay->setSpacing(px(4));
+  panelLay->setContentsMargins(theme::dp(32), theme::dp(28), theme::dp(20), theme::dp(28));
+  panelLay->setSpacing(theme::dp(8));
   auto *panelHeader = new QHBoxLayout();
-  panelHeader->setContentsMargins(0, 0, px(6), 0);
+  panelHeader->setContentsMargins(0, 0, theme::dp(12), 0);
   auto *panelTitle = new QLabel(tr("Channels"), m_channelsPanel);
   QFont titleFont  = panelTitle->font();
   titleFont.setBold(true);
@@ -148,19 +144,19 @@ void Head::initBaseGui() {
   closeBtn->setText(QStringLiteral("×"));
   closeBtn->setToolTip(tr("Close"));
   closeBtn->setFocusPolicy(Qt::NoFocus);
-  closeBtn->setFixedSize(px(36), px(36));
+  closeBtn->setFixedSize(theme::dp(67), theme::dp(67));
   panelHeader->addWidget(panelTitle, 1);
   panelHeader->addWidget(closeBtn);
   panelLay->addLayout(panelHeader);
   m_channelsCount = new QLabel(m_channelsPanel);
   m_channelsCount->setProperty("muted", true);
   panelLay->addWidget(m_channelsCount);
-  panelLay->addSpacing(px(8));
+  panelLay->addSpacing(theme::dp(16));
   m_channels = new GraphStyleEditor(m_resHolder, QStringLiteral("homeStates"), {QStringLiteral("temp"), QStringLiteral("temp_ref"), QStringLiteral("pres")},
                                     m_channelsPanel);
   m_channels->setCompact();
   panelLay->addWidget(m_channels, 1);
-  m_channelsPanel->setFixedWidth(px(330));
+  m_channelsPanel->setFixedWidth(theme::dp(618));
   m_channelsPanel->hide();
   m_channelsCount->setText(m_channels->countText());
   connect(closeBtn, &QToolButton::clicked, this, [this] { setChannelsOpen(false); });
@@ -170,15 +166,15 @@ void Head::initBaseGui() {
   m_trend->setStyles(m_channels->getStateStylesList());
 
   auto *column = new QVBoxLayout();
-  column->setSpacing(px(10));
+  column->setSpacing(theme::dp(20));
   mainLay->addLayout(column, 45);
 
   auto makeCard = [this] {
     auto *card = new QFrame(this);
     card->setObjectName("homeCard");
     auto *lay = new QVBoxLayout(card);
-    lay->setContentsMargins(px(14), px(12), px(14), px(14));
-    lay->setSpacing(px(6));
+    lay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(28));
+    lay->setSpacing(theme::dp(12));
     return card;
   };
   auto muted = [this](QString const &text) {
@@ -192,25 +188,25 @@ void Head::initBaseGui() {
   auto *statusLay  = static_cast<QVBoxLayout *>(statusCard->layout());
   auto *topRow     = new QHBoxLayout();
   m_statusDot      = new QLabel(statusCard);
-  m_statusDot->setFixedSize(px(8), px(8));
+  m_statusDot->setFixedSize(theme::dp(15), theme::dp(15));
   m_statusText = new QLabel(statusCard);
   m_stopBtn    = new StopButton(statusCard);
-  m_stopBtn->setFixedSize(px(76), px(26));
+  m_stopBtn->setFixedSize(theme::dp(142), theme::dp(48));
   topRow->addWidget(m_statusDot);
-  topRow->addSpacing(px(4));
+  topRow->addSpacing(theme::dp(8));
   topRow->addWidget(m_statusText);
   topRow->addStretch();
   topRow->addWidget(m_stopBtn);
   statusLay->addLayout(topRow);
-  statusLay->addSpacing(px(14));
+  statusLay->addSpacing(theme::dp(28));
   // temperature and pressure side by side: the reading, its setpoint and control output, and the control output's
   // gauge (pressure always shown: a dash without a gauge or a connection)
   auto *columns = new QHBoxLayout();
-  columns->setSpacing(px(18));
+  columns->setSpacing(theme::dp(32));
   auto block = [&](QString const &title, QLabel *&value, QLabel *&unit, QString const &unitText, QLabel *&setpoint, QLabel *&output,
                    ControlBar *&bar, QString const &low, QString const &high) {
     auto *lay = new QVBoxLayout();
-    lay->setSpacing(px(2));
+    lay->setSpacing(theme::dp(4));
     lay->addWidget(muted(title));
     // the number with its unit, sharing the bottom line
     auto *box = new QWidget(statusCard);
@@ -224,15 +220,15 @@ void Head::initBaseGui() {
     row->addWidget(unit, 0, Qt::AlignBottom);
     row->addStretch();
     lay->addWidget(box);
-    lay->addSpacing(px(6));
+    lay->addSpacing(theme::dp(12));
     auto *line = new QFrame(statusCard);
     line->setObjectName("homeDivider");
-    line->setFixedHeight(px(1));
+    line->setFixedHeight(theme::dp(1));
     lay->addWidget(line);
-    lay->addSpacing(px(6));
+    lay->addSpacing(theme::dp(12));
     auto *grid = new QGridLayout();
-    grid->setHorizontalSpacing(px(16));
-    grid->setVerticalSpacing(px(2));
+    grid->setHorizontalSpacing(theme::dp(32));
+    grid->setVerticalSpacing(theme::dp(4));
     grid->addWidget(muted(tr("Setpoint")), 0, 0);
     grid->addWidget(muted(tr("Control output")), 0, 1);
     setpoint = new QLabel(statusCard);
@@ -240,7 +236,7 @@ void Head::initBaseGui() {
     grid->addWidget(setpoint, 1, 0);
     grid->addWidget(output, 1, 1);
     lay->addLayout(grid);
-    lay->addSpacing(px(12));
+    lay->addSpacing(theme::dp(24));
     bar = new ControlBar(statusCard);
     lay->addWidget(bar);
     auto   *labels    = new QHBoxLayout();
@@ -258,7 +254,7 @@ void Head::initBaseGui() {
         tr("Cooling"), tr("Heating"));
   auto *separator = new QFrame(statusCard);
   separator->setObjectName("homeDivider");
-  separator->setFixedWidth(px(1));
+  separator->setFixedWidth(theme::dp(1));
   columns->addWidget(separator);
   block(tr("Pressure"), m_presValue, m_presUnit, QStringLiteral("Torr"), m_presSetpointValue, m_presOutputValue, m_presOutputBar,
         tr("Pumping"), tr("Venting"));
@@ -279,15 +275,15 @@ void Head::initBaseGui() {
   timeLay->addStretch();
   auto *timeLine = new QFrame(timeCard);
   timeLine->setObjectName("homeDivider");
-  timeLine->setFixedHeight(px(1));
+  timeLine->setFixedHeight(theme::dp(1));
   timeLay->addWidget(timeLine);
-  timeLay->addSpacing(px(4));
+  timeLay->addSpacing(theme::dp(8));
   auto *positionRow = new QHBoxLayout();
   auto  makeBox     = [&](QString const &title, QLabel *&value) {
     auto *box = new QWidget(timeCard);
     auto *lay = new QVBoxLayout(box);
-    lay->setContentsMargins(0, px(4), 0, px(4));
-    lay->setSpacing(px(4));
+    lay->setContentsMargins(0, theme::dp(8), 0, theme::dp(8));
+    lay->setSpacing(theme::dp(8));
     auto *name = muted(title);
     name->setAlignment(Qt::AlignHCenter);
     lay->addWidget(name);
@@ -300,13 +296,13 @@ void Head::initBaseGui() {
   m_intervalBox = makeBox(tr("Current interval"), m_intervalLabel);
   auto *positionLine = new QFrame(timeCard);
   positionLine->setObjectName("homeDivider");
-  positionLine->setFixedWidth(px(1));
+  positionLine->setFixedWidth(theme::dp(1));
   positionRow->addWidget(positionLine);
   m_cycleBox = makeBox(tr("Cycle"), m_cycleLabel);
   timeLay->addLayout(positionRow);
   timeLay->addStretch();
   m_nextIntervalBtn = new QPushButton(tr("Next step"), timeCard);
-  m_nextIntervalBtn->setFixedSize(px(170), px(34));
+  m_nextIntervalBtn->setFixedSize(theme::dp(318), theme::dp(63));
   timeLay->addWidget(m_nextIntervalBtn, 0, Qt::AlignHCenter);
   column->addWidget(timeCard, 46);
 
@@ -327,9 +323,9 @@ QLabel { color: %5; }
 QLabel[muted="true"] { color: %6; }
 )")
                   .arg(c.panel.name())
-                  .arg(px(1))
+                  .arg(theme::dp(1))
                   .arg(c.border.name())
-                  .arg(px(8))
+                  .arg(theme::dp(15))
                   .arg(c.text.name(), c.muted.name()));
   QFont const base = QWidget::font();
   auto        sized = [&](double factor, bool bold) {
@@ -393,13 +389,13 @@ bool Head::eventFilter(QObject *watched, QEvent *event) {
 // the corner buttons in the top right corner, the panel under them down to the chart's bottom
 void Head::placeOverlays() {
   m_corner->adjustSize();
-  m_corner->move(m_leftStack->width() - m_corner->width() - px(14), px(10));
+  m_corner->move(m_leftStack->width() - m_corner->width() - theme::dp(26), theme::dp(18));
   m_corner->raise();
   QPoint const corner = m_corner->mapTo(this, QPoint(0, 0));
   QRect const  stack{m_leftStack->mapTo(this, QPoint(0, 0)), m_leftStack->size()};
-  int const    top{corner.y() + m_corner->height() + px(8)};
-  m_channelsPanel->setGeometry(stack.right() - px(10) - m_channelsPanel->width() + 1, top, m_channelsPanel->width(),
-                               std::max(px(120), stack.bottom() - px(10) - top + 1));
+  int const    top{corner.y() + m_corner->height() + theme::dp(15)};
+  m_channelsPanel->setGeometry(stack.right() - theme::dp(18) - m_channelsPanel->width() + 1, top, m_channelsPanel->width(),
+                               std::max(theme::dp(225), stack.bottom() - theme::dp(18) - top + 1));
   m_channelsPanel->raise();
 }
 
@@ -447,7 +443,7 @@ void Head::updateGui() {
   QColor const dot = working ? c.active
                              : (hardWorkStatus == HardwareStatus::ALARM ? c.danger
                                                                         : (hardWorkStatus == HardwareStatus::IDLE ? c.ready : c.off));
-  m_statusDot->setStyleSheet(QStringLiteral("background: %1; border-radius: %2px;").arg(dot.name()).arg(px(4)));
+  m_statusDot->setStyleSheet(QStringLiteral("background: %1; border-radius: %2px;").arg(dot.name()).arg(theme::dp(7)));
   m_stopBtn->setEnabled(working && (AccessManager::AccessLevel::SPECTATOR_0 != m_accessLevel));
 
   // temperature and pressure, each with its setpoint and control output

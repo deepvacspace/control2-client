@@ -12,18 +12,12 @@
 #include "utils.h"
 
 namespace deepvaccontrol {
-namespace {
-int px(double value) {
-  return static_cast<int>(value * utils::ssf());
-}
-}
-
 ChamberIndicators::ChamberIndicators(ResHolder *resHolder, ChamberView *view, QWidget *parent)
     : QFrame{parent}, m_resHolder{resHolder}, m_view{view} {
   setObjectName("indicatorList");
   auto *lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
-  lay->setSpacing(px(6));
+  lay->setSpacing(theme::dp(12));
 
   for (ChamberView::Indicator const &indicator : m_view->indicators()) {
     Row row;
@@ -31,8 +25,8 @@ ChamberIndicators::ChamberIndicators(ResHolder *resHolder, ChamberView *view, QW
     row.frame    = new QFrame(this);
     row.frame->setObjectName("indicatorRow");
     auto *rowLay = new QHBoxLayout(row.frame);
-    rowLay->setContentsMargins(px(12), px(8), px(10), px(8));
-    rowLay->setSpacing(px(10));
+    rowLay->setContentsMargins(theme::dp(24), theme::dp(16), theme::dp(20), theme::dp(16));
+    rowLay->setSpacing(theme::dp(20));
     row.icon  = new QLabel(row.frame);
     row.title = new QLabel(indicator.title, row.frame);
     row.title->setObjectName("indicatorTitle");
@@ -45,13 +39,13 @@ ChamberIndicators::ChamberIndicators(ResHolder *resHolder, ChamberView *view, QW
     texts->addWidget(row.note);
     row.status = new QLabel(row.frame);
     row.status->setAlignment(Qt::AlignCenter);
-    row.status->setMinimumWidth(px(84));
+    row.status->setMinimumWidth(theme::dp(157));
     rowLay->addWidget(row.icon);
     rowLay->addLayout(texts, 1);
     rowLay->addWidget(row.status);
     if (indicator.key != QLatin1String("plc")) { // the PLC is what the application talks to: always there
       row.fit = new QPushButton(row.frame);
-      row.fit->setFixedSize(px(96), px(28));
+      row.fit->setFixedSize(theme::dp(180), theme::dp(52));
       row.fit->setFocusPolicy(Qt::NoFocus);
       QString const key = indicator.key;
       connect(row.fit, &QPushButton::clicked, this, [this, key] {
@@ -63,7 +57,7 @@ ChamberIndicators::ChamberIndicators(ResHolder *resHolder, ChamberView *view, QW
       });
       rowLay->addWidget(row.fit);
     } else {
-      rowLay->addSpacing(px(96) + rowLay->spacing());
+      rowLay->addSpacing(theme::dp(180) + rowLay->spacing());
     }
     lay->addWidget(row.frame);
     m_rows.insert(indicator.key, row);
@@ -80,7 +74,7 @@ ChamberIndicators::ChamberIndicators(ResHolder *resHolder, ChamberView *view, QW
   setStyleSheet(QStringLiteral("QFrame#indicatorRow { background: %1; border: 1px solid %2; border-radius: %3px; }"
                                "QLabel#indicatorTitle { font-weight: bold; }")
                   .arg(c.panel.name(), c.border.name())
-                  .arg(px(8)));
+                  .arg(theme::radius()));
   connect(m_view, &ChamberView::refreshed, this, &ChamberIndicators::refresh);
   connect(m_resHolder->users, &AccessManager::userSelected, this, &ChamberIndicators::refresh);
   refresh();
@@ -98,7 +92,7 @@ void ChamberIndicators::refresh() {
     }
     Row &row = it.value();
     anyOverride = anyOverride || indicator.overridden;
-    theme::setThemedIcon(row.icon, row.iconKind, px(22), indicator.fitted ? QStringLiteral("text") : QStringLiteral("muted"));
+    theme::setThemedIcon(row.icon, row.iconKind, theme::dp(41), indicator.fitted ? QStringLiteral("icon") : QStringLiteral("muted"));
     row.title->setStyleSheet(QStringLiteral("color: %1;").arg((indicator.fitted ? c.text : c.muted).name()));
     // the state now: a pill, green while on, grey while ready, a dash when not fitted
     QString pill;
@@ -107,15 +101,15 @@ void ChamberIndicators::refresh() {
     } else if (indicator.state == ChamberView::State::ACTIVE) {
       pill = QStringLiteral("color: %1; background: %2; border-radius: %3px; padding: %4px %5px;")
                .arg(c.active.name(), QColor(c.active.red(), c.active.green(), c.active.blue(), 40).name(QColor::HexArgb))
-               .arg(px(6))
-               .arg(px(3))
-               .arg(px(10));
+               .arg(theme::dp(11))
+               .arg(theme::dp(5))
+               .arg(theme::dp(18));
     } else {
       pill = QStringLiteral("color: %1; background: %2; border-radius: %3px; padding: %4px %5px;")
                .arg(c.muted.name(), c.border.name())
-               .arg(px(6))
-               .arg(px(3))
-               .arg(px(10));
+               .arg(theme::dp(11))
+               .arg(theme::dp(5))
+               .arg(theme::dp(18));
     }
     row.note->setText(QStringLiteral("⚠ %1").arg(indicator.note));
     row.note->setStyleSheet(QStringLiteral("color: %1;").arg(c.warning.name()));

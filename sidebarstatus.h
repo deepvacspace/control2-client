@@ -11,7 +11,7 @@ class QLabel;
 namespace deepvaccontrol {
 
 /**
- * @brief Navigation sidebar, under Home: the connection and chamber status (and the job's kind), then the
+ * @brief Navigation sidebar, at the bottom over the clock: the connection and chamber status (and the job's kind), then the
  * temperature and pressure (and humidity, on a chamber with it) with their setpoints. Replaces the former top bar.
  */
 class SidebarStatus : public QWidget {
@@ -21,18 +21,19 @@ public:
 
 protected:
   void changeEvent(QEvent *event) override;
+  void resizeEvent(QResizeEvent *event) override;
 
 private:
   void updateStatus();
   void updateValues();
   void restyle();
+  void fitStatus(); // the status in letters small enough for its box
 
-  // a value of statusBarStatesList(): the value, its unit and its setpoint, one over the other
+  // a value of statusBarStatesList(): its unit and setpoint ("°C → 24.0") over the value
   struct Value {
     QString  name;
     QWidget *box{nullptr};
     QLabel  *value{nullptr};
-    QLabel  *unit{nullptr};
     QLabel  *setpoint{nullptr};
   };
 
@@ -43,7 +44,7 @@ private:
 };
 
 /**
- * @brief Navigation sidebar, at the bottom: the clock and the product name (a logo is to come).
+ * @brief Navigation sidebar, at the bottom: the clock and the logo (the wordmark, reverse: white on the dark sidebar).
  */
 class SidebarFooter : public QWidget {
   Q_OBJECT

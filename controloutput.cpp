@@ -14,14 +14,8 @@
 
 namespace deepvaccontrol {
 
-namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-}
-
 ControlBar::ControlBar(QWidget *parent) : QWidget{parent} {
-  setFixedHeight(px(10));
+  setFixedHeight(theme::dp(18));
 }
 
 void ControlBar::setValue(double value) {
@@ -35,10 +29,10 @@ void ControlBar::paintEvent(QPaintEvent *) {
   theme::Colors const &c = theme::colors();
   QPainter             p(this);
   p.setRenderHint(QPainter::Antialiasing);
-  double const h{static_cast<double>(px(5))};
+  double const h{static_cast<double>(theme::dp(9))};
   QRectF const track(0, (height() - h) / 2.0, width(), h);
   p.setPen(Qt::NoPen);
-  p.setBrush(c.panelAlt.lighter(theme::isDark() ? 130 : 97));
+  p.setBrush(theme::isDark() ? theme::guide::slateLine : theme::guide::grid);
   p.drawRoundedRect(track, h / 2, h / 2);
   if (std::isnan(m_value)) {
     return;
@@ -49,7 +43,7 @@ void ControlBar::paintEvent(QPaintEvent *) {
   p.setBrush(v < 0 ? c.accent : c.heat);
   p.drawRoundedRect(QRectF(QPointF(std::min(center, end), track.top()), QPointF(std::max(center, end), track.bottom())), h / 2, h / 2);
   p.setBrush(c.text);
-  p.drawRoundedRect(QRectF(end - px(1), 0, px(2), height()), px(1), px(1));
+  p.drawRoundedRect(QRectF(end - theme::dp(1), 0, theme::dp(3), height()), theme::dp(1), theme::dp(1));
 }
 
 ControlOutputGauge::ControlOutputGauge(ResHolder *resHolder, Kind kind, QWidget *parent)
@@ -57,8 +51,8 @@ ControlOutputGauge::ControlOutputGauge(ResHolder *resHolder, Kind kind, QWidget 
   setObjectName("pageCard");
   bool const temperature{kind == Kind::TEMPERATURE};
   auto      *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(px(14), px(10), px(14), px(10));
-  lay->setSpacing(px(4));
+  lay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(20));
+  lay->setSpacing(theme::dp(8));
   auto *top   = new QHBoxLayout();
   auto *title = new QLabel(temperature ? tr("Temperature control output") : tr("Pressure control output"), this);
   title->setProperty("muted", true);

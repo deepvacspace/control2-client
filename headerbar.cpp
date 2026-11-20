@@ -21,10 +21,6 @@
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 QString number(SystemValue const *value) {
   float const v{value->getValue()};
   if (std::isnan(v) || (v < -10e9) || (v > 10e9)) {
@@ -104,20 +100,20 @@ protected:
 }
 
 HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
-  setFixedHeight(px(54));
+  setFixedHeight(theme::dp(101));
   auto *outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
   m_content = new QWidget(this);
   outer->addWidget(m_content);
   auto *lay = new QHBoxLayout(m_content);
-  lay->setContentsMargins(px(16), 0, px(14), 0);
-  lay->setSpacing(px(9));
+  lay->setContentsMargins(theme::dp(32), 0, theme::dp(28), 0);
+  lay->setSpacing(theme::dp(16));
 
   // the product name only: a logo is to come beside it
   m_brand = new QLabel(QStringLiteral("Deepvac"), m_content);
   m_brand->setObjectName("headerBrand");
   m_statusDot = new QLabel(m_content);
-  m_statusDot->setFixedSize(px(9), px(9));
+  m_statusDot->setFixedSize(theme::dp(16), theme::dp(16));
   m_status   = new QLabel(m_content);
   m_userPill = new QFrame(m_content);
   m_userPill->setObjectName("userPill");
@@ -131,21 +127,21 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   m_clock = new QLabel(m_content);
   for (QLabel *badge : {m_appState, m_usb, m_opc}) {
     badge->setAlignment(Qt::AlignCenter);
-    badge->setFixedHeight(px(28));
+    badge->setFixedHeight(theme::dp(52));
   }
   // the clock keeps its width as the seconds change
   m_clock->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   auto *pillLay = new QHBoxLayout(m_userPill);
-  pillLay->setContentsMargins(px(4), px(4), px(11), px(4));
-  pillLay->setSpacing(px(6));
+  pillLay->setContentsMargins(theme::dp(8), theme::dp(8), theme::dp(20), theme::dp(8));
+  pillLay->setSpacing(theme::dp(12));
   pillLay->addWidget(m_userIcon);
   pillLay->addWidget(m_user);
-  m_userPill->setFixedHeight(px(32));
+  m_userPill->setFixedHeight(theme::dp(60));
 
   lay->addWidget(m_brand);
   lay->addWidget(separator());
   auto *statusLay = new QHBoxLayout();
-  statusLay->setSpacing(px(7));
+  statusLay->setSpacing(theme::dp(12));
   statusLay->addWidget(m_statusDot);
   statusLay->addWidget(m_status);
   lay->addLayout(statusLay);
@@ -173,7 +169,7 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   lay->addWidget(m_userPill);
   lay->addWidget(m_appState);
   lay->addWidget(m_opc);
-  lay->addSpacing(px(4));
+  lay->addSpacing(theme::dp(8));
   lay->addWidget(m_clock);
 
   // clock
@@ -216,13 +212,13 @@ HeaderBar::HeaderBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   m_user->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   m_userPill->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   restyle();
-  setFixedHeight(px(54));
+  setFixedHeight(theme::dp(101));
 }
 
 QWidget *HeaderBar::separator() {
   auto *line = new QWidget(m_content);
   line->setObjectName("headerSeparator");
-  line->setFixedSize(px(1), px(26));
+  line->setFixedSize(theme::dp(1), theme::dp(48));
   return line;
 }
 
@@ -254,10 +250,10 @@ void HeaderBar::restyle() {
   }
   m_userPill->setStyleSheet(QStringLiteral("QFrame#userPill { background: %1; border: %2px solid %3; border-radius: %4px; }")
                               .arg(c.panelAlt.name())
-                              .arg(px(1))
+                              .arg(theme::dp(1))
                               .arg(c.border.name())
                               .arg(m_userPill->height() / 2));
-  int const avatar{px(20)};
+  int const avatar{theme::dp(37)};
   m_userIcon->setFixedSize(avatar, avatar);
   m_userIcon->setPixmap(userAvatar(avatar, c.text, c.panel));
   QFont userFont = font();
@@ -338,10 +334,10 @@ void HeaderBar::updateBadges() {
     label->setStyleSheet(QStringLiteral("color: %1; border: %2px solid %3; border-radius: %4px; padding: 0 %5px; background: %6; "
                                         "font-weight: %7;")
                            .arg(color.name())
-                           .arg(px(1))
+                           .arg(theme::dp(1))
                            .arg(tinted ? QColor(color.red(), color.green(), color.blue(), 110).name(QColor::HexArgb) : c.border.name())
                            .arg(label->height() / 2)
-                           .arg(px(10))
+                           .arg(theme::dp(18))
                            .arg(tinted ? QColor(color.red(), color.green(), color.blue(), 34).name(QColor::HexArgb) : c.panel.name())
                            .arg(tinted ? 600 : 400));
   };
@@ -371,7 +367,7 @@ void HeaderBar::paintEvent(QPaintEvent *) {
   p.setRenderHint(QPainter::Antialiasing);
   // a rounded card, as the pages' cards
   double const radius{12 * utils::ssf()};
-  p.setPen(QPen(c.border, px(1)));
+  p.setPen(QPen(c.border, theme::dp(1)));
   p.setBrush(c.panel);
   p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
 }

@@ -81,7 +81,7 @@ ChamberView::ChamberView(ResHolder *resHolder, QWidget *parent) : QWidget{parent
     loadOverrides();
   }
   setMouseTracking(true);
-  setMinimumSize(static_cast<int>(400 * utils::ssf()), static_cast<int>(250 * utils::ssf()));
+  setMinimumSize(theme::dp(750), theme::dp(468));
   detect();
 
   m_timer = new QTimer(this);
@@ -349,7 +349,7 @@ ChamberView::Tag ChamberView::tag(QString const &key) const {
   } else if (key == QLatin1String("gauge")) {
     t.fitted        = fitted("gauge");
     double const v  = pressureTorr();
-    t.status        = std::isnan(v) ? QStringLiteral("—") : QStringLiteral("%1 Torr").arg(QString::number(v, 'g', 3));
+    t.status        = std::isnan(v) ? QStringLiteral("—") : QStringLiteral("%1 Torr").arg(pressure::text(v));
     t.state         = std::isnan(v) ? State::OFF : State::ACTIVE;
   } else if (key == QLatin1String("sensor")) {
     t.fitted        = fitted("sensor");
@@ -709,7 +709,7 @@ void ChamberView::drawChamber(QPainter &p) {
   p.setPen(QPen(c.muted, 2));
   p.setBrush(Qt::NoBrush);
   p.drawRoundedRect(VESSEL.adjusted(10, 10, -10, -10), 9, 9);
-  p.setPen(QPen(theme::isDark() ? c.muted : c.muted.darker(125), 4.5));
+  p.setPen(QPen(c.muted, 4.5));
   p.drawRoundedRect(VESSEL.adjusted(17, 17, -17, -17), 7, 7);
 
   // inner space in perspective: ceiling, side walls and floor towards the back wall
@@ -743,8 +743,8 @@ void ChamberView::drawChamber(QPainter &p) {
   if (lightOn) {
     double const    radius = 56 + 6 * std::sin(m_phase * 0.2);
     QRadialGradient glow(glass, radius);
-    glow.setColorAt(0.0, QColor(250, 204, 21, 120));
-    glow.setColorAt(1.0, QColor(250, 204, 21, 0));
+    glow.setColorAt(0.0, QColor(242, 166, 12, 120));
+    glow.setColorAt(1.0, QColor(242, 166, 12, 0));
     p.setPen(Qt::NoPen);
     p.setBrush(glow);
     p.drawEllipse(glass, radius, radius);
@@ -763,7 +763,7 @@ void ChamberView::drawChamber(QPainter &p) {
     bulb.closeSubpath();
     QColor const line = fitted("light") ? c.muted : c.off;
     p.setPen(QPen(line, 1.6, fitted("light") ? Qt::SolidLine : Qt::DotLine, Qt::RoundCap, Qt::RoundJoin));
-    p.setBrush(lightOn ? QColor(250, 204, 21) : c.panel);
+    p.setBrush(lightOn ? QColor(242, 166, 12) : c.panel);
     p.drawPath(bulb);
     p.setBrush(line);
     p.setPen(Qt::NoPen);
@@ -852,7 +852,7 @@ void ChamberView::drawChamber(QPainter &p) {
   p.setPen(QPen(channelColor, 2.5, channelFitted ? Qt::SolidLine : Qt::DotLine, Qt::FlatCap));
   p.drawLine(channel);
   if (chilled) {
-    QPen flow(c.cold.lighter(160), 2.5, Qt::CustomDashLine, Qt::FlatCap);
+    QPen flow(theme::guide::sky, 2.5, Qt::CustomDashLine, Qt::FlatCap);
     flow.setDashPattern({2, 3});
     flow.setDashOffset(-m_phase * 0.8);
     p.setPen(flow);
@@ -954,7 +954,7 @@ void ChamberView::drawGauge(QPainter &p) {
   p.drawRect(QRectF(x - 5, top - 16, 10, 20));             // tube from the cabinet
   p.drawRoundedRect(QRectF(x - 12, top - 22, 24, 6), 2, 2); // clamp
   p.drawRect(QRectF(x - 7, top - 32, 14, 10));              // neck
-  p.setBrush(reading ? QColor(214, 69, 99) : mix(c.panel, c.muted, 0.2));
+  p.setBrush(reading ? QColor(212, 18, 46) : mix(c.panel, c.muted, 0.2));
   p.drawRoundedRect(QRectF(x - 13, top - 70, 26, 38), 4, 4); // body
   p.setBrush(line);
   p.drawRect(QRectF(x - 13, top - 36, 26, 4));               // its bottom band
