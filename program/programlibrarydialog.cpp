@@ -20,6 +20,7 @@
 #include "lineeditscreen.h"
 #include "programmodel.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -39,8 +40,8 @@ void fitToScreen(QDialog *dialog, QWidget *parent, int width, int height) {
 
 QPushButton *makeButton(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
-  button->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-  button->setMinimumWidth(110 * utils::ssf());
+  button->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
+  button->setMinimumWidth(theme::dp(206));
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
@@ -143,7 +144,7 @@ ProgramLibraryDialog::ProgramLibraryDialog(QWidget *parent) : QDialog{parent} {
   m_preview = new QLabel(this);
   m_preview->setWordWrap(true);
   m_preview->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-  m_preview->setMinimumWidth(320 * utils::ssf());
+  m_preview->setMinimumWidth(theme::dp(600));
   body->addWidget(m_list, 3);
   body->addWidget(m_preview, 2);
   root->addLayout(body, 1);
@@ -199,7 +200,7 @@ void ProgramLibraryDialog::refresh() {
                                      m_list);
     item->setData(Qt::UserRole, profile.id);
     item->setData(Qt::UserRole + 1, profile.name);
-    item->setSizeHint(QSize(0, static_cast<int>(36 * utils::ssf()))); // tall enough to tap (a style sheet height overlaps rows)
+    item->setSizeHint(QSize(0, theme::dp(67))); // tall enough to tap (a style sheet height overlaps rows)
   }
   if (m_list->count() > 0) {
     m_list->setCurrentRow(0);

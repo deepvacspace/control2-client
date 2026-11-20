@@ -19,7 +19,7 @@ VirtualKeyboard::VirtualKeyboard(QString const &title, Language lang, QWidget *p
   font.setPointSize(20 * utils::ssf());
   m_textLine = new QLineEdit(this);
   m_textLine->setFont(font);
-  m_textLine->setStyleSheet("QLabel {border: 1px solid black;"
+  m_textLine->setStyleSheet("QLabel {border: 1px solid #1e2633;"
                             "background-color: " + theme::colors().panelAlt.name() + ";}");
 
   auto *mainLay = new QVBoxLayout(this);
@@ -74,8 +74,8 @@ void VirtualKeyboard::populateLayout(
       if ("del" == letter) {
         auto *btn = new QPushButton(this);
         btn->setIcon(QIcon(":/imgs/backspace.png"));
-        btn->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));
-        btn->setFixedSize(2 * 50 * utils::ssf(), 50 * utils::ssf());
+        btn->setIconSize(QSize(theme::dp(75), theme::dp(75)));
+        btn->setFixedSize(2 * theme::dp(93), theme::dp(93));
         connect(btn, &QPushButton::clicked, this, &VirtualKeyboard::delPressHandle);
         rowLay->addWidget(btn);
       } else {
@@ -94,16 +94,16 @@ void VirtualKeyboard::populateLayout(
 void VirtualKeyboard::initCtrlLayout() {
   auto *rejectBtn = new VirtKeyBtn(tr("Cancel"), "", this);
   auto *enterBtn  = new VirtKeyBtn(tr("Enter"), "", this);
-  rejectBtn->setFixedSize(QSize(120 * utils::ssf(), 50 * utils::ssf()));
-  enterBtn->setFixedSize(QSize(120 * utils::ssf(), 50 * utils::ssf()));
+  rejectBtn->setFixedSize(QSize(theme::dp(225), theme::dp(93)));
+  enterBtn->setFixedSize(QSize(theme::dp(225), theme::dp(93)));
 
   m_shiftBtn = new QPushButton(this);
   m_shiftBtn->setIcon(QIcon(":/imgs/shift.png"));
-  m_shiftBtn->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));
-  m_shiftBtn->setFixedSize(QSize(60 * utils::ssf(), 50 * utils::ssf()));
+  m_shiftBtn->setIconSize(QSize(theme::dp(75), theme::dp(75)));
+  m_shiftBtn->setFixedSize(QSize(theme::dp(112), theme::dp(93)));
 
   auto *spaceBtn = new VirtKeyBtn(" ", " ", this);
-  spaceBtn->setFixedWidth(200 * utils::ssf());
+  spaceBtn->setFixedWidth(theme::dp(375));
 
   // German / English layouts
   m_langBtn = new QPushButton(QStringLiteral("DE\nEN"), this);
@@ -114,7 +114,7 @@ void VirtualKeyboard::initCtrlLayout() {
     font.setPointSize(11 * utils::ssf());
     m_langBtn->setFont(font);
   }
-  m_langBtn->setFixedSize(QSize(60 * utils::ssf(), 50 * utils::ssf()));
+  m_langBtn->setFixedSize(QSize(theme::dp(112), theme::dp(93)));
 
   m_ctrlLayout = new QHBoxLayout();
   m_ctrlLayout->addWidget(rejectBtn);
@@ -211,7 +211,7 @@ VirtKeyBtn::VirtKeyBtn(QString const &text, QString const &textAlt, QWidget *par
   this->setFont(font);
 
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-  setFixedSize(50 * utils::ssf(), 50 * utils::ssf());
+  setFixedSize(theme::dp(93), theme::dp(93));
 }
 
 void VirtKeyBtn::enableAltText(bool enable) {

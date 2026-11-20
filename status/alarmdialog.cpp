@@ -7,6 +7,7 @@
 #include <QPushButton>
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 AlarmDialog::AlarmDialog(QWidget *parent) : QDialog{parent} {
@@ -18,13 +19,13 @@ AlarmDialog::AlarmDialog(QWidget *parent) : QDialog{parent} {
   auto *fr = new QFrame(this);
   fr->setFrameStyle(QFrame::HLine | QFrame::Plain);
   fr->setLineWidth(1);
-  fr->setFixedWidth(350 * utils::ssf());
+  fr->setFixedWidth(theme::dp(656));
   mainLay->addWidget(fr);
-  mainLay->addSpacing(15 * utils::ssf());
+  mainLay->addSpacing(theme::dp(28));
 
   m_alarmsListLabel = new QLabel(tr("Alarm list"), this);
   mainLay->addWidget(m_alarmsListLabel);
-  mainLay->addSpacing(30 * utils::ssf());
+  mainLay->addSpacing(theme::dp(56));
   mainLay->addStretch();
 
   auto *btnsLayout = new QHBoxLayout();
@@ -47,12 +48,12 @@ AlarmDialog::AlarmDialog(QWidget *parent) : QDialog{parent} {
     closeBtn->setFont(font);
   }
 
-  closeBtn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
+  closeBtn->setFixedSize(theme::dp(187), theme::dp(93));
 
   setWindowTitle(tr("Hardware fault"));
   setWindowFlag(Qt::WindowStaysOnTopHint);
 
-  //    setFixedWidth(400*utils::ssf());
+  //    setFixedWidth(theme::dp(750);
   adjustSize();
   setFixedSize(size());
 

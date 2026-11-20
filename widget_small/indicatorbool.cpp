@@ -26,7 +26,7 @@ IndicatorBool::IndicatorBool(SystemValue *sysVal, quint8 bitIndex, QWidget *pare
   mainLay->addStretch();
   mainLay->addWidget(m_label);
   mainLay->addStretch();
-  mainLay->setContentsMargins(2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf());
+  mainLay->setContentsMargins(theme::dp(4), theme::dp(4), theme::dp(4), theme::dp(4));
 
   updateGui();
   connect(m_sysVal, &SystemValue::valueChanged, this, &IndicatorBool::updateGui);
@@ -39,7 +39,7 @@ void IndicatorBool::updateGui() {
 
   bool const boolState{m_sysVal->getBitOfFloat(m_bitIndex)};
   theme::Colors const &c = theme::colors();
-  setStyleSheet(boolState ? QStringLiteral("background-color: %1; color: %2;").arg(c.active.darker(theme::isDark() ? 160 : 100).name(), c.text.name())
+  setStyleSheet(boolState ? QStringLiteral("background-color: %1; color: %2;").arg(c.active.name(), c.text.name())
                           : QStringLiteral("background-color: %1; color: %2;").arg(c.panelAlt.name(), c.muted.name()));
   m_label->setText(boolState ? m_textOn : m_textOff);
 }

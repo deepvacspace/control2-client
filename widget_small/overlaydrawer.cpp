@@ -12,6 +12,7 @@
 
 #include "touchsupport.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -27,12 +28,12 @@ OverlayDrawer::OverlayDrawer(QWidget *host, int width, Side side)
   m_panel->setAutoFillBackground(true);
   auto *lay = new QVBoxLayout(m_panel);
   double const ssf{utils::ssf()};
-  lay->setContentsMargins(10 * ssf, 10 * ssf, 10 * ssf, 10 * ssf);
+  lay->setContentsMargins(theme::dp(20), theme::dp(20), theme::dp(20), theme::dp(20));
 
   auto *shadow = new QGraphicsDropShadowEffect(m_panel);
   shadow->setBlurRadius(24 * ssf);
   shadow->setOffset((side == Side::LEFT ? 4 : -4) * ssf, 0);
-  shadow->setColor(QColor(15, 23, 42, 90));
+  shadow->setColor(QColor(30, 38, 51, 90));
   m_panel->setGraphicsEffect(shadow);
 
   m_slide->setDuration(180);
@@ -123,7 +124,7 @@ bool OverlayDrawer::eventFilter(QObject *watched, QEvent *event) {
 
 void OverlayDrawer::paintEvent(QPaintEvent *) {
   QPainter p(this);
-  p.fillRect(rect(), QColor(15, 23, 42, 50)); // dims the rest of the host
+  p.fillRect(rect(), QColor(30, 38, 51, 50)); // dims the rest of the host
 }
 
 void OverlayDrawer::mousePressEvent(QMouseEvent *event) {

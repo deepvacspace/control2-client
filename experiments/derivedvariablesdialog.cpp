@@ -19,6 +19,7 @@
 #include "lineeditnum.h"
 #include "lineeditscreen.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -28,14 +29,14 @@ using storage::DerivedVariablesStore;
 namespace {
 QPushButton *makeButton(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
-  button->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  button->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
 
 QComboBox *makeChannelCombo(QVector<ChannelInfo> const &channels, QWidget *parent) {
   auto *combo = new QComboBox(parent);
-  combo->setMinimumHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  combo->setMinimumHeight(theme::dp(UI_BTN_HEIGHT));
   for (ChannelInfo const &channel : channels) {
     combo->addItem(QStringLiteral("%1  (%2)").arg(channel.label, channel.name), channel.name);
   }
@@ -65,7 +66,7 @@ DerivedVariablesDialog::DerivedVariablesDialog(QVector<ChannelInfo> const &chann
   // as large as wanted, but never beyond the screen it opens on
   QScreen const *screen = parent ? parent->screen() : QGuiApplication::primaryScreen();
   QRect const    room   = screen ? screen->availableGeometry() : QRect(0, 0, 1280, 720);
-  resize(std::min(static_cast<int>(900 * utils::ssf()), room.width() * 9 / 10),
+  resize(std::min(theme::dp(1687), room.width() * 9 / 10),
          std::min(static_cast<int>(640 * utils::ssf()), room.height() * 9 / 10));
   setMaximumHeight(room.height() * 95 / 100);
 
@@ -73,7 +74,7 @@ DerivedVariablesDialog::DerivedVariablesDialog(QVector<ChannelInfo> const &chann
 
   auto *listRow = new QHBoxLayout();
   m_list        = new QListWidget(this);
-  m_list->setMinimumHeight(80 * utils::ssf());
+  m_list->setMinimumHeight(theme::dp(150));
   m_list->setStyleSheet(QStringLiteral("QListWidget::item { height: %1px; }").arg(static_cast<int>(34 * utils::ssf())));
   auto *deleteBtn = makeButton(tr("Delete"), this);
   listRow->addWidget(m_list, 1);
@@ -97,7 +98,7 @@ DerivedVariablesDialog::DerivedVariablesDialog(QVector<ChannelInfo> const &chann
   addRow(tr("Name"), m_nameEdit);
 
   m_typeCombo = new QComboBox(this);
-  m_typeCombo->setMinimumHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  m_typeCombo->setMinimumHeight(theme::dp(UI_BTN_HEIGHT));
   m_typeCombo->addItem(tr("Difference (A − B)"), static_cast<int>(DerivedVariable::Type::Difference));
   m_typeCombo->addItem(tr("Rate of change (dA/dt, per second)"), static_cast<int>(DerivedVariable::Type::RateOfChange));
   m_typeCombo->addItem(tr("Rolling standard deviation"), static_cast<int>(DerivedVariable::Type::RollingStd));
@@ -112,7 +113,7 @@ DerivedVariablesDialog::DerivedVariablesDialog(QVector<ChannelInfo> const &chann
 
   m_windowEdit = new LineEditNum(2, 100000, 0, false, this);
   m_windowEdit->setValue(10);
-  m_windowEdit->setFixedWidth(140 * utils::ssf());
+  m_windowEdit->setFixedWidth(theme::dp(262));
   addRow(tr("Window, samples"), m_windowEdit, &m_windowRow);
 
   // expression + a picker that inserts exact channel names
@@ -130,7 +131,7 @@ DerivedVariablesDialog::DerivedVariablesDialog(QVector<ChannelInfo> const &chann
                                   "clip(x, lo, hi)"),
                                expressionBox);
   functions->setWordWrap(true);
-  functions->setStyleSheet("color: #64748b;");
+  functions->setStyleSheet("color: #5c6472;");
   expressionLay->addWidget(m_expressionEdit);
   expressionLay->addLayout(insertRow);
   expressionLay->addWidget(functions);
@@ -144,7 +145,7 @@ DerivedVariablesDialog::DerivedVariablesDialog(QVector<ChannelInfo> const &chann
   });
 
   m_colorBtn = makeButton(QString{}, this);
-  m_colorBtn->setFixedWidth(80 * utils::ssf());
+  m_colorBtn->setFixedWidth(theme::dp(150));
   addRow(tr("Color"), m_colorBtn);
   auto updateSwatch = [this] {
     m_colorBtn->setStyleSheet(QStringLiteral("background: %1;").arg(m_color.name()));

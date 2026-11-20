@@ -6,6 +6,7 @@
 #include <QRadioButton>
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 DrivePathSelect::DrivePathSelect(QList<QString> pathList, QWidget *parent) : QWidget{parent} {
@@ -27,7 +28,7 @@ DrivePathSelect::DrivePathSelect(QList<QString> pathList, QWidget *parent) : QWi
   for (int i{0U}; i < pathList.size(); ++i) {
     auto const &pathString = pathList[i];
     auto       *radioBtn   = new QRadioButton(labels[qMin(i, 1)] + "\n( " + pathString + " )", this);
-    radioBtn->setFixedHeight(radioBtn->height() * 2 * utils::ssf());
+    radioBtn->setFixedHeight(radioBtn->height() * theme::dp(3));
     pathSelectLay->addWidget(radioBtn);
     if (i == (pathList.size() - 1)) {
       radioBtn->setChecked(true);

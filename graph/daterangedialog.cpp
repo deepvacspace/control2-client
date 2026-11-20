@@ -6,14 +6,15 @@
 #include <QTimeEdit>
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 DateRangeDialog::DateRangeDialog(QDateTime date1, QDateTime date2, QWidget *parent) : QDialog{parent} {
   auto *acceptBtn = new QPushButton(tr("Set"), this);
   auto *cancelBtn = new QPushButton(tr("Cancel"), this);
 
-  acceptBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
-  cancelBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
+  acceptBtn->setFixedSize(theme::dp(225), theme::dp(93));
+  cancelBtn->setFixedSize(theme::dp(225), theme::dp(93));
 
   auto *startTimeEdit = new QDateTimeEdit(date1);
   auto *endTimeEdit   = new QDateTimeEdit(date2);

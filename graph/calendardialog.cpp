@@ -87,8 +87,8 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   }
 
   auto *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(14 * ssf, 12 * ssf, 14 * ssf, 12 * ssf);
-  mainLay->setSpacing(16 * ssf);
+  mainLay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(24));
+  mainLay->setSpacing(theme::dp(32));
 
   // ---- left: month
   auto *left    = new QVBoxLayout();
@@ -97,7 +97,7 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   auto navButton = [&](QString const &kind, QString const &tip) {
     auto *button = new QPushButton(this);
     theme::setThemedIcon(button, kind, static_cast<int>(14 * ssf));
-    button->setFixedSize(30 * ssf, 30 * ssf);
+    button->setFixedSize(theme::dp(56), theme::dp(56));
     button->setToolTip(tip);
     return button;
   };
@@ -111,7 +111,7 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   monthBar->addWidget(nextBtn);
   left->addLayout(monthBar);
   m_calendar = new CalendarCustomWidget(counts, this);
-  m_calendar->setMinimumSize(320 * ssf, 260 * ssf);
+  m_calendar->setMinimumSize(theme::dp(600), theme::dp(487));
   left->addWidget(m_calendar, 1);
   mainLay->addLayout(left);
 
@@ -121,8 +121,8 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   m_dayLabel->setObjectName("cardTitle");
   right->addWidget(m_dayLabel);
   m_list = new QListWidget(this);
-  m_list->setMinimumWidth(360 * ssf);
-  m_list->setSpacing(static_cast<int>(2 * ssf));
+  m_list->setMinimumWidth(theme::dp(675));
+  m_list->setSpacing(theme::dp(4));
   right->addWidget(m_list, 1);
   auto *buttons = new QHBoxLayout();
   auto *liveBtn = new QPushButton(tr("Today (live)"), this);
@@ -133,7 +133,7 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   m_openDayBtn    = new QPushButton(tr("Open whole day"), this);
   m_openDayBtn->setToolTip(tr("All experiments of this day in one chart"));
   for (QPushButton *button : {liveBtn, m_openBtn, cancelBtn, m_openDayBtn}) {
-    button->setMinimumSize(90 * ssf, 30 * ssf);
+    button->setMinimumSize(theme::dp(168), theme::dp(56));
   }
   buttons->addWidget(liveBtn);
   buttons->addStretch();
@@ -176,7 +176,7 @@ CalendarDialog::CalendarDialog(QVector<storage::ExperimentSpan> const &experimen
   m_calendar->setCurrentPage(start.year(), start.month());
   updateMonthLabel();
   showDay(start);
-  resize(820 * ssf, 420 * ssf);
+  resize(theme::dp(1537), theme::dp(787));
 }
 
 void CalendarDialog::showDay(QDate const &date) {

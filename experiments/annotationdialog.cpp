@@ -38,10 +38,6 @@ QString tr(char const *text) {
   return QCoreApplication::translate("AnalysisRunPage", text);
 }
 
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 QLabel *caption(QString const &text, QWidget *parent) {
   auto *label = new QLabel(text, parent);
   label->setProperty("muted", true);
@@ -59,8 +55,8 @@ public:
       : dialog{parent} {
     dialog.setWindowTitle(heading);
     lay = new QVBoxLayout(&dialog);
-    lay->setContentsMargins(px(20), px(18), px(20), px(16));
-    lay->setSpacing(px(6));
+    lay->setContentsMargins(theme::dp(36), theme::dp(32), theme::dp(36), theme::dp(32));
+    lay->setSpacing(theme::dp(12));
 
     auto *title = new QLabel(heading, &dialog);
     QFont font  = title->font();
@@ -69,28 +65,28 @@ public:
     title->setFont(font);
     lay->addWidget(title);
     segmentLay = new QHBoxLayout();
-    segmentLay->setSpacing(px(6));
+    segmentLay->setSpacing(theme::dp(12));
     lay->addLayout(segmentLay);
-    lay->addSpacing(px(12));
+    lay->addSpacing(theme::dp(24));
 
     lay->addWidget(caption(tr("Label"), &dialog));
     labelEdit = new LineEditScreen(&dialog, VirtualKeyboard::EN);
     labelEdit->setText(label);
     labelEdit->setPlaceholderText(tr("e.g. Steady state"));
-    labelEdit->setMinimumHeight(px(32));
+    labelEdit->setMinimumHeight(theme::dp(60));
     lay->addWidget(labelEdit);
-    lay->addSpacing(px(10));
+    lay->addSpacing(theme::dp(20));
 
     lay->addWidget(caption(tr("Colour"), &dialog));
     auto *chips = new QHBoxLayout();
-    chips->setSpacing(px(10));
+    chips->setSpacing(theme::dp(20));
     group = new QButtonGroup(&dialog);
     group->setExclusive(true);
     theme::Colors const &c = theme::colors();
     for (auto const &option : NOTE_COLORS) {
       auto *chip = new QPushButton(&dialog);
       chip->setCheckable(true);
-      chip->setFixedSize(px(28), px(28));
+      chip->setFixedSize(theme::dp(52), theme::dp(52));
       chip->setToolTip(tr(option.name));
       chip->setProperty("color", QString(option.color));
       chip->setCursor(Qt::PointingHandCursor);
@@ -99,10 +95,10 @@ public:
       chip->setStyleSheet(QStringLiteral("QPushButton { background: %1; border: %2px solid %3; border-radius: %4px; }"
                                          "QPushButton:checked { border: %5px solid %6; }")
                             .arg(option.color)
-                            .arg(px(3))
+                            .arg(theme::dp(5))
                             .arg(c.panel.name())
-                            .arg(px(14))
-                            .arg(px(3))
+                            .arg(theme::dp(26))
+                            .arg(theme::dp(5))
                             .arg(c.text.name()));
       group->addButton(chip);
       chips->addWidget(chip);
@@ -115,7 +111,7 @@ public:
     }
     chips->addStretch();
     lay->addLayout(chips);
-    lay->addSpacing(px(16));
+    lay->addSpacing(theme::dp(32));
 
     auto *buttons   = new QHBoxLayout();
     auto *cancelBtn = new QPushButton(tr("Cancel"), &dialog);
@@ -124,7 +120,7 @@ public:
     okBtn->setObjectName("primaryButton");
     okBtn->setDefault(true);
     for (QPushButton *button : {cancelBtn, okBtn}) {
-      button->setMinimumSize(px(96), px(32));
+      button->setMinimumSize(theme::dp(180), theme::dp(60));
       button->setFocusPolicy(Qt::NoFocus);
     }
     buttons->addStretch();
@@ -137,7 +133,7 @@ public:
   }
 
   bool exec(QString &label, QColor &color) {
-    dialog.resize(px(440), dialog.sizeHint().height());
+    dialog.resize(theme::dp(825), dialog.sizeHint().height());
     labelEdit->setFocus();
     if (dialog.exec() != QDialog::Accepted) {
       return false;
@@ -188,7 +184,7 @@ bool edit(QWidget *parent, QString &label, QColor &color, QDateTime &from, QDate
   auto *fromEdit = new DateTimeField(from, &form.dialog);
   auto *toEdit   = new DateTimeField(to, &form.dialog);
   auto *rows     = new QGridLayout();
-  rows->setHorizontalSpacing(px(8));
+  rows->setHorizontalSpacing(theme::dp(16));
   rows->addWidget(new QLabel(tr("From"), &form.dialog), 0, 0);
   rows->addWidget(fromEdit, 0, 1);
   rows->addWidget(new QLabel(tr("To"), &form.dialog), 1, 0);

@@ -4,6 +4,7 @@
 #include <QVBoxLayout>
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime, QWidget *parent)
@@ -11,7 +12,7 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
   auto *mainLay = new QVBoxLayout(this);
 
   auto *cancelBtn = new QPushButton(tr("Cancel"), this);
-  cancelBtn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
+  cancelBtn->setFixedSize(theme::dp(187), theme::dp(93));
 
   auto *timeLabelStart = new QLabel(this);
   m_timeLabelCurrent   = new QLabel(this);
@@ -31,7 +32,7 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
   auto *fr = new QFrame();
   fr->setFrameStyle(QFrame::HLine | QFrame::Plain);
   fr->setLineWidth(1);
-  fr->setFixedWidth(350 * utils::ssf());
+  fr->setFixedWidth(theme::dp(656));
 
   auto *gridLay = new QGridLayout(this);
   gridLay->addWidget(new QLabel(tr("Current time:"), this), 0, 0);
@@ -45,12 +46,12 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
   labelLay->addStretch();
   mainLay->addWidget(labelTitle);
   mainLay->addWidget(fr);
-  mainLay->addSpacing(15 * utils::ssf());
+  mainLay->addSpacing(theme::dp(28));
   mainLay->addLayout(labelLay);
-  mainLay->addSpacing(15 * utils::ssf());
+  mainLay->addSpacing(theme::dp(28));
   mainLay->addWidget(labelDesc);
   mainLay->addStretch();
-  mainLay->addSpacing(15 * utils::ssf());
+  mainLay->addSpacing(theme::dp(28));
   mainLay->addWidget(cancelBtn);
 
   QList<QWidget *> list1{labelTitle, fr, timeLabelStart, m_timeLabelCurrent, labelDesc, cancelBtn};

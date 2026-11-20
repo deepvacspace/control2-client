@@ -83,7 +83,7 @@ void IntervalEditDialog::initGui() {
   auto navButton = [this, ssf](QString const &kind, QString const &tip) {
     auto *button = new QPushButton(this);
     theme::setThemedIcon(button, kind, static_cast<int>(16 * ssf));
-    button->setFixedSize(static_cast<int>(34 * ssf), static_cast<int>(34 * ssf));
+    button->setFixedSize(theme::dp(63), theme::dp(63));
     button->setToolTip(tip);
     return button;
   };
@@ -93,30 +93,30 @@ void IntervalEditDialog::initGui() {
   closeButton = new QPushButton(tr("Close"), this);
   closeButton->setObjectName("primaryButton");
   for (QPushButton *btn : {newButton, closeButton}) {
-    btn->setFixedHeight(static_cast<int>(34 * ssf));
-    btn->setMinimumWidth(static_cast<int>(130 * ssf));
+    btn->setFixedHeight(theme::dp(63));
+    btn->setMinimumWidth(theme::dp(243));
   }
   buttons << nextButton << prevButton << newButton << closeButton;
 
   maxSpeedCheck = new TempChangeSelector(QString(), this);
 
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(18 * ssf, 14 * ssf, 18 * ssf, 14 * ssf);
-  mainLay->setSpacing(12 * ssf);
+  mainLay->setContentsMargins(theme::dp(32), theme::dp(28), theme::dp(32), theme::dp(28));
+  mainLay->setSpacing(theme::dp(24));
   auto *bottomLay = new QHBoxLayout();
   auto *paramLay  = new QGridLayout();
-  paramLay->setHorizontalSpacing(10 * ssf);
-  paramLay->setVerticalSpacing(8 * ssf);
+  paramLay->setHorizontalSpacing(theme::dp(20));
+  paramLay->setVerticalSpacing(theme::dp(16));
 
   // cycle all params in Interval Model Struct (duration, temp, hum, etc.)
   // interval label (shown in the interval table, saved with the program)
   labelEdit = new LineEditScreen(this, VirtualKeyboard::EN);
   labelEdit->setPlaceholderText(tr("e.g. Ramp up, Hot dwell"));
-  labelEdit->setMinimumHeight(32 * utils::ssf());
+  labelEdit->setMinimumHeight(theme::dp(60));
   labelEdit->setEnabled(m_labels != nullptr);
   auto *labelTitle = new QLabel(tr("Label"), this);
   labelTitle->setProperty("muted", true);
-  labelEdit->setFixedHeight(static_cast<int>(32 * utils::ssf()));
+  labelEdit->setFixedHeight(theme::dp(60));
   paramLay->addWidget(labelTitle, 0, 0);
   paramLay->addWidget(labelEdit, 0, 2);
   int indexPositionInLay = 1; // != index in model->getModelStruct(), so count separately
@@ -138,7 +138,7 @@ void IntervalEditDialog::initGui() {
         double const  prec{item.toMap()["prec"].toDouble()};
         auto         *numEditWidget = new LineEditNum(min, max, prec, true, this);
         numEditWidget->setFont(font());
-        numEditWidget->setFixedSize(static_cast<int>(160 * utils::ssf()), static_cast<int>(32 * utils::ssf()));
+        numEditWidget->setFixedSize(theme::dp(300), theme::dp(60));
         QString const notation{item.toMap()["notation"].toString()};
         numEditWidget->setIsScientific(notation == "scientific");
         paramWidgetList << numEditWidget;
@@ -152,10 +152,10 @@ void IntervalEditDialog::initGui() {
       case static_cast<int>(Qt::UserRole) + 0: {
         auto *timeEdit = new LineEditTime(true, this);
         timeEdit->setFont(font());
-        timeEdit->setFixedSize(static_cast<int>(160 * utils::ssf()), static_cast<int>(32 * utils::ssf()));
+        timeEdit->setFixedSize(theme::dp(300), theme::dp(60));
         for (LineEditNum *part : timeEdit->findChildren<LineEditNum *>()) {
           part->setFont(font());
-          part->setFixedHeight(static_cast<int>(32 * utils::ssf()));
+          part->setFixedHeight(theme::dp(60));
         }
         paramWidgetList << timeEdit;
         break;
@@ -284,7 +284,7 @@ void IntervalEditDialog::initGui() {
   paramLay->setColumnStretch(3, 1);
 
   auto *header = new QHBoxLayout();
-  header->setSpacing(10 * ssf);
+  header->setSpacing(theme::dp(20));
   header->addWidget(prevButton);
   header->addWidget(intervalInfo);
   header->addWidget(nextButton);
@@ -292,7 +292,7 @@ void IntervalEditDialog::initGui() {
   mainLay->addLayout(header);
   auto *divider = new QFrame(this);
   divider->setObjectName("cardDivider");
-  divider->setFixedHeight(qMax(1, static_cast<int>(1 * ssf)));
+  divider->setFixedHeight(qMax(1, theme::dp(1)));
   mainLay->addWidget(divider);
   mainLay->addLayout(paramLay);
   mainLay->addStretch();
@@ -304,7 +304,7 @@ void IntervalEditDialog::initGui() {
   //    mainLay->setSizeConstraint(QLayout::SetFixedSize);
   this->adjustSize(); // NOTE to avoid "setGeometry: Unable to set geometry"
   this->setWindowTitle(tr("Edit interval"));
-  this->setMinimumWidth(static_cast<int>(560 * utils::ssf()));
+  this->setMinimumWidth(theme::dp(1050));
 }
 
 void IntervalEditDialog::updateGuiElements(int newIndex) {
@@ -375,7 +375,6 @@ void IntervalEditDialog::reject() {
 
 TempChangeSelector::TempChangeSelector(QString const &label, QWidget *parent) : QWidget{parent} {
   Q_UNUSED(label)
-  double const ssf{utils::ssf()};
   auto        *lay = new QHBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
   lay->setSpacing(0);
@@ -390,15 +389,15 @@ TempChangeSelector::TempChangeSelector(QString const &label, QWidget *parent) : 
     button->setProperty("segment", true);
     button->setProperty("segmentFirst", index == 0);
     button->setProperty("segmentLast", index == 1);
-    button->setFixedHeight(static_cast<int>(32 * ssf));
-    button->setMinimumWidth(static_cast<int>(140 * ssf));
+    button->setFixedHeight(theme::dp(60));
+    button->setMinimumWidth(theme::dp(262));
     group->addButton(button, index++);
     lay->addWidget(button);
   }
   group->setExclusive(true);
-  lay->addSpacing(8 * ssf);
+  lay->addSpacing(theme::dp(16));
   auto *bbBtn = new QPushButton(QStringLiteral("?"), this);
-  bbBtn->setFixedSize(static_cast<int>(32 * ssf), static_cast<int>(32 * ssf));
+  bbBtn->setFixedSize(theme::dp(60), theme::dp(60));
   bbBtn->setToolTip(tr("How the two modes differ"));
   lay->addWidget(bbBtn);
   lay->addStretch();

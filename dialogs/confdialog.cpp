@@ -1,6 +1,7 @@
 #include "confdialog.h"
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 ConfDialog::ConfDialog(
@@ -14,7 +15,7 @@ ConfDialog::ConfDialog(
   auto *denyBtn   = new QPushButton(btn2Name, this);
   acceptBtn->setObjectName("primaryButton");
   for (QPushButton *btn : {denyBtn, acceptBtn}) {
-    btn->setMinimumSize(static_cast<int>(110 * utils::ssf()), static_cast<int>(36 * utils::ssf()));
+    btn->setMinimumSize(theme::dp(206), theme::dp(67));
     m_btnLayout->addWidget(btn);
   }
   acceptBtn->setDefault(true);

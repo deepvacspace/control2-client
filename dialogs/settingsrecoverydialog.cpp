@@ -23,16 +23,16 @@ SettingsRecoveryDialog::SettingsRecoveryDialog(QString const &settingsPath, QStr
   setWindowTitle(tr("Deepvac Control"));
 
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(22 * ssf, 20 * ssf, 22 * ssf, 18 * ssf);
-  mainLay->setSpacing(14 * ssf);
+  mainLay->setContentsMargins(theme::dp(40), theme::dp(36), theme::dp(40), theme::dp(32));
+  mainLay->setSpacing(theme::dp(28));
 
   auto *top = new QHBoxLayout();
-  top->setSpacing(14 * ssf);
+  top->setSpacing(theme::dp(28));
   auto *icon = new QLabel(this);
   icon->setPixmap(theme::dialogIcon(QStringLiteral("error"), static_cast<int>(34 * ssf)));
   top->addWidget(icon, 0, Qt::AlignTop);
   auto *texts = new QVBoxLayout();
-  texts->setSpacing(8 * ssf);
+  texts->setSpacing(theme::dp(16));
   auto *title = new QLabel(tr("The settings file cannot be used"), this);
   title->setObjectName("cardTitle");
   QFont titleFont = title->font();
@@ -51,14 +51,14 @@ SettingsRecoveryDialog::SettingsRecoveryDialog(QString const &settingsPath, QStr
   mainLay->addLayout(top);
 
   m_backups = new QListWidget(this);
-  m_backups->setMinimumHeight(static_cast<int>(150 * ssf));
+  m_backups->setMinimumHeight(theme::dp(281));
   mainLay->addWidget(m_backups, 1);
 
   auto *buttons = new QHBoxLayout();
-  buttons->setSpacing(10 * ssf);
+  buttons->setSpacing(theme::dp(20));
   auto addButton = [&](QString const &text) {
     auto *button = new QPushButton(text, this);
-    button->setMinimumSize(static_cast<int>(120 * ssf), static_cast<int>(36 * ssf));
+    button->setMinimumSize(theme::dp(225), theme::dp(67));
     buttons->addWidget(button);
     return button;
   };
@@ -87,7 +87,7 @@ SettingsRecoveryDialog::SettingsRecoveryDialog(QString const &settingsPath, QStr
   });
 
   setProblem(problem);
-  setMinimumWidth(static_cast<int>(620 * ssf));
+  setMinimumWidth(theme::dp(1162));
 }
 
 void SettingsRecoveryDialog::setProblem(QString const &problem) {

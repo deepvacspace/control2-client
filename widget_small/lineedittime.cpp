@@ -3,6 +3,7 @@
 #include <QEvent>
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 LineEditTime::LineEditTime(quint64 timeInSecs, quint64 min, quint64 max, bool secEnable, QWidget *parent)
@@ -14,13 +15,13 @@ LineEditTime::LineEditTime(quint64 timeInSecs, quint64 min, quint64 max, bool se
     font.setPointSize(20 * utils::ssf());
     setFont(font);
   }
-  setStyleSheet("selection-background-color: #CCCCCC");
+  setStyleSheet("selection-background-color: #dce6ff");
 
   hEdit = new LineEditNum(0, 999, 0, false, this);
   mEdit = new LineEditNum(0, 59, 0, false, this);
   hEdit->setVisible(false);
   mEdit->setVisible(false);
-  setFixedWidth(105 * utils::ssf());
+  setFixedWidth(theme::dp(196));
   adjustSize();
 
   hEdit->setFixedHeight(this->height());
@@ -29,7 +30,7 @@ LineEditTime::LineEditTime(quint64 timeInSecs, quint64 min, quint64 max, bool se
   if (m_secEnable) {
     sEdit = new LineEditNum(0, 59, 0, false, this);
     sEdit->setVisible(false);
-    setFixedWidth(152 * utils::ssf());
+    setFixedWidth(theme::dp(285));
     sEdit->setFixedHeight(this->height());
   }
 

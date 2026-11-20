@@ -22,7 +22,6 @@
 #include "confdialog.h"
 #include "constants.h"
 #include "forceoutlistwidget.h"
-#include "offlineadvisorwidget.h"
 #include "syslistwidget.h"
 #include "theme.h"
 namespace deepvaccontrol {
@@ -68,21 +67,20 @@ void prepareSystemTabPage(QWidget *widget) {
 namespace {
 // a card filling the tab, with a title and an optional muted note
 QFrame *tabCard(QWidget *page, QString const &title, QString const &note) {
-  double const ssf{utils::ssf()};
   auto        *pageLay = new QVBoxLayout(page);
-  pageLay->setContentsMargins(0, 8 * ssf, 0, 0);
+  pageLay->setContentsMargins(0, theme::dp(16), 0, 0);
   auto *card = new QFrame(page);
   card->setObjectName("pageCard");
   pageLay->addWidget(card);
   auto *lay = new QVBoxLayout(card);
-  lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  lay->setSpacing(8 * ssf);
+  lay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  lay->setSpacing(theme::dp(16));
   auto *header = new QHBoxLayout();
   auto *label  = new QLabel(title, card);
   label->setObjectName("cardTitle");
   header->addWidget(label);
   if (!note.isEmpty()) {
-    header->addSpacing(12 * ssf);
+    header->addSpacing(theme::dp(24));
     auto *noteLabel = new QLabel(note, card);
     noteLabel->setProperty("muted", true);
     header->addWidget(noteLabel);
@@ -102,21 +100,21 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   auto *commandRow = new QFrame(card);
   commandRow->setObjectName("outputRow");
   auto *lineBtnLay = new QHBoxLayout(commandRow);
-  lineBtnLay->setContentsMargins(12 * ssf, 8 * ssf, 10 * ssf, 8 * ssf);
-  lineBtnLay->setSpacing(10 * ssf);
+  lineBtnLay->setContentsMargins(theme::dp(24), theme::dp(16), theme::dp(20), theme::dp(16));
+  lineBtnLay->setSpacing(theme::dp(20));
   auto *commandLabel = new QLabel(tr("Command"), commandRow);
   commandLabel->setObjectName("rowTitle");
   auto *cmdLine = new QLineEdit("finish", commandRow);
-  cmdLine->setMinimumSize(320 * ssf, 30 * ssf);
+  cmdLine->setMinimumSize(theme::dp(600), theme::dp(56));
   auto *sendCmd = new QPushButton(tr("Send"), commandRow);
   sendCmd->setObjectName("primaryButton");
-  sendCmd->setFixedSize(100 * ssf, 30 * ssf);
+  sendCmd->setFixedSize(theme::dp(187), theme::dp(56));
   lineBtnLay->addWidget(commandLabel);
   lineBtnLay->addWidget(cmdLine);
   lineBtnLay->addWidget(sendCmd);
   lineBtnLay->addStretch();
   mainLay->addWidget(commandRow);
-  mainLay->addSpacing(6 * ssf);
+  mainLay->addSpacing(theme::dp(12));
 
   // quick commands: fill in the command line
   auto *quickLabel = new QLabel(tr("Quick commands").toUpper(), card);
@@ -129,12 +127,12 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   }
   mainLay->addWidget(quickLabel);
   auto *cmdBtnsLay = new QHBoxLayout();
-  cmdBtnsLay->setSpacing(8 * ssf);
+  cmdBtnsLay->setSpacing(theme::dp(16));
   mainLay->addLayout(cmdBtnsLay);
 
   auto addBtn = [cmdLine, cmdBtnsLay, ssf, this](QString const &cmd) {
     auto *cmdBtn = new QPushButton(cmd, this);
-    cmdBtn->setMinimumSize(110 * ssf, 30 * ssf);
+    cmdBtn->setMinimumSize(theme::dp(206), theme::dp(56));
     cmdBtn->setToolTip(tr("Put \"%1\" in the command line").arg(cmd));
     cmdBtnsLay->addWidget(cmdBtn);
 
@@ -160,7 +158,6 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
 };
 
 SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
-  double const ssf{utils::ssf()};
   QFrame      *card    = tabCard(this, tr("Operating system"), {});
   auto        *mainLay = static_cast<QVBoxLayout *>(card->layout());
 
@@ -169,14 +166,14 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
     auto *row = new QFrame(card);
     row->setObjectName("outputRow");
     auto *rowLay = new QHBoxLayout(row);
-    rowLay->setContentsMargins(12 * ssf, 10 * ssf, 12 * ssf, 10 * ssf);
-    rowLay->setSpacing(12 * ssf);
+    rowLay->setContentsMargins(theme::dp(24), theme::dp(20), theme::dp(24), theme::dp(20));
+    rowLay->setSpacing(theme::dp(24));
     auto *iconLabel = new QLabel(row);
     iconLabel->setProperty("iconKind", icon);
-    iconLabel->setFixedSize(24 * ssf, 24 * ssf);
+    iconLabel->setFixedSize(theme::dp(45), theme::dp(45));
     rowLay->addWidget(iconLabel);
     auto *texts = new QVBoxLayout();
-    texts->setSpacing(2 * ssf);
+    texts->setSpacing(theme::dp(4));
     auto *titleLabel = new QLabel(title, row);
     titleLabel->setObjectName("rowTitle");
     auto *textLabel = new QLabel(text, row);
@@ -185,7 +182,7 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
     texts->addWidget(textLabel);
     rowLay->addLayout(texts, 1);
     button->setParent(row);
-    button->setMinimumSize(190 * ssf, 32 * ssf);
+    button->setMinimumSize(theme::dp(356), theme::dp(60));
     rowLay->addWidget(button);
     mainLay->addWidget(row);
   };
@@ -299,16 +296,16 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   {
     // the drawing, and beside it every component with its state now and a display-only Fitted switch
     auto *lay = new QHBoxLayout(diagramWidget);
-    lay->setContentsMargins(0, 8 * utils::ssf(), 0, 0);
-    lay->setSpacing(12 * utils::ssf());
+    lay->setContentsMargins(0, theme::dp(16), 0, 0);
+    lay->setSpacing(theme::dp(24));
     auto *view    = new ChamberView(resHolder, diagramWidget);
     m_chamberView = view;
     // under the drawing: the temperature and pressure control outputs
     auto *drawing = new QVBoxLayout();
-    drawing->setSpacing(10 * utils::ssf());
+    drawing->setSpacing(theme::dp(20));
     drawing->addWidget(view, 1);
     auto *gauges = new QHBoxLayout();
-    gauges->setSpacing(10 * utils::ssf());
+    gauges->setSpacing(theme::dp(20));
     gauges->addWidget(new ControlOutputGauge(resHolder, ControlOutputGauge::Kind::TEMPERATURE, diagramWidget), 1);
     gauges->addWidget(new ControlOutputGauge(resHolder, ControlOutputGauge::Kind::PRESSURE, diagramWidget), 1);
     drawing->addLayout(gauges);
@@ -317,7 +314,7 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setFixedWidth(static_cast<int>(400 * utils::ssf()));
+    scroll->setFixedWidth(theme::dp(750));
     scroll->setWidget(new ChamberIndicators(resHolder, view, scroll));
     scroll->viewport()->setAutoFillBackground(false);
     scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
@@ -326,11 +323,6 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   prepareSystemTabPage(diagramWidget);
   m_diagramTab = diagramWidget;
   m_tabWidget->addTab(diagramWidget, tr("Diagram"));
-
-  // the AI Advisor (PID coefficients searched with the digital twin) and the simulation of any P / I / D
-  auto *simulatorWidget = new OfflineAdvisorWidget(resHolder, this);
-  prepareSystemTabPage(simulatorWidget);
-  m_tabWidget->addTab(simulatorWidget, tr("Simulator"));
 
   // 1 - журнал
   auto *actionWidget = new ActionWidget(resHolder->actions, this);

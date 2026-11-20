@@ -6,6 +6,7 @@
 
 #include "drivepathselect.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 FileLoadDialog::FileLoadDialog(QList<QString> pathList, QString const &filter, QWidget *parent)
@@ -22,9 +23,9 @@ FileLoadDialog::FileLoadDialog(QList<QString> pathList, QString const &filter, Q
   auto *delBtn   = new QPushButton(tr("Delete"), this);
   auto *closeBtn = new QPushButton(tr("Cancel"), this);
 
-  openBtn->setFixedHeight(40 * utils::ssf());
-  delBtn->setFixedHeight(40 * utils::ssf());
-  closeBtn->setFixedHeight(40 * utils::ssf());
+  openBtn->setFixedHeight(theme::dp(75));
+  delBtn->setFixedHeight(theme::dp(75));
+  closeBtn->setFixedHeight(theme::dp(75));
 
   mainLay->addWidget(drivePathSelect, 0, 0, 1, 3);
   mainLay->addWidget(m_fileListView, 1, 0, 1, 3);

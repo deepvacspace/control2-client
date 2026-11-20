@@ -17,14 +17,14 @@ ActionWidget::ActionWidget(ActionManager *actionManager, QWidget *parent)
     : QWidget{parent}, m_actionManager{actionManager} {
   double const ssf{utils::ssf()};
   auto        *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
+  mainLay->setContentsMargins(0, theme::dp(16), 0, 0);
 
   auto *card = new QFrame(this);
   card->setObjectName("pageCard");
   mainLay->addWidget(card);
   auto *cardLay = new QVBoxLayout(card);
-  cardLay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  cardLay->setSpacing(8 * ssf);
+  cardLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  cardLay->setSpacing(theme::dp(16));
 
   // header: title, what the colours mean, more entries
   auto *header = new QHBoxLayout();
@@ -33,7 +33,7 @@ ActionWidget::ActionWidget(ActionManager *actionManager, QWidget *parent)
   header->addWidget(title);
   header->addStretch();
   auto *moreBtn = new QPushButton(tr("Show more"), card);
-  moreBtn->setMinimumSize(110 * ssf, 26 * ssf);
+  moreBtn->setMinimumSize(theme::dp(206), theme::dp(48));
   header->addWidget(moreBtn);
   cardLay->addLayout(header);
 

@@ -16,10 +16,10 @@ PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QToolButton{pa
   setFocusPolicy(Qt::NoFocus);
   // the power icon alone: it says "off" without a caption
   setToolButtonStyle(Qt::ToolButtonIconOnly);
-  setFixedSize(62 * utils::ssf(), 46 * utils::ssf());
+  setFixedSize(theme::dp(116), theme::dp(86));
   QColor const danger = theme::sidebarColors().danger; // drawn on the navigation sidebar
   setIcon(theme::menuIcon(QStringLiteral("power"), danger, danger, static_cast<int>(22 * utils::ssf())));
-  setIconSize(QSize(22 * utils::ssf(), 22 * utils::ssf()));
+  setIconSize(QSize(theme::dp(41), theme::dp(41)));
   setStyleSheet(QStringLiteral("QToolButton#offButton { border: %2px solid %1; background: %4; border-radius: %3px; } "
                                "QToolButton#offButton:pressed { background: %5; }")
                   .arg(danger.name())

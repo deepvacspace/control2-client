@@ -34,16 +34,16 @@ StateMismatchDialog::StateMismatchDialog(QString const     &address,
   setWindowModality(Qt::WindowModal);
 
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(22 * ssf, 20 * ssf, 22 * ssf, 18 * ssf);
-  mainLay->setSpacing(18 * ssf);
+  mainLay->setContentsMargins(theme::dp(40), theme::dp(36), theme::dp(40), theme::dp(32));
+  mainLay->setSpacing(theme::dp(32));
 
   auto *top = new QHBoxLayout();
-  top->setSpacing(14 * ssf);
+  top->setSpacing(theme::dp(28));
   auto *icon = new QLabel(this);
   icon->setPixmap(theme::dialogIcon(QStringLiteral("error"), static_cast<int>(34 * ssf)));
   top->addWidget(icon, 0, Qt::AlignTop);
   auto *texts = new QVBoxLayout();
-  texts->setSpacing(8 * ssf);
+  texts->setSpacing(theme::dp(16));
 
   auto *title = new QLabel(tr("This chamber is set up differently"), this);
   title->setObjectName("cardTitle");
@@ -92,11 +92,11 @@ StateMismatchDialog::StateMismatchDialog(QString const     &address,
   mainLay->addLayout(top);
 
   auto *buttons = new QHBoxLayout();
-  buttons->setSpacing(10 * ssf);
+  buttons->setSpacing(theme::dp(20));
   auto addButton = [&](QString const &text, int choice, QString const &tip, bool primary = false) {
     auto *button = new QPushButton(text, this);
     button->setToolTip(tip);
-    button->setMinimumSize(static_cast<int>(130 * ssf), static_cast<int>(36 * ssf));
+    button->setMinimumSize(theme::dp(243), theme::dp(67));
     if (primary) {
       button->setObjectName("primaryButton");
       button->setDefault(true);
@@ -115,8 +115,8 @@ StateMismatchDialog::StateMismatchDialog(QString const     &address,
   addButton(tr("Stay disconnected"), STAY, tr("Keep the application running without this chamber"), true);
   mainLay->addLayout(buttons);
 
-  setMinimumWidth(static_cast<int>(520 * ssf));
-  setMaximumWidth(static_cast<int>(760 * ssf));
+  setMinimumWidth(theme::dp(975));
+  setMaximumWidth(theme::dp(1425));
   adjustSize();
 }
 

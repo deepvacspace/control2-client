@@ -11,12 +11,13 @@
 #include "constants.h"
 #include "experimentlibrary.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
 SharedRunsDialog::SharedRunsDialog(CollabManager *collab, QWidget *parent) : QDialog{parent}, m_collab{collab} {
   setWindowTitle(tr("Shared experiments"));
-  resize(1000 * utils::ssf(), 560 * utils::ssf());
+  resize(theme::dp(1875), theme::dp(1050));
 
   auto *lay = new QVBoxLayout(this);
   m_list    = new QTreeWidget(this);
@@ -38,7 +39,7 @@ SharedRunsDialog::SharedRunsDialog(CollabManager *collab, QWidget *parent) : QDi
   m_downloadBtn  = new QPushButton(tr("Download"), this);
   auto *closeBtn = new QPushButton(tr("Close"), this);
   for (QPushButton *button : {m_syncBtn, m_downloadBtn, closeBtn}) {
-    button->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+    button->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
     button->setFocusPolicy(Qt::NoFocus);
   }
   buttons->addWidget(m_syncBtn);

@@ -5,6 +5,7 @@
 
 #include "cycledialog.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 CycleWidget::CycleWidget(QWidget *parent) : QWidget{parent}, m_intervalNumber{0U} {
@@ -21,7 +22,7 @@ void CycleWidget::initGui() {
   font.setPointSizeF(font.pointSizeF() * 1.15);
   m_text->setFont(font);
   auto *editBtn = new QPushButton(tr("Edit"), this);
-  editBtn->setFixedSize(80 * utils::ssf(), 26 * utils::ssf());
+  editBtn->setFixedSize(theme::dp(150), theme::dp(48));
 
   mainLay->addWidget(m_text, 1);
   mainLay->addWidget(editBtn);

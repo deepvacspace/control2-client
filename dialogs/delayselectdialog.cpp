@@ -7,6 +7,7 @@
 #include <QVBoxLayout>
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 DelaySelectDialog::DelaySelectDialog(QWidget *parent) : QDialog{parent} {
@@ -15,8 +16,8 @@ DelaySelectDialog::DelaySelectDialog(QWidget *parent) : QDialog{parent} {
   auto *acceptBtn = new QPushButton(tr("Set"), this);
   auto *cancelBtn = new QPushButton(tr("Cancel"), this);
 
-  acceptBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
-  cancelBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
+  acceptBtn->setFixedSize(theme::dp(225), theme::dp(93));
+  cancelBtn->setFixedSize(theme::dp(225), theme::dp(93));
 
   {
     QFont font2 = acceptBtn->font();

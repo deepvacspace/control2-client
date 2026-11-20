@@ -7,6 +7,7 @@
 
 #include "lineeditnum.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 VirtualNumKeyboard::VirtualNumKeyboard(QWidget *parent) : QDialog{parent}, host{nullptr}, notEdited{true} {
@@ -26,7 +27,7 @@ VirtualNumKeyboard::VirtualNumKeyboard(QWidget *parent) : QDialog{parent}, host{
   for (int i{0U}; i < 10; ++i) {
     auto *btn = new QPushButton(QString::number(i), this);
     connect(btn, &QPushButton::clicked, this, &VirtualNumKeyboard::handleNumKeysPress);
-    btn->setFixedSize(50 * utils::ssf(), 50 * utils::ssf());
+    btn->setFixedSize(theme::dp(93), theme::dp(93));
     btn->setFont(font);
     numericalButtons.append(btn);
   }
@@ -39,13 +40,13 @@ VirtualNumKeyboard::VirtualNumKeyboard(QWidget *parent) : QDialog{parent}, host{
   cancel = new QPushButton(tr("Cancel"), this);
   controlButtons << point << minus << del << enter << cancel << e;
   del->setIcon(QIcon(":/imgs/backspace.png"));
-  del->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));
+  del->setIconSize(QSize(theme::dp(75), theme::dp(75)));
 
-  cancel->setFixedSize(2 * 50 * utils::ssf(), 50 * utils::ssf());
-  enter->setFixedSize(2 * 50 * utils::ssf(), 2 * 50 * utils::ssf());
-  point->setFixedSize(50 * utils::ssf(), 50 * utils::ssf());
-  minus->setFixedSize(50 * utils::ssf(), 50 * utils::ssf());
-  e->setFixedSize(50 * utils::ssf(), 50 * utils::ssf());
+  cancel->setFixedSize(2 * theme::dp(93), theme::dp(93));
+  enter->setFixedSize(2 * theme::dp(93), 2 * theme::dp(93));
+  point->setFixedSize(theme::dp(93), theme::dp(93));
+  minus->setFixedSize(theme::dp(93), theme::dp(93));
+  e->setFixedSize(theme::dp(93), theme::dp(93));
   for (auto const &btn : controlButtons) {
     btn->setFont(font);
     connect(btn, &QPushButton::clicked, this, &VirtualNumKeyboard::handleKeyPress);
@@ -66,8 +67,8 @@ VirtualNumKeyboard::VirtualNumKeyboard(QWidget *parent) : QDialog{parent}, host{
     lay->addWidget(del, 0, 3, 1, 3);
     lay->addWidget(cancel, 1, 3, 1, 3);
     lay->addWidget(enter, 2, 4, 2, 2);
-    del->setFixedSize(3 * 50 * utils::ssf(), 50 * utils::ssf());
-    cancel->setFixedSize(3 * 50 * utils::ssf(), 50 * utils::ssf());
+    del->setFixedSize(3 * theme::dp(93), theme::dp(93));
+    cancel->setFixedSize(3 * theme::dp(93), theme::dp(93));
   } else {
     lay->addWidget(del, 0, 3, 1, 2);
     lay->addWidget(cancel, 1, 3, 1, 2);

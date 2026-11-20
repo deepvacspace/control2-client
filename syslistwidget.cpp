@@ -27,15 +27,15 @@ SysListWidget::SysListWidget(ResHolder *resHolder, QWidget *parent)
     : QWidget{parent}, m_resHolder{resHolder}, m_states{resHolder->states} {
   double const ssf{utils::ssf()};
   auto        *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(0, theme::dp(16), 0, 0);
+  mainLay->setSpacing(theme::dp(20));
 
   auto makeCard = [this, ssf](QString const &title) {
     auto *card = new QFrame(this);
     card->setObjectName("pageCard");
     auto *lay = new QVBoxLayout(card);
-    lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-    lay->setSpacing(6 * ssf);
+    lay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+    lay->setSpacing(theme::dp(12));
     if (!title.isEmpty()) {
       auto *label = new QLabel(title, card);
       label->setProperty("muted", true);
@@ -95,11 +95,11 @@ SysListWidget::SysListWidget(ResHolder *resHolder, QWidget *parent)
     auto *row = new QFrame(outputsCard);
     row->setObjectName("outputRow");
     auto *rowLay = new QHBoxLayout(row);
-    rowLay->setContentsMargins(10 * ssf, 4 * ssf, 10 * ssf, 4 * ssf);
+    rowLay->setContentsMargins(theme::dp(20), theme::dp(8), theme::dp(20), theme::dp(8));
     rowLay->addWidget(new QLabel(item["label"].toString(), row), 1);
     auto *badge = new QLabel(row);
     badge->setAlignment(Qt::AlignCenter);
-    badge->setFixedWidth(40 * ssf);
+    badge->setFixedWidth(theme::dp(75));
     rowLay->addWidget(badge);
     outputsLay->addWidget(row);
     m_outputs.push_back({m_states->getSysValue(name), item["bit"].toInt(), badge});

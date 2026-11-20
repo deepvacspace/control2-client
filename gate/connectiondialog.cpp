@@ -24,16 +24,16 @@ void ConnectionDialog::initGui() {
 
   // an icon beside the title and the message; the button at the bottom right
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(22 * ssf, 20 * ssf, 22 * ssf, 18 * ssf);
-  mainLay->setSpacing(16 * ssf);
+  mainLay->setContentsMargins(theme::dp(40), theme::dp(36), theme::dp(40), theme::dp(32));
+  mainLay->setSpacing(theme::dp(32));
   auto *top = new QHBoxLayout();
-  top->setSpacing(14 * ssf);
+  top->setSpacing(theme::dp(28));
   m_iconLabel = new QLabel(this);
   m_iconLabel->setPixmap(theme::dialogIcon(QStringLiteral("error"), static_cast<int>(40 * ssf)));
   m_iconLabel->setAlignment(Qt::AlignTop);
   top->addWidget(m_iconLabel, 0, Qt::AlignTop);
   auto *text = new QVBoxLayout();
-  text->setSpacing(4 * ssf);
+  text->setSpacing(theme::dp(8));
   m_titleLabel = new QLabel(this);
   QFont font   = m_titleLabel->font();
   font.setBold(true);
@@ -50,7 +50,7 @@ void ConnectionDialog::initGui() {
   m_hintLabel->setWordWrap(true);
   text->addWidget(m_titleLabel);
   text->addWidget(m_msgLabel);
-  text->addSpacing(6 * ssf);
+  text->addSpacing(theme::dp(12));
   text->addWidget(m_attemptLabel);
   text->addWidget(m_hintLabel);
   top->addLayout(text, 1);
@@ -60,12 +60,12 @@ void ConnectionDialog::initGui() {
   buttons->addStretch();
   m_hideBtn = new QPushButton(tr("Hide"), this);
   m_hideBtn->setObjectName("primaryButton");
-  m_hideBtn->setMinimumSize(110 * ssf, 34 * ssf);
+  m_hideBtn->setMinimumSize(theme::dp(206), theme::dp(63));
   m_hideBtn->setToolTip(tr("The application keeps trying to connect in the background"));
   buttons->addWidget(m_hideBtn);
   mainLay->addLayout(buttons);
 
-  setFixedWidth(static_cast<int>(460 * ssf));
+  setFixedWidth(theme::dp(862));
   updateContent(1, 0);
 
   // (x) close = done(0)

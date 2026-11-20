@@ -3,10 +3,11 @@
 #include "constants.h"
 #include "hardwarestatus.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent} {
-  setFixedWidth(200 * utils::ssf());
+  setFixedWidth(theme::dp(375));
 
   {
     auto fnt = font();

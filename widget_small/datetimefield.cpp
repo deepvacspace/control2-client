@@ -6,6 +6,7 @@
 
 #include "lineedittime.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -13,11 +14,11 @@ DateTimeField::DateTimeField(QDateTime const &value, QWidget *parent)
     : QWidget{parent}, m_date{new QDateEdit(this)}, m_time{new LineEditTime(0, 0, 86399, true, this)} {
   auto *lay = new QHBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
-  lay->setSpacing(6 * utils::ssf());
+  lay->setSpacing(theme::dp(12));
   m_date->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
   m_date->setCalendarPopup(true); // a calendar for fingers
-  m_date->setMinimumHeight(34 * utils::ssf());
-  m_time->setMinimumHeight(34 * utils::ssf());
+  m_date->setMinimumHeight(theme::dp(63));
+  m_time->setMinimumHeight(theme::dp(63));
   m_time->setToolTip(tr("Time of day: tap to type it"));
   // one look for both parts: the app's text size, digits of equal width
   QFont digits = font();
@@ -26,7 +27,7 @@ DateTimeField::DateTimeField(QDateTime const &value, QWidget *parent)
   digits.setBold(false);
   m_time->setFont(digits);
   m_date->setFont(digits);
-  m_time->setFixedWidth(QFontMetrics(digits).horizontalAdvance(QStringLiteral("000:00:00")) + static_cast<int>(22 * utils::ssf()));
+  m_time->setFixedWidth(QFontMetrics(digits).horizontalAdvance(QStringLiteral("000:00:00")) +  theme::dp(41));
   m_time->setStyleSheet(QString{});
   for (QWidget *part : {static_cast<QWidget *>(m_date), static_cast<QWidget *>(m_time)}) {
     part->setProperty("soft", true);

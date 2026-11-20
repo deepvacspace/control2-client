@@ -23,7 +23,7 @@ LightButton::LightButton(ResHolder *resHolder, QWidget *parent) : QPushButton{pa
   }
   setText(tr("Light"));
   setFocusPolicy(Qt::NoFocus);
-  setFixedSize(62 * utils::ssf(), 46 * utils::ssf());
+  setFixedSize(theme::dp(116), theme::dp(86));
 
   connect(this, &QPushButton::clicked, this, [this] {
     m_resHolder->tcpGate->sendPair("light", static_cast<float>(!m_enabled));
@@ -64,13 +64,13 @@ void LightButton::paintEvent(QPaintEvent *) {
     p.setBrush(QColor(255, 255, 255, 18));
     p.drawRoundedRect(box, 9 * s, 9 * s);
   }
-  QColor const sun = m_enabled ? QColor("#facc15") : (isEnabled() ? sc.text : sc.muted);
+  QColor const sun = m_enabled ? QColor("#f2a60c") : (isEnabled() ? sc.accent : sc.muted); // an icon: Sky
   // sun
   QPointF const centre(box.left() + 12 * s, box.top() + 14 * s);
   if (m_enabled) {
     QRadialGradient glow(centre, 11 * s);
-    glow.setColorAt(0, QColor(250, 204, 21, 110));
-    glow.setColorAt(1, QColor(250, 204, 21, 0));
+    glow.setColorAt(0, QColor(242, 166, 12, 110));
+    glow.setColorAt(1, QColor(242, 166, 12, 0));
     p.setPen(Qt::NoPen);
     p.setBrush(glow);
     p.drawEllipse(centre, 11 * s, 11 * s);
@@ -89,7 +89,7 @@ void LightButton::paintEvent(QPaintEvent *) {
   }
   QRectF const track(box.right() - 32 * s, centre.y() - 7.5 * s, 30 * s, 15 * s);
   p.setPen(Qt::NoPen);
-  p.setBrush(m_enabled ? sc.active : QColor("#c8d2e0"));
+  p.setBrush(m_enabled ? sc.active : QColor("#d3dae5"));
   p.drawRoundedRect(track, 7.5 * s, 7.5 * s);
   p.setBrush(Qt::white);
   p.drawEllipse(QPointF(m_enabled ? track.right() - 7.5 * s : track.left() + 7.5 * s, track.center().y()), 5.5 * s, 5.5 * s);

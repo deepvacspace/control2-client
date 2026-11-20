@@ -1,6 +1,7 @@
 #include "choicedialog.h"
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -12,7 +13,7 @@ ChoiceDialog::ChoiceDialog(QString const &title, QString const &message, QString
 
 QPushButton *ChoiceDialog::addChoice(QString const &text, int code, bool primary) {
   auto *button = new QPushButton(text, this);
-  button->setMinimumSize(static_cast<int>(110 * utils::ssf()), static_cast<int>(36 * utils::ssf()));
+  button->setMinimumSize(theme::dp(206), theme::dp(67));
   if (primary) {
     button->setObjectName("primaryButton");
     button->setDefault(true);
