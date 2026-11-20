@@ -5,10 +5,13 @@
 #include <QDrag>
 #include <QDragEnterEvent>
 #include <QEvent>
+#include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QStackedWidget>
+#include <QStyle>
+#include <QStyleOption>
 #include <QTabBar>
 #include <QTimer>
 #include <QHBoxLayout>
@@ -28,13 +31,14 @@ QString const ChartPane::LIVE_KEY{QStringLiteral("live")};
 
 namespace {
 char const TAB_MIME[]{"application/x-deepvac-chart-tab"};
+int const  MAX_SHOWN{7};                              // tabs in the row (Live included); the others under the chevron
 ChartPane *g_dragSource{nullptr}; // pane a tab is being dragged out of
 
 // small turning arc in a tab whose data is being read
 class TabSpinner : public QWidget {
 public:
   explicit TabSpinner(QWidget *parent) : QWidget{parent}, m_timer{new QTimer(this)} {
-    setFixedSize(static_cast<int>(12 * utils::ssf()), static_cast<int>(12 * utils::ssf()));
+    setFixedSize(theme::dp(22), theme::dp(22));
     setAttribute(Qt::WA_TransparentForMouseEvents);
     connect(m_timer, &QTimer::timeout, this, [this] {
       m_angle = (m_angle + 30) % 360;
@@ -67,13 +71,42 @@ public:
   [[nodiscard]] QSize minimumSizeHint() const override {
     return QTabBar::minimumSizeHint().boundedTo(sizeHint());
   }
+
+protected:
+  // as wide as the name in bold (the selected tab's), so that selecting a tab does not change its size
+  [[nodiscard]] QSize tabSizeHint(int index) const override {
+    QSize size = QTabBar::tabSizeHint(index);
+    size.rwidth() += QFontMetrics(boldFont()).horizontalAdvance(tabText(index)) - fontMetrics().horizontalAdvance(tabText(index));
+    return size;
+  }
+
+  // a fixed tab (Live) keeps its whole name; the others shorten when the strip is narrow
+  [[nodiscard]] QSize minimumTabSizeHint(int index) const override {
+    return (tabData(index).toString() == QLatin1String("fixed")) ? tabSizeHint(index) : QTabBar::minimumTabSizeHint(index);
+  }
+
+  // the selected tab's name is drawn in bold: shortened (at its end) to the room it has in bold, read from its start
+  void initStyleOption(QStyleOptionTab *option, int tabIndex) const override {
+    QTabBar::initStyleOption(option, tabIndex);
+    if (tabIndex == currentIndex()) {
+      int const room{style()->subElementRect(QStyle::SE_TabBarTabText, option, this).width()};
+      option->text = QFontMetrics(boldFont()).elidedText(tabText(tabIndex), Qt::ElideRight, room);
+    }
+  }
+
+private:
+  [[nodiscard]] QFont boldFont() const {
+    QFont bold = font();
+    bold.setBold(true);
+    return bold;
+  }
 };
 
 // before "Live": a dot, green while the chamber runs a job
 class LiveDot : public QWidget {
 public:
   explicit LiveDot(QWidget *parent) : QWidget{parent} {
-    setFixedSize(static_cast<int>(12 * utils::ssf()), static_cast<int>(12 * utils::ssf()));
+    setFixedSize(theme::dp(22), theme::dp(22));
     setAttribute(Qt::WA_TransparentForMouseEvents);
   }
   void setActive(bool active) {
@@ -109,9 +142,9 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   setAcceptDrops(true);
   auto *lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
-  lay->setSpacing(4 * ssf);
+  lay->setSpacing(theme::gap());
 
-  // small tabs above the chart, reordered by dragging
+  // the tabs in a rounded strip, reordered by dragging
   m_tabBar->setDocumentMode(true);
   m_tabBar->setTabsClosable(true);
   m_tabBar->setMovable(true);
@@ -119,42 +152,63 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   m_tabBar->setElideMode(Qt::ElideRight);
   m_tabBar->setFocusPolicy(Qt::NoFocus);
   m_tabBar->setContextMenuPolicy(Qt::CustomContextMenu);
-  // pills (the theme's QTabBar#paneTabs), tall enough for a finger; no line under them
+  // plain labels, the selected one a white box (the theme's QTabBar#paneTabs), tall enough for a finger
   m_tabBar->setObjectName("paneTabs");
   m_tabBar->setDrawBase(false);
   m_tabBar->setStyleSheet(QStringLiteral("QTabBar::scroller { width: %1px; }"
                                          "QTabBar QToolButton::left-arrow { image: url(:/imgs/listArrowLeft.png); }"
                                          "QTabBar QToolButton::right-arrow { image: url(:/imgs/listArrowRight.png); }")
-                            .arg(static_cast<int>(32 * ssf)));
+                            .arg(theme::dp(60)));
   {
     QFont font = m_tabBar->font();
-    font.setPointSizeF(font.pointSizeF() * 0.95);
+    font.setPointSizeF(font.pointSizeF() * 0.9);
     m_tabBar->setFont(font);
   }
-  // the tabs, then a small + to open an experiment or a comparison
-  auto *header = new QHBoxLayout();
-  header->setSpacing(6 * ssf);
+  // the tabs, then a + to open an experiment or a comparison; the corner widget at the strip's right end
+  auto *headerFrame = new QFrame(this);
+  headerFrame->setObjectName("paneHeader");
+  auto *header = new QHBoxLayout(headerFrame);
+  m_header     = header;
+  header->setContentsMargins(theme::dp(5), theme::dp(5), theme::dp(5), theme::dp(5));
+  header->setSpacing(theme::dp(6));
   m_tabBar->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
   header->addWidget(m_tabBar);
-  m_addBtn = new QToolButton(this);
+  // more tabs than fit in the row: a chevron listing the hidden ones
+  m_moreBtn = new QToolButton(headerFrame);
+  m_moreBtn->setObjectName("tabMore");
+  m_moreBtn->setToolTip(tr("More tabs"));
+  m_moreBtn->setFocusPolicy(Qt::NoFocus);
+  m_moreBtn->setFixedSize(theme::dp(42), theme::dp(42));
+  theme::setThemedIcon(m_moreBtn, QStringLiteral("down"), theme::dp(20));
+  m_moreBtn->hide();
+  header->addWidget(m_moreBtn, 0, Qt::AlignVCenter);
+  connect(m_moreBtn, &QToolButton::clicked, this, &ChartPane::showOverflowMenu);
+  m_addBtn = new QToolButton(headerFrame);
   m_addBtn->setObjectName("tabAdd");
-  m_addBtn->setText(QStringLiteral("+"));
   m_addBtn->setToolTip(tr("Open an experiment, or a new comparison"));
   m_addBtn->setFocusPolicy(Qt::NoFocus);
-  m_addBtn->setFixedSize(42 * ssf, 42 * ssf); // round, as tall as the tabs
+  m_addBtn->setFixedSize(theme::dp(42), theme::dp(42)); // a square, as tall as the tabs
+  theme::setThemedIcon(m_addBtn, QStringLiteral("plus"), theme::dp(22));
   header->addWidget(m_addBtn, 0, Qt::AlignVCenter);
   header->addStretch();
-  lay->addLayout(header);
+  lay->addWidget(headerFrame);
   connect(m_addBtn, &QToolButton::clicked, this, [this] {
     emit activated();
     emit addRequested(m_addBtn->mapToGlobal(QPoint(0, m_addBtn->height())));
   });
 
-  // the pane's chart; comparison tabs bring their own. The tools float over it, or stand beside it when pinned
+  // the pane's chart in a card (comparison tabs bring their own), the footer under it (the first pane: the chart's
+  // tools); right of it the side widget (the Live tab's status and the options)
   m_stack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  m_chartCard = new QFrame(this);
+  m_chartCard->setObjectName("chartCard");
+  m_cardLay = new QVBoxLayout(m_chartCard);
+  m_cardLay->setContentsMargins(theme::gap(), theme::gap(), theme::gap(), theme::gap());
+  m_cardLay->setSpacing(theme::dp(8));
+  m_cardLay->addWidget(m_stack, 1);
   m_chartRow = new QHBoxLayout();
-  m_chartRow->setSpacing(6 * ssf);
-  m_chartRow->addWidget(m_stack, 1);
+  m_chartRow->setSpacing(theme::gap());
+  m_chartRow->addWidget(m_chartCard, 1);
   lay->addLayout(m_chartRow, 1);
   m_toolbar = new ChartToolbar(this);
   m_pad     = new ChartPad(this);
@@ -186,9 +240,9 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
   m_dropHint->setAttribute(Qt::WA_StyledBackground);
   m_dropHint->setStyleSheet(QStringLiteral("background: %1; border: %2px dashed %3; border-radius: %4px;")
                               .arg(QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 40).name(QColor::HexArgb))
-                              .arg(qMax(1, static_cast<int>(2 * ssf)))
+                              .arg(theme::dp(3))
                               .arg(c.accent.name())
-                              .arg(static_cast<int>(6 * ssf)));
+                              .arg(theme::radius()));
   m_dropHint->hide();
 
   connect(m_tabBar, &QTabBar::currentChanged, this, &ChartPane::showTab);
@@ -200,6 +254,7 @@ ChartPane::ChartPane(DataViewer *viewer, DataManager *dataManager, QStringList c
     if (int const live{indexOf(LIVE_KEY)}; live > 0) {
       m_tabBar->moveTab(live, 0);
     }
+    updateOverflow();
   });
   connect(m_tabBar, &QWidget::customContextMenuRequested, this, [this](QPoint const &pos) {
     int const index{m_tabBar->tabAt(pos)};
@@ -310,8 +365,40 @@ bool ChartPane::selectTab(QString const &key) {
   int const index{indexOf(key)};
   if (index >= 0) {
     m_tabBar->setCurrentIndex(index);
+    updateOverflow();
   }
   return index >= 0;
+}
+
+void ChartPane::updateOverflow() {
+  if (m_inOverflow) {
+    return;
+  }
+  m_inOverflow = true;
+  int const count{m_tabBar->count()};
+  if (int const current{m_tabBar->currentIndex()}; current >= MAX_SHOWN) {
+    m_tabBar->moveTab(current, MAX_SHOWN - 1); // the last shown one goes under the chevron
+  }
+  for (int i{0}; i < count; ++i) {
+    m_tabBar->setTabVisible(i, i < MAX_SHOWN);
+  }
+  m_moreBtn->setVisible(count > MAX_SHOWN);
+  m_inOverflow = false;
+}
+
+void ChartPane::showOverflowMenu() {
+  emit activated();
+  QMenu menu(this);
+  menu.setToolTipsVisible(true);
+  for (int i{MAX_SHOWN}; i < m_tabs.size(); ++i) {
+    QAction *action = menu.addAction(m_tabs[i].label);
+    action->setToolTip(m_tabs[i].name);
+    action->setData(m_tabs[i].key);
+  }
+  QAction const *chosen = menu.exec(m_moreBtn->mapToGlobal(QPoint(0, m_moreBtn->height())));
+  if (chosen) {
+    selectTab(chosen->data().toString());
+  }
 }
 
 void ChartPane::addTab(Tab const &tab, int at) {
@@ -331,14 +418,34 @@ void ChartPane::addTab(Tab const &tab, int at) {
   int const index{m_tabBar->insertTab(at, tab.label)}; // the first tab gets selected (and shown) right away
   m_tabBar->setTabToolTip(index, tab.name);
   if (tab.key == LIVE_KEY) {
+    m_tabBar->setTabData(index, QStringLiteral("fixed")); // its name never shortened
     m_tabBar->setTabButton(index, QTabBar::RightSide, nullptr); // cannot be closed
     auto *dot = new LiveDot(m_tabBar);
     dot->setActive(m_liveActive);
     m_tabBar->setTabButton(index, QTabBar::LeftSide, dot);
-  } else if (tab.loading) {
-    m_tabBar->setTabButton(index, QTabBar::LeftSide, new TabSpinner(m_tabBar));
+  } else {
+    // the ×: the icons' own, in a square a finger finds (the style's close indicator stays small)
+    auto *close = new QToolButton(m_tabBar);
+    close->setObjectName("tabClose");
+    close->setFocusPolicy(Qt::NoFocus);
+    close->setToolTip(tr("Close"));
+    close->setFixedSize(theme::dp(28), theme::dp(28));
+    theme::setThemedIcon(close, QStringLiteral("close"), theme::dp(16), QStringLiteral("muted"));
+    connect(close, &QToolButton::clicked, this, [this, close] {
+      for (int i{0}; i < m_tabBar->count(); ++i) {
+        if (m_tabBar->tabButton(i, QTabBar::RightSide) == close) {
+          closeTab(i);
+          return;
+        }
+      }
+    });
+    m_tabBar->setTabButton(index, QTabBar::RightSide, close);
+    if (tab.loading) {
+      m_tabBar->setTabButton(index, QTabBar::LeftSide, new TabSpinner(m_tabBar));
+    }
   }
   m_tabBar->setCurrentIndex(index);
+  updateOverflow();
   emit tabsChanged();
 }
 
@@ -352,6 +459,7 @@ ChartPane::Tab ChartPane::takeTab(int index) {
     m_shownKey.clear();
   }
   m_tabBar->removeTab(index);
+  updateOverflow(); // the first hidden tab comes into the row
   if (taken.ownViewer) {
     detachViewer(taken.ownViewer);
   }
@@ -441,15 +549,22 @@ void ChartPane::showTab(int index) {
   }
   QString const key  = shown->key;
   QJsonObject const view = shown->view;
-  if ((key == LIVE_KEY) && !m_liveActive) {
-    m_viewer->clear(m_liveIdleText); // no chamber activity: nothing to show
-    m_shownKey.clear();
-  } else if (key == LIVE_KEY) {
+  if (key == LIVE_KEY) {
+    // the whole day as it is recorded (today's Parquet file), connected or not; while connected the new samples are
+    // added. Not connected: why, beside the date; nothing recorded yet today: only why
     double const todayKey = utils::calculateKey(QDateTime::currentSecsSinceEpoch());
     if (m_dataManager->prepareIntervalToDisplay(todayKey)) {
       m_viewer->setData(m_dataManager->getIntervalToDisplay());
+      if (!m_liveActive) {
+        m_viewer->updateTextItem(QStringLiteral("%1 · %2").arg(QDate::currentDate().toString("yyyy-MM-dd"), m_liveIdleText));
+      }
+      m_shownKey = key;
+    } else if (!m_liveActive) {
+      m_viewer->clear(m_liveIdleText);
+      m_shownKey.clear();
+    } else {
+      m_shownKey = key;
     }
-    m_shownKey = key;
   } else if (shown->loading || !shown->data) {
     m_viewer->clear(tr("Loading %1…").arg(shown->name));
     m_shownKey.clear();
@@ -524,11 +639,9 @@ void ChartPane::refreshRegions() {
 }
 
 void ChartPane::setHighlighted(bool highlighted) {
-  theme::Colors const &c = theme::colors();
-  setStyleSheet(QStringLiteral("QFrame#chartPane { border: %1px solid %2; border-radius: %3px; }")
-                  .arg(qMax(1, static_cast<int>(1 * utils::ssf())))
-                  .arg(highlighted ? c.accent.name() : QStringLiteral("transparent"))
-                  .arg(static_cast<int>(6 * utils::ssf())));
+  // the chart's card outlined in the accent
+  m_chartCard->setStyleSheet(highlighted ? QStringLiteral("QFrame#chartCard { border-color: %1; }").arg(theme::colors().accent.name())
+                                         : QString{});
 }
 
 void ChartPane::setPrimary(bool primary) {
@@ -620,7 +733,7 @@ bool ChartPane::dropTarget(ChartPane *source, QPoint const &pos, int &at, bool &
     return true;
   }
   if (m_primary && (pos.x() > width() / 2)) {
-    QRect const chart = m_stack->geometry();
+    QRect const chart(m_stack->mapTo(this, QPoint(0, 0)), m_stack->size());
     hint              = QRect(chart.center().x(), chart.top(), chart.width() / 2, chart.height()); // split right
     rightHalf         = true;
     return true;
@@ -716,6 +829,34 @@ void ChartPane::setToolbarArea(QWidget *area) {
   setToolbarPinned(m_toolbar->pinned());
 }
 
+void ChartPane::setCornerWidget(QWidget *widget) {
+  m_corner = widget;
+  widget->setParent(m_chartCard); // over the chart, placed with the overlays
+  widget->raise();
+  placeOverlays();
+}
+
+void ChartPane::setFooterWidget(QWidget *widget) {
+  auto *line = new QFrame(m_chartCard);
+  line->setObjectName("cardDivider");
+  line->setFixedHeight(1);
+  m_cardLay->addWidget(line);
+  widget->setParent(m_chartCard);
+  m_cardLay->addWidget(widget);
+}
+
+QWidget *ChartPane::chartCard() const {
+  return m_chartCard;
+}
+
+void ChartPane::setSideWidget(QWidget *widget) {
+  widget->setParent(this);
+  // the chart 5 parts, the widget 2 (about 29 %), whatever their contents ask for
+  widget->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  m_chartRow->addWidget(widget, 2);
+  m_chartRow->setStretchFactor(m_chartCard, 5);
+}
+
 QWidget *ChartPane::toolbarHost() const {
   return m_toolbarArea ? m_toolbarArea : const_cast<ChartPane *>(this);
 }
@@ -757,6 +898,12 @@ void ChartPane::placeOverlays() {
   QCustomPlot *plot = chart->getPlot();
   QPoint const end  = plot->mapTo(this, plot->axisRect()->rect().bottomLeft());
   int const    gap{static_cast<int>(6 * utils::ssf())};
+  // the corner widget in the card's top right corner, inside its border (over the right axis' top, not the plot)
+  if (m_corner && m_corner->isVisible()) {
+    int const inset{theme::dp(3)};
+    m_corner->move(m_chartCard->width() - m_corner->width() - inset, inset);
+    m_corner->raise();
+  }
   bool const   floating{m_toolbarShown && !m_toolbar->pinned()};
   // floating from the start: at the card's left edge, level with the top of the chart (over its margin more than the
   // value axis' labels); the chart's layout stays as it is

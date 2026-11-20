@@ -12,16 +12,13 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "chartsidebar.h"
 #include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 struct ToolInfo {
   char const *icon;
   char const *name;
@@ -58,8 +55,8 @@ ChartToolbar::ChartToolbar(QWidget *parent) : QFrame{parent}, m_collapseTimer{ne
   setObjectName("chartToolbar");
   setAttribute(Qt::WA_StyledBackground);
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(px(2), px(2), px(2), px(2));
-  lay->setSpacing(px(2));
+  lay->setContentsMargins(theme::dp(4), theme::dp(4), theme::dp(4), theme::dp(4));
+  lay->setSpacing(theme::dp(4));
 
   // the handle: the tool in use; a tap opens the tools below it
   m_handle = new QToolButton(this);
@@ -67,40 +64,40 @@ ChartToolbar::ChartToolbar(QWidget *parent) : QFrame{parent}, m_collapseTimer{ne
   m_handle->setFocusPolicy(Qt::NoFocus);
   m_handle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
   // small while it waits: it stands over the value axis' labels
-  m_handle->setIconSize(QSize(px(14), px(14)));
-  m_handle->setMinimumSize(px(30), px(26));
-  m_handle->setStyleSheet(QStringLiteral("QToolButton#toolHandle { padding: 0 %1px; }").arg(px(3)));
+  m_handle->setIconSize(QSize(theme::dp(26), theme::dp(26)));
+  m_handle->setMinimumSize(theme::dp(56), theme::dp(48));
+  m_handle->setStyleSheet(QStringLiteral("QToolButton#toolHandle { padding: 0 %1px; }").arg(theme::dp(5)));
   m_handle->installEventFilter(this); // a tap opens the tools, a drag moves them
   lay->addWidget(m_handle);
 
   m_tools      = new QWidget(this);
   auto *column = new QVBoxLayout(m_tools);
   column->setContentsMargins(0, 0, 0, 0);
-  column->setSpacing(px(2));
+  column->setSpacing(theme::dp(4));
   lay->addWidget(m_tools);
 
   m_toolGroup = new QButtonGroup(this);
   m_toolGroup->setExclusive(true);
   for (Tool const tool : {Tool::INSPECT, Tool::BOX_ZOOM, Tool::ZOOM, Tool::PAN}) {
     ToolInfo const t      = info(tool);
-    QToolButton   *button = addButton(QString::fromLatin1(t.icon), translated(t.tip), true);
+    QToolButton   *button = addButton(QString::fromLatin1(t.icon), translated(t.name), translated(t.tip), true);
     m_toolGroup->addButton(button, static_cast<int>(tool));
     m_toolButtons.insert(tool, button);
   }
-  QToolButton *fitBtn = addButton(QStringLiteral("fit"), tr("Fit: the whole data, following new values"), false);
+  QToolButton *fitBtn = addButton(QStringLiteral("fit"), tr("Fit"), tr("Fit: the whole data, following new values"), false);
   addSeparator();
   {
     ToolInfo const t      = info(Tool::ANNOTATE);
-    QToolButton   *button = addButton(QString::fromLatin1(t.icon), translated(t.tip), true);
+    QToolButton   *button = addButton(QString::fromLatin1(t.icon), translated(t.name), translated(t.tip), true);
     m_toolGroup->addButton(button, static_cast<int>(Tool::ANNOTATE));
     m_toolButtons.insert(Tool::ANNOTATE, button);
   }
   addSeparator();
-  m_labelsBtn  = addButton(QStringLiteral("labels"), tr("Labels: the box with the line names and colours"), true);
-  m_tooltipBtn = addButton(QStringLiteral("tooltip"), tr("Tooltip: the values where the pointer is"), true);
+  m_labelsBtn  = addButton(QStringLiteral("labels"), tr("Labels"), tr("Labels: the box with the line names and colours"), true);
+  m_tooltipBtn = addButton(QStringLiteral("tooltip"), tr("Tooltip"), tr("Tooltip: the values where the pointer is"), true);
   addSeparator();
-  m_pinBtn      = addButton(QStringLiteral("pin"), tr("Pin: keep the tools open beside the chart"), true);
-  m_collapseBtn = addButton(QStringLiteral("collapse"), tr("Close the tools"), false);
+  m_pinBtn      = addButton(QStringLiteral("pin"), tr("Pin"), tr("Pin: keep the tools open beside the chart"), true);
+  m_collapseBtn = addButton(QStringLiteral("collapse"), tr("Close"), tr("Close the tools"), false);
   m_toolButtons.value(Tool::INSPECT)->setChecked(true);
 
   m_opacity = new QGraphicsOpacityEffect(this);
@@ -111,7 +108,7 @@ ChartToolbar::ChartToolbar(QWidget *parent) : QFrame{parent}, m_collapseTimer{ne
   connect(m_handle, &QToolButton::clicked, this, [this] { setExpanded(!m_expanded); });
   connect(m_toolGroup, &QButtonGroup::idClicked, this, [this](int id) {
     setTool(static_cast<Tool>(id));
-    if (!m_pinned) {
+    if (!m_pinned && !m_embedded) {
       setExpanded(false); // a tool picked: out of the way
     }
   });
@@ -134,14 +131,15 @@ ChartToolbar::ChartToolbar(QWidget *parent) : QFrame{parent}, m_collapseTimer{ne
   updateView();
 }
 
-QToolButton *ChartToolbar::addButton(QString const &icon, QString const &tip, bool checkable) {
+QToolButton *ChartToolbar::addButton(QString const &icon, QString const &name, QString const &tip, bool checkable) {
   auto *button = new QToolButton(m_tools);
   button->setObjectName("toolButton");
+  button->setText(name); // shown in the side rail only
   button->setToolTip(tip);
   button->setCheckable(checkable);
   button->setFocusPolicy(Qt::NoFocus);
-  button->setFixedSize(px(32), px(32));
-  theme::setThemedIcon(button, icon, px(16));
+  button->setFixedSize(theme::dp(60), theme::dp(60));
+  theme::setThemedIcon(button, icon, theme::dp(30));
   m_tools->layout()->addWidget(button);
   return button;
 }
@@ -149,7 +147,7 @@ QToolButton *ChartToolbar::addButton(QString const &icon, QString const &tip, bo
 void ChartToolbar::addSeparator() {
   auto *line = new QFrame(m_tools);
   line->setObjectName("cardDivider");
-  line->setFixedSize(px(24), 1);
+  line->setFixedSize(theme::dp(45), 1);
   static_cast<QVBoxLayout *>(m_tools->layout())->addWidget(line, 0, Qt::AlignHCenter);
 }
 
@@ -197,6 +195,27 @@ void ChartToolbar::setAnnotateEnabled(bool enabled) {
   }
 }
 
+void ChartToolbar::setEmbedded(bool embedded) {
+  m_embedded = embedded;
+  if (embedded) {
+    // a row of icons under the chart, on the card's background; upright lines between the groups
+    auto *row = static_cast<QBoxLayout *>(m_tools->layout());
+    row->setDirection(QBoxLayout::LeftToRight);
+    row->setSpacing(theme::dp(6));
+    for (QToolButton *button : m_tools->findChildren<QToolButton *>()) {
+      button->setFixedSize(ChartSideBar::barButtonSize());
+      theme::setThemedIcon(button, button->property("themeIcon").toString(), theme::dp(28), button->property("themeIconRole").toString());
+    }
+    for (QFrame *line : m_tools->findChildren<QFrame *>(QStringLiteral("cardDivider"))) {
+      line->setFixedSize(1, theme::dp(30));
+      row->setAlignment(line, Qt::AlignVCenter);
+    }
+    layout()->setContentsMargins(0, 0, 0, 0);
+    setStyleSheet(QStringLiteral("QFrame#chartToolbar { background: transparent; border: none; }"));
+  }
+  updateView();
+}
+
 void ChartToolbar::setExpanded(bool expanded) {
   if (expanded == m_expanded) {
     return;
@@ -207,21 +226,22 @@ void ChartToolbar::setExpanded(bool expanded) {
 }
 
 void ChartToolbar::updateView() {
-  bool const open{m_pinned || m_expanded};
-  m_handle->setVisible(!m_pinned);
+  bool const open{m_pinned || m_expanded || m_embedded};
+  m_handle->setVisible(!m_pinned && !m_embedded);
   m_tools->setVisible(open);
-  m_collapseBtn->setVisible(!m_pinned);
+  m_collapseBtn->setVisible(!m_pinned && !m_embedded);
+  m_pinBtn->setVisible(!m_embedded);
   // the handle: the tool in use, named and tinted when it is not Inspect
   ToolInfo const t = info(m_tool);
   bool const     special{m_tool != Tool::INSPECT};
-  theme::setThemedIcon(m_handle, QString::fromLatin1(t.icon), px(14), special ? QStringLiteral("accent") : QString{});
+  theme::setThemedIcon(m_handle, QString::fromLatin1(t.icon), theme::dp(26), special ? QStringLiteral("accent") : QString{});
   m_handle->setText(QStringLiteral("▾")); // the icon tells the tool in use
   m_handle->setToolTip(tr("Chart tools · %1").arg(translated(t.name)));
   m_handle->setProperty("active", special);
   m_handle->style()->unpolish(m_handle);
   m_handle->style()->polish(m_handle);
   // faint while it waits, clear when used
-  m_opacity->setOpacity((open || m_hovered || special) ? 1.0 : 0.75);
+  m_opacity->setOpacity((open || m_hovered || special || m_embedded) ? 1.0 : 0.75);
   adjustSize();
   emit sizeChanged();
 }
@@ -235,10 +255,10 @@ bool ChartToolbar::dragPress(QPoint const &global) {
 }
 
 bool ChartToolbar::dragMove(QPoint const &global) {
-  if (!m_pressed || m_pinned) {
+  if (!m_pressed || m_pinned || m_embedded) {
     return false;
   }
-  if (!m_dragging && ((global - m_dragStart).manhattanLength() < px(6))) {
+  if (!m_dragging && ((global - m_dragStart).manhattanLength() < theme::dp(11))) {
     return false; // still a tap
   }
   if (!m_dragging) {
@@ -324,23 +344,23 @@ ChartPad::ChartPad(QWidget *parent) : QFrame{parent} {
   setObjectName("chartPad");
   setAttribute(Qt::WA_StyledBackground);
   auto *grid = new QGridLayout(this);
-  grid->setContentsMargins(px(6), px(6), px(6), px(6));
-  grid->setSpacing(px(2));
+  grid->setContentsMargins(theme::dp(12), theme::dp(12), theme::dp(12), theme::dp(12));
+  grid->setSpacing(theme::dp(4));
   auto button = [this](int size) {
     auto *b = new QToolButton(this);
     b->setObjectName("toolButton");
     b->setFocusPolicy(Qt::NoFocus);
-    b->setFixedSize(px(size), px(size));
+    b->setFixedSize(theme::dp(size), theme::dp(size));
     b->setAutoRepeat(true); // held: keeps going
     b->setAutoRepeatDelay(400);
     b->setAutoRepeatInterval(150);
     return b;
   };
-  m_up     = button(34);
-  m_down   = button(34);
-  m_left   = button(34);
-  m_right  = button(34);
-  m_center = button(34);
+  m_up     = button(64);
+  m_down   = button(64);
+  m_left   = button(64);
+  m_right  = button(64);
+  m_center = button(64);
   m_center->setAutoRepeat(false);
   grid->addWidget(m_up, 0, 1);
   grid->addWidget(m_left, 1, 0);
@@ -368,11 +388,11 @@ void ChartPad::setMode(ChartToolbar::Tool tool) {
   m_mode = tool;
   bool const zoom{tool == ChartToolbar::Tool::ZOOM};
   // zoom: up / down zoom the values in / out, right / left the time in / out; pan: the four directions
-  theme::setThemedIcon(m_up, zoom ? QStringLiteral("plus") : QStringLiteral("up"), px(14));
-  theme::setThemedIcon(m_down, zoom ? QStringLiteral("minus") : QStringLiteral("down"), px(14));
-  theme::setThemedIcon(m_left, zoom ? QStringLiteral("minus") : QStringLiteral("left"), px(14));
-  theme::setThemedIcon(m_right, zoom ? QStringLiteral("plus") : QStringLiteral("right"), px(14));
-  theme::setThemedIcon(m_center, zoom ? QStringLiteral("zoom") : QStringLiteral("pan"), px(16), QStringLiteral("accent"));
+  theme::setThemedIcon(m_up, zoom ? QStringLiteral("plus") : QStringLiteral("up"), theme::dp(26));
+  theme::setThemedIcon(m_down, zoom ? QStringLiteral("minus") : QStringLiteral("down"), theme::dp(26));
+  theme::setThemedIcon(m_left, zoom ? QStringLiteral("minus") : QStringLiteral("left"), theme::dp(26));
+  theme::setThemedIcon(m_right, zoom ? QStringLiteral("plus") : QStringLiteral("right"), theme::dp(26));
+  theme::setThemedIcon(m_center, zoom ? QStringLiteral("zoom") : QStringLiteral("pan"), theme::dp(30), QStringLiteral("accent"));
   m_up->setToolTip(zoom ? tr("Zoom in on the values") : tr("Move up"));
   m_down->setToolTip(zoom ? tr("Zoom out of the values") : tr("Move down"));
   m_left->setToolTip(zoom ? tr("Zoom out of the time") : tr("Earlier"));

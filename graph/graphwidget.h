@@ -26,6 +26,10 @@ class QTextBrowser;
 class QRadioButton;
 class QJsonObject;
 class QGridLayout;
+class QHBoxLayout;
+class QStackedWidget;
+class QToolButton;
+class QVBoxLayout;
 class QSpinBox;
 class QSplitter;
 
@@ -38,6 +42,8 @@ class ChartStatisticsDialog;
 class ChartStatsPanel;
 class ExportDialog;
 class DateTimeField;
+class LiveStatusPanel;
+class RunDetailsForm;
 class OverlayDrawer;
 
 /**
@@ -52,6 +58,10 @@ public:
   ~GraphWidget() override; // the session is saved
 
   void handleAccessChange(QString const &name, AccessManager::AccessLevel newLevel);
+  // for pictures of the page (MainWindow::exportScreens): the two latest experiments of the list (10 min or longer)
+  // side by side (Split right: the older one left), false when there are fewer; and the tabs it opened closed again
+  bool splitLatest();
+  void closeSplitLatest();
 
 signals:
   // a question in the AI panel, with the view it is about (AssistantEngine::ask)
@@ -91,7 +101,7 @@ private:
   // the panel open now follows the focused pane and its tab
   void refreshSide();
   // the + after a pane's tabs: an experiment from the list, or a new comparison
-  void showAddMenu(ChartPane *pane, QPoint const &globalPos);
+  void showExperimentList(ChartPane *pane); // the + of a pane: the experiment list, opening into it
   // every pane's tools pinned beside its chart or floating; remember: for the user logged in
   void setToolbarsPinned(bool pinned, bool remember = true);
   // the tool of the left pane's toolbar, on every pane
@@ -142,7 +152,8 @@ private:
   // the states of the chart from named columns (empty names: in the order of the states)
   [[nodiscard]] std::shared_ptr<DataHolder const> holderFrom(QVector<double> const &times, QStringList const &columns,
                                                              QVector<QVector<double>> const &values) const;
-  void                      editExperimentDetails();
+  void                      saveExperimentDetails();
+  void                      updateDetailsButton(); // Update: some change, valid, the user allowed
   // an experiment of the experiment database
   void                      openStored(QString const &storeKey, QString const &label, QString const &name);
   // ---- the session (open tabs, split, their zoom, options) kept across restarts
@@ -174,8 +185,10 @@ private:
   void                      refreshComparisonStatistics();
   // ---- calculated channels (Options): which ones are drawn, computed from the data shown
   void                      refreshDerivedList();
-  // the live tab follows the chamber: drawn while a job runs, blank otherwise
+  // the live tab follows the chamber: the whole day as recorded, growing while connected
   void                      updateLiveActivity();
+  // the Live tab shown: Expand / Collapse in the tab row, and the status beside the chart while collapsed (default)
+  void                      updateLiveLayout();
   void                      fitView(); // the Fit tool: the whole tab, again on the live day: its last experiment
   // smoothing of the Options drawer, in samples (1: off)
   [[nodiscard]] int         smoothing() const;
@@ -215,6 +228,18 @@ private:
   QWidget                          *m_derivedBox{nullptr};
   bool                              m_liveActive{false};
   QString                           m_liveIdleText;
+  // right of the Live chart while collapsed, a card: the chamber's status (or the open option's panel in its place),
+  // the options bar under it
+  QFrame                           *m_sideColumn{nullptr};
+  QVBoxLayout                      *m_sideColumnLay{nullptr};
+  QStackedWidget                   *m_sideStack{nullptr}; // the status, or the panel's dock
+  QWidget                          *m_panelDock{nullptr};
+  LiveStatusPanel                  *m_liveStatus{nullptr};
+  // under the first pane's chart: the chart's tools; the options bar too while the side column is hidden
+  QHBoxLayout                      *m_footerLay{nullptr};
+  QFrame                           *m_footerLine{nullptr}; // between the tools and the options bar
+  QToolButton                      *m_liveToggle{nullptr}; // Expand / Collapse, over the chart's top right
+  bool                              m_liveExpanded{false};
   OverlayDrawer       *m_drawer{nullptr};
   ChartSideBar        *m_sideBar{nullptr};
   ChartStatsPanel     *m_statsPanel{nullptr};
@@ -229,10 +254,10 @@ private:
   int                  m_aiLive{-1};    // the block of the answer coming in
   QPushButton         *m_aiAskBtn{nullptr};
   QPushButton         *m_aiExplainBtn{nullptr};
-  QPushButton         *m_aiAnomaliesBtn{nullptr}; // a shown experiment's anomalies
-  QPushButton         *m_aiReportBtn{nullptr};    // and its report
-  QPushButton         *m_aiSummaryBtn{nullptr};   // the whole experiment (or comparison) summarized
-  QWidget             *m_aiHeader{nullptr};       // in the panel's header: the model's state, New chat
+  QPushButton         *m_aiSimilarBtn{nullptr}; // a shown experiment against those with the same setpoints
+  QPushButton         *m_aiImproveBtn{nullptr}; // how it could have gone better (the AI Advisor's PID)
+  QPushButton         *m_aiReportBtn{nullptr};  // and its report
+  QWidget             *m_aiHeader{nullptr};       // first row of the page: the model's state, New chat
   QLabel              *m_aiModelDot{nullptr};     // the local model's state
   QLabel              *m_aiModelText{nullptr};
   bool                 m_aiChecking{false};       // "Checking the values…" under the answer
@@ -247,7 +272,8 @@ private:
   // what the chart shows now, for the assistant: an experiment {run, from_s, to_s, from, to, channels, …}, a day {day,
   // from, to} or a comparison {compare, align, align_index, from_s, to_s, channels}
   [[nodiscard]] QJsonObject chartView() const;
-  void                      askAssistant(QString const &question);
+  // intent: a quick button's (explain, similar, improve, report): the assistant fetches what it needs first
+  void                      askAssistant(QString const &question, QString const &intent = {});
   ChartStatisticsDialog *m_statistics{nullptr};
   DateTimeField       *m_fromEdit{nullptr};
   DateTimeField       *m_toEdit{nullptr};
@@ -257,12 +283,22 @@ private:
   QAbstractButton     *m_maxCheck{nullptr};
   QAbstractButton     *m_avgCheck{nullptr};
   QAbstractButton     *m_relativeRadio{nullptr};
-  QPushButton         *m_detailsBtn{nullptr};
+  // Info: a saved experiment's details as fields edited in place, Update saves them
+  QLabel              *m_infoTitle{nullptr};
+  QWidget             *m_detailsBox{nullptr};
+  RunDetailsForm      *m_detailsForm{nullptr};
+  QPushButton         *m_detailsUpdate{nullptr};
+  QLabel              *m_detailsNote{nullptr};
+  QString              m_detailsKey;    // the experiment the fields show (its database key)
+  core::RunMetadata    m_detailsStored; // its details as saved
   AnalysisServices    *m_services{nullptr};
   int                  m_comparisons{0}; // comparison tabs made (their keys)
   bool                 m_canAnnotate{false};
   bool                 m_toolbarPinned{false};
   ChartToolbar::Tool   m_tool{ChartToolbar::Tool::INSPECT};
+  ChartToolbar        *m_tools{nullptr}; // under the first pane's chart, for every pane
+  QStringList          m_splitLatestKeys; // the tabs splitLatest() opened (not open before)
+  QVector<ExperimentRun> m_splitLatestMoved; // open before in the first pane: back there after closeSplitLatest()
   int                  m_dragDepth{0}; // tabs being dragged: panes stay until it ends
   QAbstractButton     *m_scatterRadio{nullptr};
   QTimer              *m_sessionTimer{nullptr};

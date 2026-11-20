@@ -43,16 +43,11 @@ QFrame *card(QWidget *parent) {
   theme::Colors const &c = theme::colors();
   frame->setStyleSheet(QStringLiteral("QFrame#exportCard { background: %1; border: %2px solid %3; border-radius: %4px; }")
                          .arg(c.panelAlt.name())
-                         .arg(px(1))
+                         .arg(theme::dp(1))
                          .arg(c.border.name())
-                         .arg(px(8)));
+                         .arg(theme::radius()));
   return frame;
 }
-
-struct Format {
-  char const *id;
-  char const *label;
-};
 }
 
 ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canReport, bool canBundle, bool canUseFiles, bool canComparisonCsv,
@@ -63,8 +58,8 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
     setWindowFlags(Qt::Widget);
   }
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(embedded ? QMargins(0, 0, px(8), 0) : QMargins(px(20), px(18), px(20), px(16)));
-  lay->setSpacing(px(12));
+  lay->setContentsMargins(embedded ? QMargins(0, 0, theme::dp(16), 0) : QMargins(theme::dp(36), theme::dp(32), theme::dp(36), theme::dp(32)));
+  lay->setSpacing(theme::dp(24));
 
   auto *title = new QLabel(tr("Export"), this);
   QFont font  = title->font();
@@ -75,65 +70,68 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   lay->addWidget(title);
 
   QBoxLayout *columns = embedded ? static_cast<QBoxLayout *>(new QVBoxLayout()) : static_cast<QBoxLayout *>(new QHBoxLayout());
-  columns->setSpacing(px(12));
+  columns->setSpacing(theme::dp(24));
   lay->addLayout(columns, embedded ? 0 : 1);
 
-  // ---- what: file types as chips, in three groups
-  auto *formatCard = card(this);
-  auto *formatLay  = new QVBoxLayout(formatCard);
-  formatLay->setContentsMargins(px(14), px(12), px(14), px(14));
-  formatLay->setSpacing(px(6));
+  // ---- what: file types as chips, in groups
+  int const cardMargin{embedded ? theme::dp(16) : theme::dp(28)}; // the side column is narrow
+  auto     *formatCard = card(this);
+  auto     *formatLay  = new QVBoxLayout(formatCard);
+  formatLay->setContentsMargins(cardMargin, theme::dp(24), cardMargin, theme::dp(28));
+  formatLay->setSpacing(theme::dp(12));
   m_formats = new QButtonGroup(this);
   m_formats->setExclusive(true);
-  auto addGroup = [&](QString const &name, QString const &note, std::initializer_list<Format> formats, bool enabled) {
-    formatLay->addWidget(caption(name, formatCard));
-    auto *row = new QHBoxLayout();
-    row->setSpacing(px(6));
-    for (Format const &format : formats) {
-      auto *chip = new QPushButton(tr(format.label), formatCard);
-      chip->setCheckable(true);
-      chip->setMinimumSize(px(64), px(30));
-      chip->setFocusPolicy(Qt::NoFocus);
-      chip->setProperty("format", QString(format.id));
-      chip->setEnabled(enabled);
-      if (!enabled) {
-        chip->setToolTip(note);
-      }
-      m_formats->addButton(chip);
-      row->addWidget(chip);
-    }
-    row->addStretch();
-    formatLay->addLayout(row);
-    formatLay->addSpacing(px(6));
+  struct Chip {
+    char const *id;
+    char const *label;
+    bool        enabled;
+    QString     note; // why it is off
   };
-  addGroup(tr("Chart image"), QString{}, {{"png", "PNG"}, {"bmp", "BMP"}, {"jpeg", "JPEG"}}, true);
-  addGroup(tr("Data"), QString{}, {{"csv", "CSV"}, {"txt", "TXT"}}, true);
-  formatLay->addWidget(caption(tr("Experiment"), formatCard));
-  {
-    auto *row = new QHBoxLayout();
-    row->setSpacing(px(6));
-    for (auto const &[id, label, enabled, note] :
-         {std::tuple{"html", QT_TR_NOOP("Report HTML"), canReport, tr("Reports need the experiment list")},
-          std::tuple{"pdf", QT_TR_NOOP("Report PDF"), canReport, tr("Reports need the experiment list")},
-          std::tuple{"json", QT_TR_NOOP("Bundle JSON"), canBundle, tr("Only for experiments saved in the experiment database")}}) {
-      auto *chip = new QPushButton(tr(label), formatCard);
-      chip->setCheckable(true);
-      chip->setMinimumSize(px(64), px(30));
-      chip->setFocusPolicy(Qt::NoFocus);
-      chip->setProperty("format", QString(id));
-      chip->setEnabled(enabled);
-      if (!enabled) {
-        chip->setToolTip(note);
-      }
-      m_formats->addButton(chip);
-      row->addWidget(chip);
+  auto addGroup = [&](QString const &name, std::initializer_list<Chip> chips) {
+    formatLay->addWidget(caption(name, formatCard));
+    // embedded: a grid as wide as the card (three short names per row, two long ones); a window: a row of chips
+    bool longNames{false};
+    for (Chip const &chip : chips) {
+      longNames = longNames || (qstrlen(chip.label) > 5);
     }
-    row->addStretch();
-    formatLay->addLayout(row);
-  }
+    int const columns{embedded ? (longNames ? 2 : 3) : static_cast<int>(chips.size())};
+    auto     *grid = new QGridLayout();
+    grid->setSpacing(theme::dp(12));
+    int i{0};
+    for (Chip const &chip : chips) {
+      auto *button = new QPushButton(tr(chip.label), formatCard);
+      button->setCheckable(true);
+      button->setMinimumSize(embedded ? 0 : theme::dp(120), theme::dp(56));
+      if (embedded) {
+        button->setStyleSheet(QStringLiteral("padding-left: %1px; padding-right: %1px;").arg(theme::dp(8)));
+      }
+      button->setFocusPolicy(Qt::NoFocus);
+      button->setProperty("format", QString(chip.id));
+      button->setEnabled(chip.enabled);
+      if (!chip.enabled) {
+        button->setToolTip(chip.note);
+      }
+      m_formats->addButton(button);
+      grid->addWidget(button, i / columns, i % columns);
+      ++i;
+    }
+    if (embedded) {
+      for (int c{0}; c < columns; ++c) {
+        grid->setColumnStretch(c, 1);
+      }
+    } else {
+      grid->setColumnStretch(columns, 1); // the chips at the left
+    }
+    formatLay->addLayout(grid);
+    formatLay->addSpacing(theme::dp(12));
+  };
+  addGroup(tr("Chart image"), {{"png", "PNG", true, {}}, {"bmp", "BMP", true, {}}, {"jpeg", "JPEG", true, {}}});
+  addGroup(tr("Data"), {{"csv", "CSV", true, {}}, {"txt", "TXT", true, {}}});
+  addGroup(tr("Experiment"), {{"html", QT_TR_NOOP("Report HTML"), canReport, tr("Reports need the experiment list")},
+                              {"pdf", QT_TR_NOOP("Report PDF"), canReport, tr("Reports need the experiment list")},
+                              {"json", QT_TR_NOOP("Bundle JSON"), canBundle, tr("Only for experiments saved in the experiment database")}});
   if (canComparisonCsv) {
-    formatLay->addSpacing(px(6));
-    addGroup(tr("Comparison"), QString{}, {{"comparison-csv", QT_TR_NOOP("Comparison CSV")}}, true);
+    addGroup(tr("Comparison"), {{"comparison-csv", QT_TR_NOOP("Comparison CSV"), true, {}}});
   }
   formatLay->addStretch();
   m_formats->buttons().first()->setChecked(true);
@@ -142,8 +140,8 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   // ---- which range
   auto *rangeCard = card(this);
   auto *rangeLay  = new QVBoxLayout(rangeCard);
-  rangeLay->setContentsMargins(px(14), px(12), px(14), px(14));
-  rangeLay->setSpacing(px(6));
+  rangeLay->setContentsMargins(cardMargin, theme::dp(24), cardMargin, theme::dp(28));
+  rangeLay->setSpacing(theme::dp(12));
   rangeLay->addWidget(caption(tr("Range"), rangeCard));
   m_ranges = new QButtonGroup(this);
   for (auto const &[id, text] : {std::pair{Range::VIEW, tr("Visible view")},
@@ -158,9 +156,11 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   for (Range const fromFiles : {Range::DAY, Range::CUSTOM}) {
     m_ranges->button(static_cast<int>(fromFiles))->setVisible(canUseFiles);
   }
+  // From and To: beside their fields in a window; embedded, over them (the fields take the card's width)
   auto *customGrid = new QGridLayout();
-  customGrid->setContentsMargins(px(24), 0, 0, 0);
-  customGrid->setHorizontalSpacing(px(8));
+  customGrid->setContentsMargins(embedded ? 0 : theme::dp(44), embedded ? theme::dp(8) : 0, 0, 0);
+  customGrid->setHorizontalSpacing(theme::dp(16));
+  customGrid->setVerticalSpacing(theme::dp(8));
   QDateTime const dayStart(m_day, QTime(0, 0));
   m_fromEdit = new DateTimeField(dayStart, rangeCard); // date from a calendar, time from the number pad
   m_toEdit   = new DateTimeField(QDateTime(m_day, QTime(23, 59, 59)), rangeCard);
@@ -168,9 +168,15 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   for (auto const &[label, edit] : {std::pair{tr("From"), m_fromEdit}, std::pair{tr("To"), m_toEdit}}) {
     auto *name = new QLabel(label, rangeCard);
     name->setVisible(canUseFiles);
-    customGrid->addWidget(name, row, 0);
-    customGrid->addWidget(edit, row, 1);
-    ++row;
+    if (embedded) {
+      name->setProperty("muted", true);
+      customGrid->addWidget(name, row++, 0);
+      customGrid->addWidget(edit, row++, 0);
+    } else {
+      customGrid->addWidget(name, row, 0);
+      customGrid->addWidget(edit, row, 1);
+      ++row;
+    }
   }
   rangeLay->addLayout(customGrid);
   for (QWidget *edit : std::initializer_list<QWidget *>{m_fromEdit, m_toEdit}) {
@@ -193,10 +199,11 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
   exportBtn->setObjectName("primaryButton");
   exportBtn->setDefault(true);
   for (QPushButton *button : {m_previewBtn, cancelBtn, exportBtn}) {
-    button->setMinimumSize(px(100), px(32));
+    button->setMinimumSize(embedded ? 0 : theme::dp(187), theme::dp(60)); // embedded: they share the narrow width
     button->setFocusPolicy(Qt::NoFocus);
   }
-  buttons->addWidget(m_previewBtn);
+  buttons->setSpacing(theme::dp(12));
+  buttons->addWidget(m_previewBtn, embedded ? 1 : 0);
   if (!embedded) {
     buttons->addStretch();
   }
@@ -219,7 +226,7 @@ ExportDialog::ExportDialog(ResHolder *resHolder, QDate const &day, bool canRepor
 
   updateState();
   if (!embedded) {
-    resize(px(720), sizeHint().height());
+    resize(theme::dp(1350), sizeHint().height());
   }
 }
 

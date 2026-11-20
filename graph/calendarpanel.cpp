@@ -15,10 +15,6 @@
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 QPushButton *link(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
   button->setProperty("link", true);
@@ -34,15 +30,15 @@ QDateTime toDateTime(double epoch) {
 
 CalendarPanel::CalendarPanel(QWidget *parent) : QWidget{parent} {
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(0, 0, px(8), 0);
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, 0, theme::dp(16), 0);
+  lay->setSpacing(theme::dp(16));
 
   // the month, with its arrows
   auto *monthBar = new QHBoxLayout();
   auto  arrow    = [this](QString const &kind, QString const &tip) {
     auto *button = new QPushButton(this);
-    theme::setThemedIcon(button, kind, px(13));
-    button->setFixedSize(px(30), px(30));
+    theme::setThemedIcon(button, kind, theme::dp(24));
+    button->setFixedSize(theme::dp(56), theme::dp(56));
     button->setToolTip(tip);
     button->setFocusPolicy(Qt::NoFocus);
     return button;
@@ -57,7 +53,7 @@ CalendarPanel::CalendarPanel(QWidget *parent) : QWidget{parent} {
   monthBar->addWidget(nextBtn);
   lay->addLayout(monthBar);
   m_calendar = new CalendarCustomWidget({}, this);
-  m_calendar->setMinimumHeight(px(230));
+  m_calendar->setMinimumHeight(theme::dp(431));
   lay->addWidget(m_calendar);
 
   auto *line = new QFrame(this);
@@ -76,7 +72,7 @@ CalendarPanel::CalendarPanel(QWidget *parent) : QWidget{parent} {
   lay->addLayout(dayBar);
   m_list = new QListWidget(this);
   m_list->setObjectName("statsList");
-  m_list->setMinimumHeight(px(200));
+  m_list->setMinimumHeight(theme::dp(375));
   touch::enableScrolling(m_list);
   lay->addWidget(m_list, 1);
   auto *liveBtn = link(tr("Back to the live data of today"), this);
@@ -145,12 +141,12 @@ void CalendarPanel::showDay(QDate const &date) {
     auto const                     total      = static_cast<qint64>(std::max(0.0, experiment.end - experiment.start));
     auto *row    = new QWidget();
     auto *rowLay = new QHBoxLayout(row);
-    rowLay->setContentsMargins(px(10), 0, px(10), 0);
-    rowLay->setSpacing(px(12));
+    rowLay->setContentsMargins(theme::dp(20), 0, theme::dp(20), 0);
+    rowLay->setSpacing(theme::dp(24));
     int const number{m_numbers.value(experiment.key)};
     auto     *numberLabel = new QLabel(number > 0 ? QStringLiteral("#%1").arg(number) : QStringLiteral("—"), row);
     numberLabel->setProperty("muted", true);
-    numberLabel->setMinimumWidth(px(46));
+    numberLabel->setMinimumWidth(theme::dp(86));
     auto *timeLabel = new QLabel(toDateTime(experiment.start).toString(QStringLiteral("HH:mm")), row);
     timeLabel->setObjectName("statsValue");
     QFont bold = timeLabel->font();
@@ -168,7 +164,7 @@ void CalendarPanel::showDay(QDate const &date) {
     auto *item = new QListWidgetItem(m_list);
     item->setData(Qt::UserRole, index);
     item->setToolTip(experiment.name);
-    item->setSizeHint(QSize(0, px(38)));
+    item->setSizeHint(QSize(0, theme::dp(71)));
     m_list->setItemWidget(item, row);
   }
 }

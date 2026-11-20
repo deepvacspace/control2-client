@@ -39,6 +39,8 @@ public:
   void               setPinned(bool pinned);
   [[nodiscard]] bool pinned() const;
   void               setAnnotateEnabled(bool enabled);
+  // under the Analysis page's chart: always open, a row of icons, no handle, pin, close or dragging
+  void               setEmbedded(bool embedded);
   // the Labels and Tooltip toggles, kept in step with these actions
   void               bindToggles(QAction *labels, QAction *tooltip);
 
@@ -60,7 +62,7 @@ protected:
 private:
   void         setExpanded(bool expanded);
   void         updateView();
-  QToolButton *addButton(QString const &icon, QString const &tip, bool checkable);
+  QToolButton *addButton(QString const &icon, QString const &name, QString const &tip, bool checkable);
   void         addSeparator();
 
   QToolButton            *m_handle{nullptr};
@@ -76,6 +78,7 @@ private:
   Tool                    m_tool{Tool::INSPECT};
   bool                    m_expanded{false};
   bool                    m_pinned{false};
+  bool                    m_embedded{false};
   bool                    m_hovered{false};
   // dragging: from where (global), and whether it moved far enough to be a drag rather than a tap
   QPoint                  m_dragLast;

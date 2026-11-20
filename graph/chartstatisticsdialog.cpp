@@ -2,6 +2,7 @@
 
 #include <QComboBox>
 #include <QDateTime>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -16,6 +17,7 @@
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
 
 #include "analysisnotesstore.h"
@@ -37,17 +39,13 @@
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 QString statText(double value) {
   if (!std::isfinite(value)) {
     return QStringLiteral("—");
   }
   double const absValue{std::fabs(value)};
   if ((absValue != 0.0) && ((absValue < 1e-3) || (absValue >= 1e6))) {
-    return QString::number(value, 'e', 2);
+    return utils::formatScientific(value, 2, false);
   }
   return QString::number(value, 'f', absValue >= 100 ? 1 : 3);
 }
@@ -101,6 +99,63 @@ private:
   QSet<int> m_right;
 };
 
+// The stretch column takes the room the others leave, but is never narrower than its own texts: when the table is too
+// narrow for all of them it scrolls sideways instead of cutting them to "…". Checked when the table is resized or filled
+class ColumnFitter : public QObject {
+public:
+  ColumnFitter(QTableWidget *table, int stretchColumn) : QObject{table}, m_table{table}, m_column{stretchColumn} {
+    m_timer.setSingleShot(true);
+    m_timer.setInterval(0);
+    connect(&m_timer, &QTimer::timeout, this, &ColumnFitter::fit);
+    table->viewport()->installEventFilter(this);
+    QAbstractItemModel const *model = table->model();
+    connect(model, &QAbstractItemModel::rowsInserted, &m_timer, qOverload<>(&QTimer::start));
+    connect(model, &QAbstractItemModel::rowsRemoved, &m_timer, qOverload<>(&QTimer::start));
+    connect(model, &QAbstractItemModel::dataChanged, &m_timer, qOverload<>(&QTimer::start));
+    connect(model, &QAbstractItemModel::modelReset, &m_timer, qOverload<>(&QTimer::start));
+  }
+
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override {
+    if ((event->type() == QEvent::Resize) || (event->type() == QEvent::Show)) {
+      m_timer.start();
+    }
+    return QObject::eventFilter(watched, event);
+  }
+
+private:
+  void fit() {
+    QHeaderView *header = m_table->horizontalHeader();
+    if ((m_column < 0) || (m_column >= header->count())) {
+      return;
+    }
+    // (public in the view's base class: the table view makes it protected)
+    QAbstractItemView const *view = m_table;
+    auto wanted = [view, header](int column) { return std::max(view->sizeHintForColumn(column), header->sectionSizeHint(column)); };
+    int  others{0};
+    for (int column{0}; column < header->count(); ++column) {
+      if ((column != m_column) && !header->isSectionHidden(column)) {
+        others += wanted(column);
+      }
+    }
+    bool const                      room{m_table->viewport()->width() - others >= wanted(m_column)};
+    QHeaderView::ResizeMode const mode{room ? QHeaderView::Stretch : QHeaderView::ResizeToContents};
+    if (header->sectionResizeMode(m_column) != mode) {
+      header->setSectionResizeMode(m_column, mode);
+    }
+  }
+
+  QTableWidget *m_table;
+  int           m_column;
+  QTimer        m_timer;
+};
+
+// a cell's whole text as its tip: a long one (an anomaly's detail, an event's message) is read there
+QTableWidgetItem *tipped(QTableWidgetItem *item) {
+  item->setToolTip(item->text());
+  return item;
+}
+
 QTableWidget *makeTable(QStringList const &headers, int stretchColumn, QWidget *parent, QSet<int> const &numeric = {}) {
   auto *table = new QTableWidget(0, static_cast<int>(headers.size()), parent);
   table->setObjectName("statsTable");
@@ -122,7 +177,7 @@ QTableWidget *makeTable(QStringList const &headers, int stretchColumn, QWidget *
   heading.setLetterSpacing(QFont::PercentageSpacing, 104);
   table->horizontalHeader()->setFont(heading);
   table->verticalHeader()->setVisible(false);
-  table->verticalHeader()->setDefaultSectionSize(px(34));
+  table->verticalHeader()->setDefaultSectionSize(theme::dp(63));
   table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
   table->horizontalHeader()->setHighlightSections(false);
   table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
@@ -132,13 +187,16 @@ QTableWidget *makeTable(QStringList const &headers, int stretchColumn, QWidget *
   table->setSelectionMode(QAbstractItemView::SingleSelection);
   table->setShowGrid(false);
   table->setWordWrap(false);
+  table->setTextElideMode(Qt::ElideRight);
+  table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+  new ColumnFitter(table, stretchColumn);
   touch::enableScrolling(table);
   return table;
 }
 
 QPushButton *makeButton(QString const &text, QWidget *parent) {
   auto *button = new QPushButton(text, parent);
-  button->setMinimumSize(px(110), px(32));
+  button->setMinimumSize(theme::dp(206), theme::dp(60));
   button->setFocusPolicy(Qt::NoFocus);
   return button;
 }
@@ -149,12 +207,12 @@ ChartStatisticsDialog::ChartStatisticsDialog(ResHolder *resHolder, AnalysisNotes
   setWindowTitle(tr("Statistics"));
   setModal(false); // the chart can still be zoomed and panned: the statistics follow it
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(px(16), px(12), px(16), px(14));
-  lay->setSpacing(px(10));
+  lay->setContentsMargins(theme::dp(32), theme::dp(24), theme::dp(32), theme::dp(28));
+  lay->setSpacing(theme::dp(20));
   auto *card = new QFrame(this);
   card->setObjectName("statsCard");
   auto *cardLay = new QVBoxLayout(card);
-  cardLay->setContentsMargins(px(16), px(10), px(16), px(14));
+  cardLay->setContentsMargins(theme::dp(32), theme::dp(20), theme::dp(32), theme::dp(28));
 
   m_tabs = new QTabWidget(card);
   theme::setFlatTabs(m_tabs);
@@ -180,7 +238,7 @@ ChartStatisticsDialog::ChartStatisticsDialog(ResHolder *resHolder, AnalysisNotes
 
   // the buttons of the selected tab, then Close
   auto *buttons = new QHBoxLayout();
-  buttons->setSpacing(px(8));
+  buttons->setSpacing(theme::dp(16));
   m_showBtn             = makeButton(tr("Show on chart"), this);
   m_editBtn             = makeButton(tr("Edit…"), this);
   m_removeAnnotationBtn = makeButton(tr("Remove"), this);
@@ -240,14 +298,14 @@ ChartStatisticsDialog::ChartStatisticsDialog(ResHolder *resHolder, AnalysisNotes
   connect(m_rangeTimer, &QTimer::timeout, this, &ChartStatisticsDialog::refreshRange);
 
   updateButtons();
-  resize(px(860), px(520));
+  resize(theme::dp(1612), theme::dp(975));
 }
 
 QWidget *ChartStatisticsDialog::buildRangePage() {
   auto *page = new QWidget(this);
   auto *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(0, px(8), 0, 0);
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, theme::dp(16), 0, 0);
+  lay->setSpacing(theme::dp(16));
   m_rangeLabel = new QLabel(page);
   m_rangeLabel->setProperty("muted", true);
   m_rangeTable = makeTable({tr("Channel"), tr("n"), tr("Missing"), tr("Min"), tr("Max"), tr("Mean"), tr("Std"), tr("RMS"),
@@ -261,8 +319,8 @@ QWidget *ChartStatisticsDialog::buildRangePage() {
 QWidget *ChartStatisticsDialog::buildAnnotationsPage() {
   auto *page = new QWidget(this);
   auto *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(0, px(8), 0, 0);
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, theme::dp(16), 0, 0);
+  lay->setSpacing(theme::dp(16));
   m_annotationsTable = makeTable({QString(), tr("Label"), tr("From"), tr("To"), tr("Duration"), tr("By")}, 1, page);
   lay->addWidget(m_annotationsTable, 1);
   return page;
@@ -271,11 +329,11 @@ QWidget *ChartStatisticsDialog::buildAnnotationsPage() {
 QWidget *ChartStatisticsDialog::buildRulesPage() {
   auto *page = new QWidget(this);
   auto *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(0, px(8), 0, 0);
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, theme::dp(16), 0, 0);
+  lay->setSpacing(theme::dp(16));
 
   m_ruleChannelCombo = new QComboBox(page);
-  m_ruleChannelCombo->setMinimumHeight(px(30));
+  m_ruleChannelCombo->setMinimumHeight(theme::dp(56));
   m_ruleChannelCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
   m_ruleChannelCombo->setMinimumContentsLength(18);
   QStringList const  names  = m_resHolder->states->getNames();
@@ -291,14 +349,14 @@ QWidget *ChartStatisticsDialog::buildRulesPage() {
   m_ruleHiEdit->setPlaceholderText(tr("max"));
   m_ruleLabelEdit->setPlaceholderText(tr("label"));
   for (QLineEdit *edit : {m_ruleLoEdit, m_ruleHiEdit}) {
-    edit->setFixedWidth(px(90));
+    edit->setFixedWidth(theme::dp(168));
   }
   for (QLineEdit *edit : {m_ruleLoEdit, m_ruleHiEdit, m_ruleLabelEdit}) {
-    edit->setMinimumHeight(px(30));
+    edit->setMinimumHeight(theme::dp(56));
   }
-  m_ruleColorCombo = annotationdialog::makeColorCombo(page, px(30));
+  m_ruleColorCombo = annotationdialog::makeColorCombo(page, theme::dp(56));
   auto *form       = new QHBoxLayout();
-  form->setSpacing(px(6));
+  form->setSpacing(theme::dp(12));
   form->addWidget(m_ruleChannelCombo, 2);
   form->addWidget(m_ruleLoEdit);
   form->addWidget(m_ruleHiEdit);
@@ -329,15 +387,15 @@ void ChartStatisticsDialog::setComparisonMode(bool comparison) {
 QWidget *ChartStatisticsDialog::buildKpiPage() {
   auto *page = new QWidget(this);
   auto *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(0, px(8), 0, 0);
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, theme::dp(16), 0, 0);
+  lay->setSpacing(theme::dp(16));
   auto *tiles = new QHBoxLayout();
-  tiles->setSpacing(px(16));
+  tiles->setSpacing(theme::dp(32));
   for (QString const &title : {tr("MAE"), tr("RMSE"), tr("Max error"), tr("Overshoot"), tr("Undershoot"), tr("Settling"), tr("Tail MAE")}) {
     auto *tile    = new QWidget(page);
     auto *tileLay = new QVBoxLayout(tile);
     tileLay->setContentsMargins(0, 0, 0, 0);
-    tileLay->setSpacing(px(1));
+    tileLay->setSpacing(theme::dp(4));
     auto *name = new QLabel(title, tile);
     name->setProperty("muted", true);
     auto *value = new QLabel(QStringLiteral("—"), tile);
@@ -372,8 +430,8 @@ QWidget *ChartStatisticsDialog::buildKpiPage() {
 QWidget *ChartStatisticsDialog::buildAnomaliesPage() {
   auto *page = new QWidget(this);
   auto *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(0, px(8), 0, 0);
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, theme::dp(16), 0, 0);
+  lay->setSpacing(theme::dp(16));
   m_anomalyLabel = new QLabel(page);
   m_anomalyLabel->setWordWrap(true);
   m_anomalyLabel->setProperty("muted", true);
@@ -394,8 +452,8 @@ QWidget *ChartStatisticsDialog::buildAnomaliesPage() {
 QWidget *ChartStatisticsDialog::buildEventsPage() {
   auto *page = new QWidget(this);
   auto *lay  = new QVBoxLayout(page);
-  lay->setContentsMargins(0, px(8), 0, 0);
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, theme::dp(16), 0, 0);
+  lay->setSpacing(theme::dp(16));
   m_eventsLabel = new QLabel(page);
   m_eventsLabel->setWordWrap(true);
   m_eventsLabel->setProperty("muted", true);
@@ -464,7 +522,7 @@ void ChartStatisticsDialog::setInsight(RunInsight const &insight, bool computing
                               step ? statText(stage.kpis.steadyStateError) : QStringLiteral("—"),
                               analysistext::percent(d.steadyFraction)};
       for (int c{0}; c < cells.size(); ++c) {
-        auto *item = new QTableWidgetItem(cells[c]);
+        auto *item = tipped(new QTableWidgetItem(cells[c]));
         if (c == 1) {
           item->setForeground(analysistext::stageColor(s.kind));
         }
@@ -489,7 +547,7 @@ void ChartStatisticsDialog::setInsight(RunInsight const &insight, bool computing
     QStringList const    cells{analysistext::severityName(anomaly.severity), analysistext::anomalyName(anomaly.kind), anomaly.channel,
                             clockText(insight.start + anomaly.start), secondsText(anomaly.end - anomaly.start), anomaly.detail};
     for (int c{0}; c < cells.size(); ++c) {
-      auto *item = new QTableWidgetItem(cells[c]);
+      auto *item = tipped(new QTableWidgetItem(cells[c]));
       if (c == 0) {
         item->setForeground(analysistext::severityColor(anomaly.severity));
       }
@@ -511,7 +569,7 @@ void ChartStatisticsDialog::setInsight(RunInsight const &insight, bool computing
     QStringList const     cells{clockText(event.time), runrecord::eventTypeName(event.type),
                             event.source == QLatin1String("app") ? tr("live") : tr("signal"), event.message};
     for (int c{0}; c < cells.size(); ++c) {
-      auto *item = new QTableWidgetItem(cells[c]);
+      auto *item = tipped(new QTableWidgetItem(cells[c]));
       if (c == 1) {
         item->setForeground(runrecord::eventColor(event.type));
       }
@@ -592,7 +650,7 @@ void ChartStatisticsDialog::refreshRange() {
     int const row{m_rangeTable->rowCount()};
     m_rangeTable->insertRow(row);
     for (int c{0}; c < cells.size(); ++c) {
-      auto *item = new QTableWidgetItem(cells[c]);
+      auto *item = tipped(new QTableWidgetItem(cells[c]));
       item->setTextAlignment(c == 0 ? (Qt::AlignLeft | Qt::AlignVCenter) : (Qt::AlignRight | Qt::AlignVCenter));
       m_rangeTable->setItem(row, c, item);
     }
@@ -611,12 +669,12 @@ void ChartStatisticsDialog::refreshAnnotations() {
   for (auto const &annotation : m_notes->annotations(times.first(), end, m_runKey)) {
     int const row{m_annotationsTable->rowCount()};
     m_annotationsTable->insertRow(row);
-    QPixmap swatch(px(12), px(12));
+    QPixmap swatch(theme::dp(22), theme::dp(22));
     swatch.fill(annotation.color);
     auto *colorItem = new QTableWidgetItem(QIcon(swatch), QString{});
     colorItem->setData(Qt::UserRole, annotation.id);
     m_annotationsTable->setItem(row, 0, colorItem);
-    m_annotationsTable->setItem(row, 1, new QTableWidgetItem(annotation.label));
+    m_annotationsTable->setItem(row, 1, tipped(new QTableWidgetItem(annotation.label)));
     auto *fromItem = new QTableWidgetItem(clockText(annotation.start));
     fromItem->setData(Qt::UserRole, annotation.start);
     auto *toItem = new QTableWidgetItem(clockText(annotation.end));
@@ -669,7 +727,7 @@ void ChartStatisticsDialog::refreshRules() {
     QString const channel = (index >= 0) ? m_ruleChannelCombo->itemText(index) : rule.channel;
     QString const limits  = QStringLiteral("%1 … %2").arg(std::isnan(rule.lo) ? QStringLiteral("−∞") : statText(rule.lo),
                                                          std::isnan(rule.hi) ? QStringLiteral("+∞") : statText(rule.hi));
-    QPixmap swatch(px(12), px(12));
+    QPixmap swatch(theme::dp(22), theme::dp(22));
     swatch.fill(rule.color);
     auto *item = new QListWidgetItem(QIcon(swatch), rule.label.isEmpty() ? QStringLiteral("%1: %2").arg(channel, limits)
                                                                          : QStringLiteral("%1 — %2: %3").arg(rule.label, channel, limits));

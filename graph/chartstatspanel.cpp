@@ -14,14 +14,11 @@
 #include "runanalysis.h"
 #include "seriesstats.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 // "−69.640 °C"; "—" when there is no value
 QString valueText(double value, QString const &unit, int decimals = 3) {
   if (!std::isfinite(value)) {
@@ -57,19 +54,22 @@ QLabel *caption(QString const &text, QWidget *parent) {
 ChartStatsPanel::ChartStatsPanel(QStringList const &names, QVariantList const &styles, QWidget *parent)
     : QWidget{parent}, m_names{names}, m_styles{styles}, m_timer{new QTimer(this)} {
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(0, 0, px(8), 0);
-  lay->setSpacing(px(6));
+  lay->setContentsMargins(0, 0, theme::dp(16), 0);
+  lay->setSpacing(theme::dp(12));
 
   m_rangeLabel = new QLabel(this);
   m_rangeLabel->setProperty("muted", true);
   m_rangeLabel->setWordWrap(true);
   lay->addWidget(m_rangeLabel);
-  lay->addSpacing(px(4));
+  lay->addSpacing(theme::dp(8));
 
   // one channel of the visible range, temperature unless chosen otherwise
   m_channel = new QComboBox(this);
   m_channel->setProperty("soft", true);
-  m_channel->setMinimumHeight(px(30));
+  m_channel->setMinimumHeight(theme::dp(56));
+  // as wide as the panel, not as its longest channel name
+  m_channel->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+  m_channel->setMinimumContentsLength(12);
   for (int i{0}; i < names.size(); ++i) {
     QString const label = (i < styles.size()) ? styles[i].toMap().value("label").toString() : QString{};
     m_channel->addItem(label.isEmpty() ? names[i] : label, i);
@@ -78,7 +78,7 @@ ChartStatsPanel::ChartStatsPanel(QStringList const &names, QVariantList const &s
   lay->addWidget(m_channel);
   m_channelBox = makeBox({tr("Min"), tr("Max"), tr("Mean"), tr("Std"), tr("Slope"), tr("P95")}, m_channelValues);
   lay->addWidget(m_channelBox);
-  lay->addSpacing(px(8));
+  lay->addSpacing(theme::dp(16));
 
   m_controlCaption = caption(tr("Control vs setpoint"), this);
   lay->addWidget(m_controlCaption);
@@ -89,10 +89,11 @@ ChartStatsPanel::ChartStatsPanel(QStringList const &names, QVariantList const &s
   m_note->setProperty("muted", true);
   m_note->setWordWrap(true);
   lay->addWidget(m_note);
-  lay->addSpacing(px(8));
+  lay->addSpacing(theme::dp(16));
 
-  auto *fullBtn = new QPushButton(tr("Full report: stages, anomalies, rules"), this);
-  fullBtn->setMinimumHeight(px(32));
+  auto *fullBtn = new QPushButton(tr("Full report"), this); // short: the side column is narrow
+  fullBtn->setToolTip(tr("Full report: stages, anomalies, rules"));
+  fullBtn->setMinimumHeight(theme::dp(60));
   fullBtn->setFocusPolicy(Qt::NoFocus);
   lay->addWidget(fullBtn);
   lay->addStretch();
@@ -108,8 +109,8 @@ QFrame *ChartStatsPanel::makeBox(QStringList const &names, QVector<QLabel *> &va
   auto *box  = new QFrame(this);
   box->setObjectName("statsBox");
   auto *grid = new QGridLayout(box);
-  grid->setContentsMargins(px(12), px(4), px(12), px(4));
-  grid->setHorizontalSpacing(px(12));
+  grid->setContentsMargins(theme::dp(24), theme::dp(8), theme::dp(24), theme::dp(8));
+  grid->setHorizontalSpacing(theme::dp(24));
   grid->setVerticalSpacing(0);
   for (int i{0}; i < names.size(); ++i) {
     if (i > 0) {
@@ -123,7 +124,7 @@ QFrame *ChartStatsPanel::makeBox(QStringList const &names, QVector<QLabel *> &va
     value->setObjectName("statsValue");
     value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     value->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    name->setMinimumHeight(px(30));
+    name->setMinimumHeight(theme::dp(56));
     grid->addWidget(name, 2 * i, 0);
     grid->addWidget(value, 2 * i, 1);
     values << value;

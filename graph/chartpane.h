@@ -10,6 +10,7 @@
 #include "dataholder.h"
 
 class QHBoxLayout;
+class QVBoxLayout;
 class QStackedWidget;
 class QToolButton;
 class QTabBar;
@@ -82,7 +83,7 @@ public:
   void refreshRegions();
   // live tab: the data manager started a new interval
   void reloadLive(double key);
-  // live tab: drawn only while the chamber runs a job (else blank, with `idleText`)
+  // live tab: the day's recording, growing while connected (active); not connected: `idleText` beside the date
   void setLiveActive(bool active, QString const &idleText);
   // highlighted as the pane the buttons act on (only while the page is split)
   void setHighlighted(bool highlighted);
@@ -95,6 +96,14 @@ public:
   void setToolbarShown(bool shown);
   // the card holding the panes: the floating tools move over all of it (both panes) and start at its left edge
   void setToolbarArea(QWidget *area);
+  // at the top right of the chart, over it (the Live tab's Expand / Collapse); placed again when shown
+  void setCornerWidget(QWidget *widget);
+  void placeCorner() { placeOverlays(); }
+  // under the chart in its card, a line between (the first pane: the chart's tools)
+  void setFooterWidget(QWidget *widget);
+  [[nodiscard]] QWidget *chartCard() const;
+  // right of the chart, about 29 % of the pane's width while shown (the Live tab's status and the options)
+  void setSideWidget(QWidget *widget);
   // the tool in use on this pane's charts; pad: the zoom / pan pad here (the selected pane)
   void setTool(ChartToolbar::Tool tool, bool pad);
 
@@ -113,7 +122,7 @@ signals:
   // a tab is being dragged out of this pane (no pane may go away until it ends)
   void tabDragStarted();
   void tabDragFinished();
-  // the + after the tabs: open an experiment or a comparison here
+  // the + after the tabs: the experiment list (open one, or a comparison), into this pane
   void addRequested(QPoint const &globalPos);
   // the pad's middle icon: back to Inspect
   void toolResetRequested();
@@ -134,6 +143,10 @@ private:
 
 private:
   void showTab(int index);
+  // past the first MAX_SHOWN tabs the others are hidden, listed under the chevron before the +; the selected tab is
+  // always among the shown ones (moved into the last place when it was hidden)
+  void updateOverflow();
+  void showOverflowMenu();
   void attachViewer(DataViewer *viewer);
   void detachViewer(DataViewer *viewer);
   void startTabDrag(QString const &key);
@@ -145,10 +158,16 @@ private:
   QStringList         m_channelNames;
   QTabBar            *m_tabBar;
   QStackedWidget     *m_stack;
-  QHBoxLayout        *m_chartRow{nullptr}; // the pinned tools, then the chart
+  QFrame             *m_chartCard{nullptr}; // holds m_stack, then the footer
+  QVBoxLayout        *m_cardLay{nullptr};
+  QWidget            *m_corner{nullptr};   // over the chart's top right
+  QHBoxLayout        *m_header{nullptr};   // the tabs, then the +
+  QHBoxLayout        *m_chartRow{nullptr}; // the pinned tools, the chart card, the side widget
   ChartToolbar       *m_toolbar{nullptr};
   ChartPad           *m_pad{nullptr};
   QToolButton        *m_addBtn{nullptr};
+  QToolButton        *m_moreBtn{nullptr}; // the hidden tabs (the chevron before the +)
+  bool                m_inOverflow{false};
   ChartToolbar::Tool  m_tool{ChartToolbar::Tool::INSPECT};
   bool                m_padShown{false};
   // the floating tools moved by the user: where, from the top left corner of their area
