@@ -130,7 +130,7 @@ void ProgramModel::printToDebug() const {
   debug.noquote();
 
   debug << "vvv PROG vvv \n";
-  debug << "Program type:" << (ProgType::SETPOINT == m_progType ? "MANUAL" : "PROG") << "\n";
+  debug << "Program type:" << (ProgType::SETPOINT == m_progType ? "SETPOINT" : "PROG") << "\n";
   debug << "Cycle count:" << m_cycle_count << "\n";
   debug << "Cycle start:" << m_cycle_start << "\n";
   debug << "Cycle end:" << m_cycle_end << "\n";

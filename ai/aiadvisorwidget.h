@@ -29,7 +29,7 @@ class LineEditNum;
 //
 // Run experiment starts the chamber itself (a single-interval SETPOINT
 // job targeting the user-entered temperature, the same JOB message
-// Manual/Program control's Start button sends) and stops it (the same
+// Control's Start button sends) and stops it (the same
 // "stop" command their Stop button sends) when the run ends, is stopped,
 // or aborts. Once started, the trained PPO advisor
 // re-decides the PID triplet every mpc_hold_s of real wall-clock time from

@@ -1,5 +1,6 @@
 #include "intervalcardlist.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <algorithm>
 #include <cmath>
@@ -25,10 +26,6 @@
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 QString number(double value, int prec) {
   return QString::number(value, 'f', prec).replace(QLatin1Char('-'), QChar(0x2212));
 }
@@ -36,7 +33,7 @@ QString number(double value, int prec) {
 // a custom ramp's rate (°C/min), on its flags item: kept while the program is edited, so its duration follows its change
 // of temperature. Not saved: a loaded program's rate is worked out from its ramp (change and duration).
 constexpr int RATE_ROLE{Qt::UserRole + 20};
-// the custom ramp rates allowed, as on the Manual control page
+// the custom ramp rates allowed
 constexpr double RATE_MIN{0.01};
 constexpr double RATE_MAX{10.0};
 
@@ -46,8 +43,8 @@ enum Mode { FULL_SPEED = 0, LINEAR_RAMP = 1, CUSTOM_RATE = 2 };
 
 IntervalCardList::IntervalCardList(QWidget *parent) : QWidget{parent} {
   m_lay = new QVBoxLayout(this);
-  m_lay->setContentsMargins(0, 0, px(8), 0);
-  m_lay->setSpacing(px(6));
+  m_lay->setContentsMargins(0, 0, theme::dp(16), 0);
+  m_lay->setSpacing(theme::dp(12));
   m_lay->addStretch();
   // as tall as its cards: what is under it (the cycle) follows a closed card right away
   setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -239,7 +236,9 @@ bool IntervalCardList::applyCustomRates() {
       }
       continue;
     }
-    int const duration{static_cast<int>(std::lround(*change / rate.toDouble() * 60.0))};
+    // at least a second, and below the time that means "held until stopped" (a slow ramp over a large change)
+    int const duration{static_cast<int>(
+      std::clamp(std::round(*change / std::max(rate.toDouble(), RATE_MIN) * 60.0), 1.0, static_cast<double>(HOLD_UNTIL_STOPPED - 1)))};
     if (duration != static_cast<int>(valueOf(durationRow, interval))) {
       m_model->getStandardModel()->item(durationRow, interval)->setData(duration, type);
       changed = true;
@@ -286,6 +285,7 @@ void IntervalCardList::closeEditor() {
   m_setpointLabel = nullptr;
   m_durationEdit  = nullptr;
   m_durationLabel = nullptr;
+  m_untilStoppedCheck = nullptr;
   m_modeCombo     = nullptr;
   m_rateEdit      = nullptr;
   m_labelEdit     = nullptr;
@@ -316,8 +316,8 @@ void IntervalCardList::rebuild() {
     card.frame = new QFrame(this);
     card.frame->setObjectName("intervalCard");
     auto *cardLay = new QVBoxLayout(card.frame);
-    cardLay->setContentsMargins(px(8), px(6), px(8), px(6));
-    cardLay->setSpacing(px(6));
+    cardLay->setContentsMargins(theme::dp(16), theme::dp(12), theme::dp(16), theme::dp(12));
+    cardLay->setSpacing(theme::dp(12));
     // the head: a tap opens or closes the card
     card.head = new QFrame(card.frame);
     card.head->setProperty("interval", interval);
@@ -325,11 +325,11 @@ void IntervalCardList::rebuild() {
     card.head->setCursor(Qt::PointingHandCursor);
     auto *headLay = new QHBoxLayout(card.head);
     headLay->setContentsMargins(0, 0, 0, 0);
-    headLay->setSpacing(px(8));
+    headLay->setSpacing(theme::dp(16));
     card.number = new QLabel(QStringLiteral("%1").arg(interval + 1, 2, 10, QLatin1Char('0')), card.head);
     card.number->setObjectName("intervalNumber");
     card.number->setAlignment(Qt::AlignCenter);
-    card.number->setFixedSize(px(28), px(22));
+    card.number->setFixedSize(theme::dp(52), theme::dp(41));
     auto *texts = new QVBoxLayout();
     texts->setSpacing(0);
     card.title = new QLabel(card.head);
@@ -364,7 +364,7 @@ void IntervalCardList::refreshTexts() {
   int const          durationRow{static_cast<int>(order.indexOf(QStringLiteral("duration")))};
   int const          tempRow{static_cast<int>(order.indexOf(QStringLiteral("temp")))};
   int const          flagsRow{m_model->getFlagsIndex()};
-  int const          chevron{px(14)};
+  int const          chevron{theme::dp(26)};
   theme::Colors const &c = theme::colors();
   for (int interval{0}; interval < m_cards.size(); ++interval) {
     Card const   &card = m_cards[interval];
@@ -388,7 +388,7 @@ void IntervalCardList::refreshTexts() {
           QVariantMap const param = params.value(row).toMap();
           bool const        scientific{param.value("notation").toString() == QLatin1String("scientific")};
           others << QStringLiteral("%1 %2").arg(param.value("label").toString(),
-                                                scientific ? utils::formatSciE(value(row)) : number(value(row), param.value("prec", 1).toInt()));
+                                                scientific ? utils::formatSci10(value(row)) : number(value(row), param.value("prec", 1).toInt()));
         }
       }
       title = others.isEmpty() ? tr("No setpoint") : others.join(QStringLiteral(" · "));
@@ -396,7 +396,7 @@ void IntervalCardList::refreshTexts() {
     card.title->setText(title);
     // how long, and its label
     long const  duration{(durationRow >= 0) ? static_cast<long>(value(durationRow)) : 0L};
-    QStringList parts{utils::timeFromSec(duration)};
+    QStringList parts{(duration >= HOLD_UNTIL_STOPPED) ? tr("until stopped") : utils::timeFromSec(duration)};
     if (QString const note = m_notes.value(interval); !note.isEmpty()) {
       parts << note;
     }
@@ -433,7 +433,7 @@ void IntervalCardList::openCard(int interval) {
           if (!area->widget() || !area->widget()->isAncestorOf(frame)) {
             return;
           }
-          int const      margin{px(8)};
+          int const      margin{theme::dp(15)};
           int const      top{frame->mapTo(area->widget(), QPoint(0, 0)).y()};
           int const      bottom{top + frame->height()};
           QScrollBar    *bar = area->verticalScrollBar();
@@ -454,16 +454,16 @@ void IntervalCardList::buildEditor(int interval) {
   Card const &card = m_cards[interval];
   m_editor         = new QWidget(card.frame);
   auto *lay        = new QVBoxLayout(m_editor);
-  lay->setContentsMargins(0, px(2), 0, px(2));
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(0, theme::dp(4), 0, theme::dp(4));
+  lay->setSpacing(theme::dp(16));
   auto *grid = new QGridLayout();
-  grid->setHorizontalSpacing(px(8));
-  grid->setVerticalSpacing(px(2));
+  grid->setHorizontalSpacing(theme::dp(16));
+  grid->setVerticalSpacing(theme::dp(4));
   int  field{0};
   // in the field's cell (two columns, each title over its field); several edits may share one cell, one of them shown
   auto place = [&](QWidget *edit, int at) {
     grid->addWidget(edit, (at / 2) * 2 + 1, at % 2);
-    edit->setMinimumHeight(px(32));
+    edit->setMinimumHeight(theme::dp(60));
     edit->setMinimumWidth(0);
     edit->setMaximumWidth(QWIDGETSIZE_MAX);
     edit->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
@@ -527,6 +527,7 @@ void IntervalCardList::buildEditor(int interval) {
     }
     m_committing = true;
     setFlags(m_open, flags);
+    endUntilStopped(m_open);
     m_committing = false;
     commit();
   });
@@ -596,20 +597,35 @@ void IntervalCardList::buildEditor(int interval) {
     m_committing = true;
     setFlags(m_open, flags);
     flagsItem(m_open)->setData((mode == CUSTOM_RATE) ? QVariant{qBound(RATE_MIN, rate.value_or(1.0), RATE_MAX)} : QVariant{}, RATE_ROLE);
+    endUntilStopped(m_open);
     m_committing = false;
     commit();
   });
 
-  // duration: the hold (full speed) or the ramp's (calculated for a custom rate)
+  // duration: the hold (full speed) or the ramp's (calculated for a custom rate); a hold, or a pressure, may last until
+  // stopped (under the fields)
   if (int const durationRow{rowOf(QStringLiteral("duration"))}; durationRow >= 0) {
-    m_durationEdit  = new LineEditTime(true, m_editor);
-    m_durationLabel = addField(tr("Duration"), m_durationEdit);
-    connect(m_durationEdit, &LineEditTime::userEdited, this, [this, durationRow, type = params.value(durationRow).toMap().value("type").toInt()] {
+    m_durationEdit      = new LineEditTime(true, m_editor);
+    m_durationLabel     = addField(tr("Duration"), m_durationEdit);
+    m_untilStoppedCheck = new QCheckBox(tr("Hold until stopped"), m_editor);
+    m_untilStoppedCheck->setFocusPolicy(Qt::NoFocus);
+    m_untilStoppedCheck->setToolTip(tr("No hold time: held until Stop, or until Start replaces it"));
+    int const type{params.value(durationRow).toMap().value("type").toInt()};
+    connect(m_durationEdit, &LineEditTime::userEdited, this, [this, durationRow, type] {
       if ((m_open < 0) || !m_model) {
         return;
       }
       m_committing = true;
       m_model->getStandardModel()->item(durationRow, m_open)->setData(static_cast<int>(m_durationEdit->getSeconds()), type);
+      m_committing = false;
+      commit();
+    });
+    connect(m_untilStoppedCheck, &QCheckBox::clicked, this, [this, durationRow, type](bool checked) {
+      if ((m_open < 0) || !m_model) {
+        return;
+      }
+      m_committing = true;
+      m_model->getStandardModel()->item(durationRow, m_open)->setData(static_cast<int>(checked ? HOLD_UNTIL_STOPPED : 3600U), type);
       m_committing = false;
       commit();
     });
@@ -643,6 +659,9 @@ void IntervalCardList::buildEditor(int interval) {
   grid->setColumnStretch(0, 1);
   grid->setColumnStretch(1, 1);
   lay->addLayout(grid);
+  if (m_untilStoppedCheck) {
+    lay->addWidget(m_untilStoppedCheck);
+  }
 
   // Duplicate · Then hold · Delete
   auto *actions  = new QHBoxLayout();
@@ -653,7 +672,7 @@ void IntervalCardList::buildEditor(int interval) {
   m_deleteBtn = new QPushButton(tr("Delete"), m_editor);
   m_deleteBtn->setProperty("outline", true);
   for (QPushButton *button : {m_duplicateBtn, m_holdBtn, m_deleteBtn}) {
-    button->setFixedHeight(px(28));
+    button->setFixedHeight(theme::dp(52));
     button->setFocusPolicy(Qt::NoFocus);
   }
   actions->addWidget(m_duplicateBtn);
@@ -680,6 +699,15 @@ void IntervalCardList::buildEditor(int interval) {
   card.frame->layout()->addWidget(m_editor);
   fillEditor();
   styleCards(); // the button icons in the theme's colours
+}
+
+void IntervalCardList::endUntilStopped(int interval) {
+  int const     durationRow{rowOf(QStringLiteral("duration"))};
+  quint32 const flags{flagsOf(interval)};
+  if ((durationRow < 0) || isPressure(flags) || (modeOf(flags) == FULL_SPEED) || (valueOf(durationRow, interval) < HOLD_UNTIL_STOPPED)) {
+    return;
+  }
+  m_model->getStandardModel()->item(durationRow, interval)->setData(3600, m_model->getParamListVariant().value(durationRow).toMap().value("type").toInt());
 }
 
 void IntervalCardList::fillEditor() {
@@ -737,11 +765,20 @@ void IntervalCardList::fillEditor() {
   }
 
   if (m_durationEdit) {
-    if (!m_durationEdit->hasFocus()) {
+    // until stopped: a hold or a pressure, offered on the last interval (the ones after it would never run)
+    bool const untilStopped{valueOf(rowOf(QStringLiteral("duration")), m_open) >= HOLD_UNTIL_STOPPED};
+    bool const holds{pressure || (mode == FULL_SPEED)};
+    if (untilStopped) {
+      m_durationEdit->clear();
+      m_durationEdit->setPlaceholderText(tr("Until stopped"));
+    } else if (!m_durationEdit->hasFocus()) {
       m_durationEdit->setTime(static_cast<quint32>(valueOf(rowOf(QStringLiteral("duration")), m_open)));
     }
     m_durationLabel->setText(pressure ? tr("Duration") : (mode == FULL_SPEED) ? tr("Hold time") : tr("Ramp time"));
-    m_durationEdit->setEnabled(m_editable && (pressure || !customRate));
+    m_durationEdit->setEnabled(m_editable && (pressure || !customRate) && !untilStopped);
+    m_untilStoppedCheck->setChecked(untilStopped);
+    m_untilStoppedCheck->setVisible(untilStopped || (holds && (m_open == m_cards.size() - 1)));
+    m_untilStoppedCheck->setEnabled(m_editable);
   }
 
   bool const                  ramp{!pressure && (mode != FULL_SPEED)};
@@ -772,11 +809,11 @@ void IntervalCardList::styleCards() {
                                "QLabel#intervalNumber { background: %7; color: %8; border-radius: %9px; font-weight: bold; }"
                                "QFrame#intervalCard[open=\"true\"] QLabel#intervalNumber { background: %6; color: white; }")
                   .arg(c.panel.name(), c.border.name())
-                  .arg(px(1))
-                  .arg(px(6))
-                  .arg(px(2))
+                  .arg(theme::dp(1))
+                  .arg(theme::radius())
+                  .arg(theme::dp(3))
                   .arg(c.accent.name(), c.panelAlt.name(), c.muted.name())
-                  .arg(px(4)));
+                  .arg(theme::radius()));
   for (int interval{0}; interval < m_cards.size(); ++interval) {
     m_cards[interval].frame->setProperty("open", interval == m_open);
     for (QWidget *widget : {static_cast<QWidget *>(m_cards[interval].frame), static_cast<QWidget *>(m_cards[interval].number)}) {
@@ -785,7 +822,7 @@ void IntervalCardList::styleCards() {
     }
   }
   if (m_duplicateBtn) {
-    int const size{px(14)};
+    int const size{theme::dp(26)};
     m_duplicateBtn->setIcon(theme::menuIcon(QStringLiteral("plus"), c.text, c.text, size));
     m_holdBtn->setIcon(theme::menuIcon(QStringLiteral("plus"), c.text, c.text, size));
     m_deleteBtn->setIcon(theme::menuIcon(QStringLiteral("delete"), c.danger, c.danger, size));
@@ -799,7 +836,7 @@ bool IntervalCardList::eventFilter(QObject *watched, QEvent *event) {
       m_pressAt = static_cast<QMouseEvent *>(event)->globalPosition().toPoint();
     } else if (event->type() == QEvent::MouseButtonRelease) {
       QPoint const moved = static_cast<QMouseEvent *>(event)->globalPosition().toPoint() - m_pressAt;
-      if (moved.manhattanLength() < px(12)) { // a tap, not a scroll
+      if (moved.manhattanLength() < theme::dp(22)) { // a tap, not a scroll
         int const interval{head->property("interval").toInt()};
         if (interval == m_open) { // closed again (still selected)
           closeEditor();

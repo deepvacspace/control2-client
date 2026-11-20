@@ -1,5 +1,6 @@
 #include "rundetailsdialog.h"
 
+#include <QDateTime>
 #include <QDialogButtonBox>
 #include <QDoubleValidator>
 #include <QFormLayout>
@@ -7,6 +8,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <cmath>
@@ -15,6 +17,7 @@
 #include "experimentrecorder.h"
 #include "lineeditscreen.h"
 #include "resholder.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -34,7 +37,7 @@ void numberField(QLineEdit *edit, double value, QString const &example) {
 RunDetailsDialog::RunDetailsDialog(core::RunMetadata const &metadata, QString const &title, QWidget *parent, bool withTagsAndNotes)
     : QDialog{parent}, m_initial{metadata} {
   setWindowTitle(title);
-  setMinimumWidth(460 * utils::ssf());
+  setMinimumWidth(theme::dp(862));
   auto *form = new QFormLayout(this);
   m_dut      = new QLineEdit(metadata.dut, this);
   m_mass     = new QLineEdit(this);
@@ -48,9 +51,9 @@ RunDetailsDialog::RunDetailsDialog(core::RunMetadata const &metadata, QString co
   m_dut->setPlaceholderText(tr("Device under test, e.g. serial number"));
   m_purpose->setPlaceholderText(tr("e.g. thermal cycling qualification"));
   m_tags->setPlaceholderText(tr("comma separated, e.g. qualification, batch-7"));
-  m_notes->setFixedHeight(80 * utils::ssf());
+  m_notes->setFixedHeight(theme::dp(150));
   for (QLineEdit *edit : {m_dut, m_mass, m_density, m_operator, m_purpose, m_tags}) {
-    edit->setMinimumHeight(32 * utils::ssf());
+    edit->setMinimumHeight(theme::dp(60));
   }
   form->addRow(tr("DUT"), m_dut);
   form->addRow(tr("DUT mass, kg"), m_mass);
@@ -92,7 +95,7 @@ core::RunMetadata RunDetailsDialog::metadata() const {
 }
 
 RunDetailsButton::RunDetailsButton(ResHolder *resHolder, QWidget *parent) : QPushButton{tr("Experiment\ndetails…"), parent}, m_resHolder{resHolder} {
-  setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
+  setFixedSize(theme::dp(187), theme::dp(93));
   connect(this, &QPushButton::clicked, this, [this] {
     if (!m_resHolder->recorder) {
       return;
@@ -131,51 +134,134 @@ void RunDetailsButton::refresh() {
                                          metadata.purpose, metadata.tags.join(QStringLiteral(", "))));
 }
 
-RunDetailsPanel::RunDetailsPanel(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
+RunDetailsForm::RunDetailsForm(QWidget *parent) : QWidget{parent} {
   auto *lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
-  lay->setSpacing(4 * utils::ssf());
-  auto field = [&](QString const &title, QWidget *edit) {
-    auto *label = new QLabel(title, this);
+  lay->setSpacing(theme::dp(8));
+  auto title = [this](QString const &text) {
+    auto *label = new QLabel(text, this);
     label->setProperty("muted", true);
+    return label;
+  };
+  auto field = [&](QString const &text, QWidget *edit) {
+    QLabel *label = title(text);
     lay->addWidget(label);
     lay->addWidget(edit);
-    lay->addSpacing(6 * utils::ssf());
+    lay->addSpacing(theme::dp(8)); // 16 to the next title
     return label;
   };
   // on-screen keyboard on the HMI, like the other text fields
   auto line = [this](QString const &placeholder) {
     auto *edit = new LineEditScreen(this, VirtualKeyboard::EN);
     edit->setPlaceholderText(placeholder);
-    edit->setMinimumHeight(30 * utils::ssf());
+    edit->setMinimumHeight(theme::dp(56));
     return edit;
   };
+  m_purpose  = line(tr("e.g. thermal cycling qualification"));
+  m_operator = line(tr("Logged-in user"));
   m_dut      = line(tr("Device under test, e.g. serial number"));
   m_mass     = line(QString{});
   m_density  = line(QString{});
   numberField(m_mass, std::numeric_limits<double>::quiet_NaN(), tr("e.g. 12.5"));
   numberField(m_density, std::numeric_limits<double>::quiet_NaN(), tr("e.g. 2700"));
-  m_operator = line(tr("Logged-in user"));
-  m_purpose  = line(tr("e.g. thermal cycling qualification"));
+  m_purposeTitle  = field(tr("Name or purpose"), m_purpose);
+  m_operatorTitle = field(tr("Operator"), m_operator);
   field(tr("DUT"), m_dut);
   // mass and density side by side
-  {
-    auto *row = new QHBoxLayout();
-    row->setSpacing(8 * utils::ssf());
-    for (auto const &[title, edit] : {std::pair{tr("DUT mass, kg"), m_mass}, std::pair{tr("DUT density, kg/m³"), m_density}}) {
-      auto *column = new QVBoxLayout();
-      column->setSpacing(4 * utils::ssf());
-      auto *label = new QLabel(title, this);
-      label->setProperty("muted", true);
-      column->addWidget(label);
-      column->addWidget(edit);
-      row->addLayout(column, 1);
-    }
-    lay->addLayout(row);
-    lay->addSpacing(6 * utils::ssf());
+  auto *row = new QHBoxLayout();
+  row->setSpacing(theme::gap());
+  for (auto const &[text, edit] : {std::pair{tr("DUT mass, kg"), m_mass}, std::pair{tr("DUT density, kg/m³"), m_density}}) {
+    auto *column = new QVBoxLayout();
+    column->setSpacing(theme::dp(8));
+    column->addWidget(title(text));
+    column->addWidget(edit);
+    row->addLayout(column, 1);
   }
-  m_operatorTitle = field(tr("Operator"), m_operator);
-  m_purposeTitle  = field(tr("Purpose"), m_purpose);
+  lay->addLayout(row);
+  for (QLineEdit *edit : {m_purpose, m_operator, m_dut, m_mass, m_density}) {
+    connect(edit, &QLineEdit::textChanged, this, [this] {
+      if (!m_loading) {
+        emit edited();
+      }
+    });
+  }
+}
+
+void RunDetailsForm::setRequired() {
+  // a red asterisk after the title
+  QString const required = QStringLiteral(" <span style='color:%1'>*</span>").arg(theme::colors().danger.name());
+  m_purposeTitle->setText(tr("Name or purpose").toHtmlEscaped() + required);
+  m_operatorTitle->setText(tr("Operator").toHtmlEscaped() + required);
+  for (QLineEdit *edit : {m_purpose, m_operator}) {
+    edit->setPlaceholderText(tr("Required"));
+  }
+}
+
+void RunDetailsForm::setDutOnly() {
+  for (QWidget *widget : std::initializer_list<QWidget *>{m_purposeTitle, m_purpose, m_operatorTitle, m_operator}) {
+    widget->hide();
+  }
+  // their spacings out too: the DUT's title first
+  QLayout *lay = layout();
+  int      i{0};
+  while (i < lay->count()) {
+    QLayoutItem *item = lay->itemAt(i);
+    if (item->widget() && !item->widget()->isHidden()) {
+      break;
+    }
+    if (item->spacerItem()) {
+      delete lay->takeAt(i);
+    } else {
+      ++i;
+    }
+  }
+}
+
+void RunDetailsForm::setReadOnly(bool readOnly) {
+  for (QLineEdit *edit : {m_purpose, m_operator, m_dut, m_mass, m_density}) {
+    edit->setReadOnly(readOnly);
+  }
+}
+
+void RunDetailsForm::setMetadata(core::RunMetadata const &metadata) {
+  m_loading = true;
+  m_purpose->setText(metadata.purpose);
+  m_operator->setText(metadata.operatorName);
+  m_dut->setText(metadata.dut);
+  for (auto const &[edit, value] : {std::pair{m_mass, metadata.dutMassKg}, std::pair{m_density, metadata.dutDensityKgM3}}) {
+    edit->setText(std::isfinite(value) ? QLocale::c().toString(value, 'g', 6) : QString{});
+  }
+  m_loading = false;
+}
+
+core::RunMetadata RunDetailsForm::applyTo(core::RunMetadata metadata) const {
+  metadata.dut            = m_dut->text().trimmed();
+  metadata.dutMassKg      = core::RunMetadata::parseNumber(m_mass->text());
+  metadata.dutDensityKgM3 = core::RunMetadata::parseNumber(m_density->text());
+  metadata.operatorName   = m_operator->text().trimmed();
+  metadata.purpose        = m_purpose->text().trimmed();
+  return metadata;
+}
+
+bool RunDetailsForm::valid() const {
+  for (QLineEdit const *edit : {m_mass, m_density}) {
+    if (!edit->text().trimmed().isEmpty() && !std::isfinite(core::RunMetadata::parseNumber(edit->text()))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+RunDetailsPanel::RunDetailsPanel(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
+  auto *lay = new QVBoxLayout(this);
+  lay->setContentsMargins(0, 0, 0, 0);
+  m_form = new RunDetailsForm(this);
+  lay->addWidget(m_form);
+  m_dut      = m_form->dut();
+  m_mass     = m_form->mass();
+  m_density  = m_form->density();
+  m_operator = m_form->operatorName();
+  m_purpose  = m_form->purpose();
 
   m_storeTimer = new QTimer(this);
   m_storeTimer->setSingleShot(true);
@@ -235,21 +321,26 @@ void RunDetailsPanel::load() {
 }
 
 void RunDetailsPanel::setRequiredFields() {
-  m_purposeTitle->setText(tr("Name or purpose"));
-  for (QLineEdit *edit : {m_purpose, m_operator}) {
-    edit->setPlaceholderText(tr("Required"));
-  }
-  // first in the form
-  auto *lay = static_cast<QVBoxLayout *>(layout());
-  lay->removeWidget(m_purposeTitle);
-  lay->removeWidget(m_purpose);
-  lay->insertWidget(0, m_purposeTitle);
-  lay->insertWidget(1, m_purpose);
-  lay->insertSpacing(2, 6 * utils::ssf());
+  m_form->setRequired();
 }
 
 bool RunDetailsPanel::complete() const {
   return !m_purpose->text().trimmed().isEmpty() && !m_operator->text().trimmed().isEmpty();
+}
+
+void RunDetailsPanel::fillDefaultName() {
+  // a default given before (also in an earlier session) follows the time the page is opened; a name typed stays
+  QString const            untitled = tr("Untitled");
+  QRegularExpression const pattern{QStringLiteral("^%1 \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$").arg(QRegularExpression::escape(untitled))};
+  QString const            current = m_purpose->text().trimmed();
+  if (!current.isEmpty() && !pattern.match(current).hasMatch()) {
+    return;
+  }
+  QString const name = QStringLiteral("%1 %2").arg(untitled, QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+  if (name != current) {
+    m_purpose->setText(name);
+    store();
+  }
 }
 
 void RunDetailsPanel::userChanged(QString const &name) {

@@ -30,6 +30,9 @@ public:
   QVariantMap                   settingsMap() const;
   SystemValueList              &plcSettingsSystemValueList();
   QVariantList                  commitSystemValues(); // returns SystemValues as VariantList
+  // the fields of a job's interval as this chamber's PLC reads them ("control_params"): the pressure only when the
+  // chamber reports one (an older PLC, without "pres" in its values, takes intervals without the pressure field)
+  [[nodiscard]] QVariantList    controlParams() const;
   void                          setPlcSettings(QVariantMap const &plcSettings);
   void                          setStatesSettings(QVariantList const &statesSettings);
   // Connections tab (app-only settings, not sent to the PLC)

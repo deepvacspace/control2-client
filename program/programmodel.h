@@ -59,9 +59,10 @@ public:
   void                newItem(int index); // new empty interval on given index
   void                delItem(int index); // remove interval on given index
   void                emitModelUpdated(); // inform model client, that m_standardModel changed
-  void                setParamValue(quint32 intervalIndex, QString const &paramName, double value); // for manual
+  void                setParamValue(quint32 intervalIndex, QString const &paramName, double value); // the AI advisors' setpoint jobs
   void                printToDebug() const;
   ProgType            getProgType() const;
+  void                setProgType(ProgType progType); // what the next makeSendData() sends the program as
   void                resetCycle();
   QByteArray          makeSendData() const;
   // whole program {"intervals": [...], "cycle": {...}}, same layout as the program files
@@ -133,6 +134,10 @@ inline void ProgramModel::emitModelUpdated() {
 
 inline ProgramModel::ProgType ProgramModel::getProgType() const {
   return m_progType;
+}
+
+inline void ProgramModel::setProgType(ProgType progType) {
+  m_progType = progType;
 }
 }
 

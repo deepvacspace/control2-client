@@ -1,5 +1,7 @@
 #include "settingsmanager.h"
 
+#include <algorithm>
+
 #include <QDebug>
 #include <QFile>
 #include <QJsonDocument>
@@ -171,6 +173,20 @@ void SettingsManager::standardChannelNames() {
   if (!controlParams.isEmpty()) {
     m_settingsMap["control_params"] = controlParams;
   }
+}
+
+QVariantList SettingsManager::controlParams() const {
+  QVariantList params = m_settingsMap.value("control_params").toList();
+  QVariantList const states = m_settingsMap.value("states").toList();
+  bool const hasPressure{std::any_of(states.cbegin(), states.cend(), [](QVariant const &state) {
+    return state.toMap().value("name").toString() == QLatin1String("pres");
+  })};
+  if (!hasPressure) {
+    params.erase(std::remove_if(params.begin(), params.end(),
+                                [](QVariant const &param) { return param.toMap().value("name").toString() == QLatin1String("pres"); }),
+                 params.end());
+  }
+  return params;
 }
 
 QVariantList SettingsManager::commitSystemValues() {

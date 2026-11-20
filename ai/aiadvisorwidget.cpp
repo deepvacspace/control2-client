@@ -128,8 +128,8 @@ void AiAdvisorWidget::updateRunButtonEnabled() {
 
 void AiAdvisorWidget::initGui() {
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(4 * utils::ssf(), 4 * utils::ssf(), 4 * utils::ssf(), 4 * utils::ssf());
-  mainLay->setSpacing(4 * utils::ssf());
+  mainLay->setContentsMargins(theme::dp(8), theme::dp(8), theme::dp(8), theme::dp(8));
+  mainLay->setSpacing(theme::dp(8));
 
   mainLay->addWidget(buildFormCard());
   mainLay->addWidget(buildChartCard(), 1);
@@ -139,15 +139,15 @@ void AiAdvisorWidget::initGui() {
 QWidget *AiAdvisorWidget::buildFormCard() {
   auto *frame = new QFrame(this);
   frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  frame->setStyleSheet("QFrame {border: 1px solid #d9dee5;}");
 
   auto *lay = new QGridLayout(frame);
-  lay->setSpacing(3 * utils::ssf());
+  lay->setSpacing(theme::dp(4));
 
   auto addField = [this, lay](int col, QString const &title, double min, double max, int prec, float defaultValue) {
     auto *label = new QLabel(title, lay->parentWidget());
     auto *edit  = new LineEditNum(min, max, prec, false, lay->parentWidget());
-    edit->setFixedWidth(110 * utils::ssf());
+    edit->setFixedWidth(theme::dp(206));
     edit->setValue(defaultValue);
     lay->addWidget(label, 0, col, Qt::AlignHCenter);
     lay->addWidget(edit, 1, col);
@@ -159,12 +159,12 @@ QWidget *AiAdvisorWidget::buildFormCard() {
   m_targetTempEdit = addField(2, tr("Target temp, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, ai::DEFAULT_TARGET_TEMP);
 
   m_runBtn = new QPushButton(tr("Run experiment"), frame);
-  m_runBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  m_runBtn->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
   lay->addWidget(m_runBtn, 1, 3);
 
   m_stopBtn = new QPushButton(tr("Stop"), frame);
-  m_stopBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-  m_stopBtn->setStyleSheet("QPushButton { background-color: #c0392b; color: white; }");
+  m_stopBtn->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
+  m_stopBtn->setStyleSheet("QPushButton { background-color: #d4122e; color: white; }");
   m_stopBtn->setVisible(false);
   lay->addWidget(m_stopBtn, 1, 4);
 
@@ -189,10 +189,10 @@ QWidget *AiAdvisorWidget::buildFormCard() {
 QWidget *AiAdvisorWidget::buildMetricsCard() {
   auto *frame = new QFrame(this);
   frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  frame->setStyleSheet("QFrame {border: 1px solid #d9dee5;}");
 
   auto *lay = new QVBoxLayout(frame);
-  lay->setSpacing(2 * utils::ssf());
+  lay->setSpacing(theme::dp(4));
 
   m_pidLabel = new QLabel(frame);
   lay->addWidget(m_pidLabel);
@@ -224,14 +224,14 @@ QWidget *AiAdvisorWidget::buildMetricsCard() {
 QWidget *AiAdvisorWidget::buildChartCard() {
   auto *frame = new QFrame(this);
   frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  frame->setStyleSheet("QFrame {border: 1px solid #d9dee5;}");
 
   auto *lay = new QVBoxLayout(frame);
-  lay->setContentsMargins(2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf());
+  lay->setContentsMargins(theme::dp(4), theme::dp(4), theme::dp(4), theme::dp(4));
 
   m_plot = new QCustomPlot(frame);
   m_plot->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  m_plot->setMinimumHeight(320 * utils::ssf());
+  m_plot->setMinimumHeight(theme::dp(600));
   m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
   m_plot->xAxis->setLabel(tr("Time, s"));
   m_plot->yAxis->setLabel(tr("Temperature, °C"));
@@ -262,7 +262,7 @@ QWidget *AiAdvisorWidget::buildChartCard() {
 
 void AiAdvisorWidget::setStatusText(QString const &text, bool isError) {
   m_statusLabel->setText(text);
-  m_statusLabel->setStyleSheet(isError ? "color: #b03030;" : "");
+  m_statusLabel->setStyleSheet(isError ? "color: #d4122e;" : "");
 }
 
 std::array<double, 8> AiAdvisorWidget::buildObservation(int decisionIdx) const {
@@ -391,9 +391,7 @@ bool AiAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd) {
 }
 
 bool AiAdvisorWidget::startChamberJob(double targetTemp) {
-  constexpr quint32 LONG_TIME{100 * 3600 - 1}; // matches QuickSetpointPanel (held until stopped); comfortably exceeds any AI run duration
-
-  QVariantList const controlParamsList = m_resHolder->settings->settingsMap().value("control_params").toList();
+  QVariantList const controlParamsList = m_resHolder->settings->controlParams();
   if (controlParamsList.isEmpty()) {
     return false;
   }
@@ -415,7 +413,7 @@ bool AiAdvisorWidget::startChamberJob(double targetTemp) {
 
   for (QString const &name : paramOrder) {
     if ("duration" == name) {
-      model.setParamValue(0, name, LONG_TIME);
+      model.setParamValue(0, name, HOLD_UNTIL_STOPPED); // comfortably exceeds any AI run duration
     } else if ("flags" == name) {
       model.setParamValue(0, name, flags);
     } else if ("temp" == name) {

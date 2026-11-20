@@ -8,6 +8,7 @@
 class QFrame;
 class QLabel;
 class QPushButton;
+class QScrollBar;
 class QVBoxLayout;
 
 namespace deepvaccontrol {
@@ -63,6 +64,7 @@ private:
 
   QVector<Step> m_steps;
   QVBoxLayout  *m_lay{nullptr};
+  QScrollBar   *m_scrollBar{nullptr}; // its lane is the gap beside the steps when it shows
   int           m_current{0};
   bool          m_locked{false};
   QPoint        m_pressAt; // a tap, not a scroll

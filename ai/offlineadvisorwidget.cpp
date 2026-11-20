@@ -116,12 +116,11 @@ void OfflineAdvisorWidget::updateRunButtonEnabled() {
 
 namespace {
 QFrame *advisorCard(QWidget *parent, QString const &title) {
-  double const ssf{utils::ssf()};
   auto        *card = new QFrame(parent);
   card->setObjectName("pageCard");
   auto *lay = new QVBoxLayout(card);
-  lay->setContentsMargins(14 * ssf, 10 * ssf, 14 * ssf, 12 * ssf);
-  lay->setSpacing(8 * ssf);
+  lay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  lay->setSpacing(theme::dp(16));
   if (!title.isEmpty()) {
     auto *label = new QLabel(title, card);
     label->setObjectName("cardTitle");
@@ -132,10 +131,9 @@ QFrame *advisorCard(QWidget *parent, QString const &title) {
 }
 
 void OfflineAdvisorWidget::initGui() {
-  double const ssf{utils::ssf()};
   auto        *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(0, 8 * ssf, 0, 0);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(0, theme::dp(16), 0, 0);
+  mainLay->setSpacing(theme::dp(20));
 
   mainLay->addWidget(buildFormCard());
   mainLay->addWidget(buildChartCard(), 1);
@@ -144,9 +142,9 @@ void OfflineAdvisorWidget::initGui() {
   m_resultsDialog = new QDialog(this);
   m_resultsDialog->setWindowTitle(tr("Advisor results"));
   auto *dialogLay = new QVBoxLayout(m_resultsDialog);
-  dialogLay->setContentsMargins(14 * ssf, 12 * ssf, 14 * ssf, 12 * ssf);
+  dialogLay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(24));
   dialogLay->addWidget(buildMetricsCard());
-  m_resultsDialog->resize(static_cast<int>(760 * ssf), m_resultsDialog->sizeHint().height());
+  m_resultsDialog->resize(theme::dp(1425), m_resultsDialog->sizeHint().height());
 }
 
 QWidget *OfflineAdvisorWidget::buildFormCard() {
@@ -155,15 +153,15 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   auto        *lay   = static_cast<QVBoxLayout *>(frame->layout());
 
   auto *row = new QHBoxLayout();
-  row->setSpacing(10 * ssf);
+  row->setSpacing(theme::dp(20));
   auto addField = [this, frame, row, ssf](QString const &title, double min, double max, int prec, float defaultValue) {
     auto *box    = new QVBoxLayout();
-    box->setSpacing(2 * ssf);
+    box->setSpacing(theme::dp(4));
     auto *label = new QLabel(title, frame);
     label->setProperty("muted", true);
     auto *edit = new LineEditNum(min, max, prec, false, frame);
     edit->setFont(font());
-    edit->setFixedSize(static_cast<int>(120 * ssf), static_cast<int>(32 * ssf));
+    edit->setFixedSize(theme::dp(225), theme::dp(60));
     edit->setValue(defaultValue);
     box->addWidget(label);
     box->addWidget(edit);
@@ -173,13 +171,13 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   // the coefficients: simulated with Simulate, filled with the ones the AI Advisor finds
   auto gainField = [&](QString const &title, double min, double max, int prec, float value) {
     LineEditNum *edit = addField(title, min, max, prec, value);
-    edit->setFixedWidth(static_cast<int>(80 * ssf));
+    edit->setFixedWidth(theme::dp(150));
     return edit;
   };
   m_kpEdit = gainField(tr("P"), ai::KP_MIN, ai::KP_MAX, 2, ai::DEFAULT_KP);
   m_kiEdit = gainField(tr("I"), ai::KI_MIN, ai::KI_MAX, 1, ai::DEFAULT_KI);
   m_kdEdit = gainField(tr("D"), ai::KD_MIN, ai::KD_MAX, 2, ai::DEFAULT_KD);
-  row->addSpacing(10 * ssf);
+  row->addSpacing(theme::dp(20));
   m_startTempEdit  = addField(tr("Start, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, 0.0f);
   m_targetTempEdit = addField(tr("Target, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, ai::DEFAULT_TARGET_TEMP);
   m_durationEdit   = addField(tr("Duration, s"), 1, 100000, 0, ai::DEFAULT_DURATION_S);
@@ -190,7 +188,7 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
 
   // the actions, with the status and progress beside them (one row with the fields does not fit a 1920 px screen)
   auto *buttonRow = new QHBoxLayout();
-  buttonRow->setSpacing(8 * ssf);
+  buttonRow->setSpacing(theme::dp(16));
   m_runBtn = new QPushButton(tr("Run experiment"), frame);
   m_runBtn->setObjectName("primaryButton");
   m_simulateBtn = new QPushButton(tr("Simulate"), frame);
@@ -201,8 +199,8 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   auto *resultsBtn = new QPushButton(tr("Results"), frame);
   resultsBtn->setToolTip(tr("Expected, actual and baseline KPIs of the last experiment"));
   for (QPushButton *button : {m_runBtn, m_simulateBtn, m_stopBtn, resultsBtn}) {
-    button->setFixedHeight(static_cast<int>(32 * ssf));
-    button->setMinimumWidth(static_cast<int>(130 * ssf));
+    button->setFixedHeight(theme::dp(60));
+    button->setMinimumWidth(theme::dp(243));
     buttonRow->addWidget(button);
   }
 
@@ -215,10 +213,10 @@ QWidget *OfflineAdvisorWidget::buildFormCard() {
   statusBox->addWidget(m_statusLabel);
   m_progressBar = new QProgressBar(frame);
   m_progressBar->setVisible(false);
-  m_progressBar->setFixedHeight(static_cast<int>(8 * ssf));
+  m_progressBar->setFixedHeight(theme::dp(15));
   m_progressBar->setTextVisible(false);
   statusBox->addWidget(m_progressBar);
-  buttonRow->addSpacing(10 * ssf);
+  buttonRow->addSpacing(theme::dp(20));
   buttonRow->addLayout(statusBox, 1);
   lay->addLayout(buttonRow);
 
@@ -258,7 +256,7 @@ QWidget *OfflineAdvisorWidget::buildMetricsCard() {
   auto        *frame = new QWidget(this);
   auto        *frameLay = new QVBoxLayout(frame);
   frameLay->setContentsMargins(0, 0, 0, 0);
-  frameLay->setSpacing(8 * ssf);
+  frameLay->setSpacing(theme::dp(16));
   auto        *lay   = frameLay;
 
   m_pidLabel = new QLabel(frame);
@@ -289,7 +287,7 @@ QWidget *OfflineAdvisorWidget::buildMetricsCard() {
   for (int row{0}; row < m_metricsTable->rowCount(); ++row) {
     tableHeight += m_metricsTable->rowHeight(row);
   }
-  m_metricsTable->setFixedHeight(tableHeight + static_cast<int>(4 * ssf));
+  m_metricsTable->setFixedHeight(tableHeight +  theme::dp(7));
 
   lay->addWidget(m_metricsTable);
   lay->addStretch();
@@ -305,7 +303,7 @@ QWidget *OfflineAdvisorWidget::buildChartCard() {
 
   m_plot = new QCustomPlot(frame);
   m_plot->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  m_plot->setMinimumHeight(220 * utils::ssf());
+  m_plot->setMinimumHeight(theme::dp(412));
   m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
   m_plot->xAxis->setLabel(tr("Time, s"));
   m_plot->yAxis->setLabel(tr("Temperature, °C"));
@@ -501,9 +499,7 @@ bool OfflineAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd)
 }
 
 bool OfflineAdvisorWidget::startChamberJob(double targetTemp) {
-  constexpr quint32 LONG_TIME{100 * 3600 - 1}; // matches QuickSetpointPanel (held until stopped); comfortably exceeds any AI run duration
-
-  QVariantList const controlParamsList = m_resHolder->settings->settingsMap().value("control_params").toList();
+  QVariantList const controlParamsList = m_resHolder->settings->controlParams();
   if (controlParamsList.isEmpty()) {
     return false;
   }
@@ -525,7 +521,7 @@ bool OfflineAdvisorWidget::startChamberJob(double targetTemp) {
 
   for (QString const &name : paramOrder) {
     if ("duration" == name) {
-      model.setParamValue(0, name, LONG_TIME);
+      model.setParamValue(0, name, HOLD_UNTIL_STOPPED); // comfortably exceeds any AI run duration
     } else if ("flags" == name) {
       model.setParamValue(0, name, flags);
     } else if ("temp" == name) {

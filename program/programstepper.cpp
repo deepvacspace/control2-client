@@ -7,6 +7,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QStyle>
 #include <QVBoxLayout>
 
@@ -15,12 +16,6 @@
 #include "utils.h"
 
 namespace deepvaccontrol {
-
-namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-}
 
 ProgramStepper::ProgramStepper(QWidget *parent) : QWidget{parent} {
   auto *outer = new QVBoxLayout(this);
@@ -35,12 +30,18 @@ ProgramStepper::ProgramStepper(QWidget *parent) : QWidget{parent} {
   auto *column = new QWidget(area);
   column->setAutoFillBackground(false);
   m_lay = new QVBoxLayout(column);
-  m_lay->setContentsMargins(0, 0, px(8), 0); // clear of the scroll bar
-  m_lay->setSpacing(px(8));
+  m_lay->setContentsMargins(0, 0, 0, 0);
+  m_lay->setSpacing(theme::gap());
   m_lay->addStretch();
   area->setWidget(column);
   touch::enableScrolling(area);
   outer->addWidget(area);
+  // the gap to what is beside the steps (the profile): the scroll bar's lane when it shows, its handle in the middle;
+  // otherwise a margin as wide
+  m_scrollBar = area->verticalScrollBar();
+  m_scrollBar->setStyleSheet(QStringLiteral("QScrollBar:vertical { width: %1px; margin: 0 %2px; }").arg(theme::gap()).arg(theme::dp(4)));
+  m_scrollBar->installEventFilter(this);
+  outer->setContentsMargins(0, 0, theme::gap(), 0);
 }
 
 int ProgramStepper::addStep(QString const &title, QWidget *content) {
@@ -49,8 +50,8 @@ int ProgramStepper::addStep(QString const &title, QWidget *content) {
   step.card = new QFrame(this);
   step.card->setObjectName("stepCard");
   auto *cardLay = new QVBoxLayout(step.card);
-  cardLay->setContentsMargins(px(14), px(10), px(14), px(12));
-  cardLay->setSpacing(px(10));
+  cardLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  cardLay->setSpacing(theme::dp(20));
 
   // the head: number, title and summary (a tap opens a step done again), the header widget on the right
   step.head = new QFrame(step.card);
@@ -58,11 +59,11 @@ int ProgramStepper::addStep(QString const &title, QWidget *content) {
   step.head->installEventFilter(this);
   auto *headLay = new QHBoxLayout(step.head);
   headLay->setContentsMargins(0, 0, 0, 0);
-  headLay->setSpacing(px(10));
+  headLay->setSpacing(theme::dp(20));
   step.number = new QLabel(QString::number(index + 1), step.head);
   step.number->setObjectName("stepNumber");
   step.number->setAlignment(Qt::AlignCenter);
-  step.number->setFixedSize(px(26), px(26));
+  step.number->setFixedSize(theme::dp(48), theme::dp(48));
   auto *texts = new QVBoxLayout();
   texts->setSpacing(0);
   step.title = new QLabel(title, step.head);
@@ -83,11 +84,11 @@ int ProgramStepper::addStep(QString const &title, QWidget *content) {
   step.body    = new QWidget(step.card);
   auto *bodyLay = new QVBoxLayout(step.body);
   bodyLay->setContentsMargins(0, 0, 0, 0);
-  bodyLay->setSpacing(px(12));
+  bodyLay->setSpacing(theme::dp(24));
   content->setParent(step.body);
   bodyLay->addWidget(content);
   auto *buttons = new QHBoxLayout();
-  buttons->setSpacing(px(8));
+  buttons->setSpacing(theme::dp(16));
   step.back = new QPushButton(tr("Back"), step.body);
   step.next = new QPushButton(tr("Next"), step.body);
   step.next->setObjectName("primaryButton");
@@ -95,8 +96,8 @@ int ProgramStepper::addStep(QString const &title, QWidget *content) {
   step.why->setProperty("muted", true);
   step.why->setWordWrap(true);
   for (QPushButton *button : {step.back, step.next}) {
-    button->setFixedHeight(px(32));
-    button->setMinimumWidth(px(90));
+    button->setFixedHeight(theme::dp(60));
+    button->setMinimumWidth(theme::dp(168));
     button->setFocusPolicy(Qt::NoFocus);
   }
   buttons->addWidget(step.back);
@@ -196,23 +197,27 @@ void ProgramStepper::restyle() {
                                "QFrame#stepCard[state=\"done\"] QLabel#stepNumber { background: %10; color: white; }"
                                "QFrame#stepCard[state=\"todo\"] QLabel { color: %8; }")
                   .arg(c.panel.name(), c.border.name())
-                  .arg(px(1))
-                  .arg(px(10))
-                  .arg(px(2))
+                  .arg(theme::dp(1))
+                  .arg(theme::radius())
+                  .arg(theme::dp(3))
                   .arg(c.accent.name(), c.panelAlt.name(), c.muted.name())
-                  .arg(px(13))
+                  .arg(theme::radius())
                   .arg(c.active.name()));
   busy = false;
 }
 
 bool ProgramStepper::eventFilter(QObject *watched, QEvent *event) {
+  if ((watched == m_scrollBar) && ((event->type() == QEvent::Show) || (event->type() == QEvent::Hide))) {
+    layout()->setContentsMargins(0, 0, m_scrollBar->isVisibleTo(this) ? 0 : theme::gap(), 0);
+    return false;
+  }
   if (auto *head = qobject_cast<QFrame *>(watched); head && head->property("step").isValid()) {
     if (event->type() == QEvent::MouseButtonPress) {
       m_pressAt = static_cast<QMouseEvent *>(event)->globalPosition().toPoint();
     } else if (event->type() == QEvent::MouseButtonRelease) {
       QPoint const moved = static_cast<QMouseEvent *>(event)->globalPosition().toPoint() - m_pressAt;
       int const    step{head->property("step").toInt()};
-      if ((moved.manhattanLength() < px(12)) && !m_locked && (step < m_current)) { // a tap on a step done
+      if ((moved.manhattanLength() < theme::dp(22)) && !m_locked && (step < m_current)) { // a tap on a step done
         setCurrent(step);
       }
     }

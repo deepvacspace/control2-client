@@ -7,8 +7,10 @@
 #include "qtypes.h"
 namespace deepvaccontrol {
 
-constexpr inline quint8 const  AWAIT_BIT{8U}; // Flag in manual/program job
-constexpr inline quint8 const  RAMP_BIT{9U};  // Flag in manual/program job
+constexpr inline quint8 const  AWAIT_BIT{8U}; // Flag in setpoint/program job
+constexpr inline quint8 const  RAMP_BIT{9U};  // Flag in setpoint/program job
+// an interval's duration that means "held until stopped": the longest the PLC's timer counts (99:59:59)
+constexpr inline quint32 const HOLD_UNTIL_STOPPED{100 * 3600 - 1};
 // App-only flag of a program interval, with RAMP_BIT: the ramp's duration comes from a ramp rate given by the user.
 // The PLC reads bits 1, 2, 8 and 9 only, so to it this is a plain linear ramp.
 constexpr inline quint8 const  CUSTOM_RATE_BIT{10U};
@@ -25,7 +27,7 @@ inline QString const           ANALYSIS_NOTES_FILE{"data/analysis/notes.json"};
 inline QString const           AI_DIR{"data/ai/"};
 inline QString const           USER_FILE{"users.dat"};
 constexpr inline quint32 const INTERVAL_DURATION{24 * 60 * 60};
-constexpr inline quint32 const UI_BTN_HEIGHT{40};
+constexpr inline int const UI_BTN_HEIGHT{75}; // design px (theme::dp)
 constexpr inline quint32 const UI_MENU_BTN_HEIGHT{46};
 
 inline static QStringList const APP_STATE_LIST{

@@ -120,6 +120,13 @@ void ExperimentRecorder::setNextJob(JobInfo const &job) {
   m_hasPending           = true;
 }
 
+void ExperimentRecorder::jobReplaced() {
+  if (jobActive()) {
+    finishJob(HardwareStatus::IDLE);
+    beginJob({});
+  }
+}
+
 void ExperimentRecorder::setNextJob(QString const &label, QString const &testProfile) {
   setNextJob(JobInfo{testProfile.isEmpty() ? QStringLiteral("job") : QStringLiteral("test_profile"), label, testProfile, {}, {}});
 }
@@ -210,6 +217,13 @@ QString ExperimentRecorder::runningJobKind() const {
   return jobActive() ? m_job.info.kind : QString{};
 }
 
+QString ExperimentRecorder::runningJobName() const {
+  if (!jobActive()) {
+    return {};
+  }
+  return m_job.metadata.purpose.isEmpty() ? m_job.info.label : m_job.metadata.purpose;
+}
+
 QVariantMap ExperimentRecorder::runningProgram() const {
   return jobActive() ? m_job.info.program : QVariantMap{};
 }
@@ -255,7 +269,7 @@ void ExperimentRecorder::beginJob(QString const &note) {
     m_job.configuration.insert("note", note.isEmpty() ? tr("job not started from this application") : note);
   }
   m_hasPending   = false;
-  m_job.metadata = m_nextMetadata;
+  m_job.metadata = m_job.info.metadata.value_or(m_nextMetadata);
   if (m_job.metadata.operatorName.isEmpty() && m_resHolder->users) {
     m_job.metadata.operatorName = m_resHolder->users->getCurrentUserName();
   }

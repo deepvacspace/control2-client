@@ -34,7 +34,7 @@ class LineEditNum;
 // then asked whether to apply the suggested PID; if accepted, it's
 // written to the active gain-scheduled band, the chamber is started (a
 // single-interval SETPOINT job targeting the entered temperature, the
-// same JOB message Manual/Program control's Start button sends), and the
+// same JOB message Control's Start button sends), and the
 // real run begins, holding that PID fixed for the whole duration. The
 // chamber is stopped (the same "stop" command their Stop button sends)
 // whenever the run ends, is stopped, or aborts (disconnection, alarm, lost

@@ -10,7 +10,7 @@
 namespace deepvaccontrol {
 ProgramGraph::ProgramGraph(QWidget *parent) : QFrame{parent} {
   setFrameStyle(QFrame::Box | QFrame::Plain);
-  setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  setStyleSheet("QFrame {border: 1px solid #d9dee5;}");
 }
 
 void ProgramGraph::setPressureLabel(QString const &label) {
@@ -68,7 +68,20 @@ void ProgramGraph::setStartTemperature(std::optional<double> temperature) {
     return;
   }
   m_startTemp = temperature;
+  // hidden (another page or tab): drawn when shown
+  if (!isVisible()) {
+    m_stale = true;
+    return;
+  }
   if (m_model) {
+    reDraw();
+  }
+}
+
+void ProgramGraph::showEvent(QShowEvent *event) {
+  QFrame::showEvent(event);
+  if (m_stale && m_model) {
+    m_stale = false;
     reDraw();
   }
 }
@@ -80,6 +93,8 @@ void ProgramGraph::selectInterval(int index) {
   double const min{m_plot->yAxis->range().lower - 10};
   selectionRect->topLeft->setCoords(index, max);
   selectionRect->bottomRight->setCoords(index + 1, min);
+  // a single interval is the whole program: nothing to tell apart
+  selectionRect->setVisible(m_model && (m_model->getStandardModel()->columnCount() > 1));
   m_plot->layer("selectionLay")->replot();
 }
 
@@ -109,6 +124,10 @@ void ProgramGraph::initGui() {
     if (QStringList{"duration", "flags"}.contains(m_paramOrder.at(i))) {
       m_plot->graph(i)->setVisible(false);
     }
+    // a bold profile
+    QPen pen = m_plot->graph(i)->pen();
+    pen.setWidthF(3.0 * utils::ssf());
+    m_plot->graph(i)->setPen(pen);
   }
   ticker = QSharedPointer<QCPAxisTickerText>(new QCPAxisTickerText());
   ticker->setSubTickCount(1);
@@ -140,7 +159,7 @@ void ProgramGraph::initGui() {
 
   selectionRect = new QCPItemRect(m_plot);
   selectionRect->setLayer("selectionLay");
-  selectionRect->setBrush(QBrush(QColor(0, 50, 150, 40)));
+  selectionRect->setBrush(QBrush(QColor(39, 96, 230, 40)));
   selectionRect->setPen(Qt::NoPen);
 
   auto *mainLay = new QVBoxLayout(this);
@@ -200,9 +219,9 @@ void ProgramGraph::calculateChartData() {
           if ("temp" == m_paramOrder[i]) {
             // none where the interval controls only the pressure; a ramp from the previous interval's target (as the
             // PLC: also when that one controlled only the pressure), the first one from the chamber's temperature
-            // (25 °C when not known)
+            // (24 °C when not known, the reference of the control charts)
             bool const   controlled{utils::getBitOfDword(intervalFlags, i)};
-            double const from{(colonIndex == 0) ? m_startTemp.value_or(25.0)
+            double const from{(colonIndex == 0) ? m_startTemp.value_or(24.0)
                                                 : m_model->getStandardModel()->item(i, colonIndex - 1)->data(itemDataType).toDouble()};
             m_chartData[i] << (!controlled ? qQNaN() : intervalTempRamp ? from : itemData);
             m_chartData[i] << (controlled ? itemData : qQNaN());
@@ -256,7 +275,6 @@ void ProgramGraph::reDraw() {
   for (int i{0U}; i < m_paramOrder.size(); ++i) {
     m_plot->graph(i)->setData(m_chartData.at(0), m_chartData.at(i), true);
   }
-
   m_plot->rescaleAxes();
   m_plot->yAxis->setRange(m_plot->yAxis->range().lower - 5, m_plot->yAxis->range().upper + 5);
   if (m_plot->yAxis2->visible()) { // the programmed pressure, in whole decades

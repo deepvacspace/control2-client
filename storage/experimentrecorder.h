@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QVariantMap>
+#include <optional>
 
 #include "hardwarestatus.h"
 #include "runmanifest.h"
@@ -34,11 +35,13 @@ public:
 
   // what is about to be started
   struct JobInfo {
-    QString     kind;        // "manual_setpoint", "program", "test_profile", "ai_advisor", "offline_advisor"
+    QString     kind;        // "program", "test_profile", "ai_advisor", "offline_advisor" ("manual_setpoint": older runs)
     QString     label;       // run name suffix
     QString     testProfile; // profile / library program name
     QVariantMap program;     // ProgramModel::programVariant() as sent to the PLC
     QJsonObject details;     // kind specific (AI target, duration, ...)
+    // this job's own details (Control's Manual tab: its name, operator and DUT); none: the next runs' details
+    std::optional<core::RunMetadata> metadata{};
   };
 
   explicit ExperimentRecorder(ResHolder *resHolder, QObject *parent = nullptr);
@@ -46,6 +49,9 @@ public:
   // the job about to be started: takes the configuration snapshot now
   void setNextJob(JobInfo const &job);
   void setNextJob(QString const &label, QString const &testProfile = {});
+  // the job set next was sent while another ran (a setpoint replaced without stopping): the running one is saved as
+  // stopped and the next one recorded from now
+  void jobReplaced();
 
   // run details for the next runs (kept until changed); the operator defaults to the logged-in user
   void                            setNextRunMetadata(core::RunMetadata const &metadata);
@@ -55,11 +61,13 @@ public:
   // the running job sets the pressure and not the temperature (from the program it was sent with)
   [[nodiscard]] bool pressureControlled() const;
   [[nodiscard]] QString chamberRef() const; // "host:port" of the PLC gate, identifies the chamber across computers
-  // the job running now: its kind ("manual_setpoint", "program", ...), program (ProgramModel::programVariant())
+  // the job running now: its kind ("program", ...), program (ProgramModel::programVariant())
   // and start (epoch s); empty / NaN when none runs
   [[nodiscard]] QString     runningJobKind() const;
   [[nodiscard]] QVariantMap runningProgram() const;
   [[nodiscard]] double      runningJobStart() const;
+  // its name: the purpose given in its details, otherwise its label ("Program", ...); empty when none runs
+  [[nodiscard]] QString     runningJobName() const;
 
   // every sample received from the PLC (App); kept while a job runs and journaled to the experiment database
   void addSample(double epochSec, QVector<double> const &values);

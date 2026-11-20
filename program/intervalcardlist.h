@@ -8,6 +8,7 @@
 
 #include "programmodel.h"
 
+class QCheckBox;
 class QComboBox;
 class QFrame;
 class QLabel;
@@ -89,6 +90,7 @@ private:
   [[nodiscard]] std::optional<double> rampChange(int interval) const; // °C from the previous target
   [[nodiscard]] std::optional<double> rampRate(int interval) const;   // °C/min
   bool                  applyCustomRates(); // true: a duration changed
+  void                  endUntilStopped(int interval); // a ramp is not held until stopped: back to an hour
   [[nodiscard]] QString pressureUnit() const;
 
   ProgramModel  *m_model{nullptr};
@@ -109,6 +111,7 @@ private:
   QLabel                 *m_setpointLabel{nullptr};
   LineEditTime           *m_durationEdit{nullptr};
   QLabel                 *m_durationLabel{nullptr};
+  QCheckBox              *m_untilStoppedCheck{nullptr}; // a hold (or a pressure) lasts until stopped
   QComboBox              *m_modeCombo{nullptr};
   LineEditNum            *m_rateEdit{nullptr};
   LineEditScreen         *m_labelEdit{nullptr};

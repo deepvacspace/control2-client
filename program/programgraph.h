@@ -23,6 +23,9 @@ public:
 signals:
   void intervalDoubleClicked(int);
 
+protected:
+  void showEvent(QShowEvent *event) override; // drawn again when the start moved while hidden
+
 private:
   void initGui();
   void reDraw();
@@ -42,6 +45,7 @@ private:
 
   QString m_pressureLabel;
   std::optional<double> m_startTemp;
+  bool                  m_stale{false}; // the start moved while hidden
 
   int m_flagsParamIndexInModel;
   int m_flagsParamType;
