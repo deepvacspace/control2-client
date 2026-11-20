@@ -19,6 +19,8 @@ public:
   explicit GraphStyleSingleWidget(int index, QVariantMap const &stateMap, QWidget *parent = nullptr);
   QVariantMap getStateMapVariant() const; // =getStyle;
   void        setEnabled(bool value);
+  // back to a style kept before (shown, colour, line style and width), without styleUpdated
+  void        setStateMap(QVariantMap const &stateMap);
 
 signals:
   void styleUpdated();
@@ -39,6 +41,7 @@ private:
   QComboBox   *m_lineStyle;
   int          m_lineSample{80}; // width of the line drawn in the style box (unscaled px)
   QComboBox   *m_lineWidth;
+  QWidget     *m_styleBox{nullptr}; // compact: the line style and width, under the name
 };
 
 inline QVariantMap GraphStyleSingleWidget::getStateMapVariant() const {

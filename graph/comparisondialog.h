@@ -5,17 +5,16 @@
 
 #include "chartcomparison.h"
 
-class QComboBox;
+class QLabel;
 class QListWidget;
 class QPushButton;
-class QSpinBox;
 
 namespace deepvaccontrol {
 struct ResHolder;
 
 /**
  * @brief Chooses what a comparison tab shows: experiments among the open tabs and from the experiment list, the
- * channels to compare and the alignment.
+ * channels to compare. The experiments are aligned on their starts.
  */
 class ComparisonDialog : public QDialog {
   Q_OBJECT
@@ -43,8 +42,9 @@ private:
   QListWidget     *m_tabsList{nullptr};    // open tabs, ticked to take part
   QListWidget     *m_addedList{nullptr};   // experiments added from the list
   QListWidget     *m_channelsList{nullptr};
-  QComboBox       *m_alignCombo{nullptr};
-  QSpinBox        *m_alignSpin{nullptr};
+  QLabel          *m_experimentsBadge{nullptr}; // "2 of 8"
+  QLabel          *m_channelsBadge{nullptr};
+  QLabel          *m_hint{nullptr};             // what is missing, or ready
   QPushButton     *m_okBtn{nullptr};
   QVector<ExperimentRun> m_added;
 };

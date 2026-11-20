@@ -1,6 +1,7 @@
 #include "graphstylesinglewidget.h"
 
 #include <QColorDialog>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
@@ -14,11 +15,10 @@ namespace deepvaccontrol {
 
 GraphStyleSingleWidget::GraphStyleSingleWidget(int index, QVariantMap const &stateMap, QWidget *parent)
     : QFrame{parent}, m_index{index}, m_stateMap{stateMap} {
-  double const ssf{utils::ssf()};
   setObjectName("outputRow");
   auto *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(10 * ssf, 5 * ssf, 10 * ssf, 5 * ssf);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(theme::dp(20), theme::dp(8), theme::dp(20), theme::dp(8));
+  mainLay->setSpacing(theme::dp(20));
 
   // shown on the chart
   m_visibility = new QCheckBox(this);
@@ -26,7 +26,7 @@ GraphStyleSingleWidget::GraphStyleSingleWidget(int index, QVariantMap const &sta
 
   // colour swatch: opens the colour picker
   m_colorPicker = new QPushButton(this);
-  m_colorPicker->setFixedSize(26 * ssf, 26 * ssf);
+  m_colorPicker->setFixedSize(theme::dp(48), theme::dp(48));
   m_colorPicker->setToolTip(tr("Line colour"));
 
   // the pressure as the charts draw it, in Torr
@@ -36,13 +36,13 @@ GraphStyleSingleWidget::GraphStyleSingleWidget(int index, QVariantMap const &sta
 
   m_lineStyle = new QComboBox(this);
   m_lineStyle->addItems(QStringList{"", "", "", "", ""});
-  m_lineStyle->setFixedSize(110 * ssf, 28 * ssf);
-  m_lineStyle->setIconSize(QSize(80 * ssf, 14 * ssf));
+  m_lineStyle->setFixedSize(theme::dp(206), theme::dp(52));
+  m_lineStyle->setIconSize(QSize(theme::dp(150), theme::dp(26)));
   m_lineStyle->setToolTip(tr("Line style"));
 
   m_lineWidth = new QComboBox(this);
   m_lineWidth->addItems(QStringList{"1 px", "2 px", "3 px", "4 px"});
-  m_lineWidth->setFixedSize(72 * ssf, 28 * ssf);
+  m_lineWidth->setFixedSize(theme::dp(135), theme::dp(52));
   m_lineWidth->setToolTip(tr("Line width"));
 
   mainLay->addWidget(m_visibility);
@@ -129,35 +129,58 @@ void GraphStyleSingleWidget::setEnabled(bool value) {
   m_label->setProperty("muted", !value);
   m_label->style()->unpolish(m_label);
   m_label->style()->polish(m_label);
+  if (m_styleBox) { // compact: the line boxes only while the channel is shown
+    m_styleBox->setVisible(value);
+  }
   updateSwatch();
 }
 
+void GraphStyleSingleWidget::setStateMap(QVariantMap const &stateMap) {
+  QSignalBlocker const styleBlock(m_lineStyle);
+  QSignalBlocker const widthBlock(m_lineWidth);
+  for (char const *field : {"color", "pen", "width"}) {
+    m_stateMap[field] = stateMap.value(field);
+  }
+  m_lineWidth->setCurrentIndex(m_stateMap["width"].toInt() - 1);
+  updateLineStyleBox();
+  m_lineStyle->setCurrentIndex(m_stateMap["pen"].toInt() - 1);
+  setEnabled(stateMap.value("visible").toBool());
+}
+
 void GraphStyleSingleWidget::setCompact() {
-  // one line, a card: shown, colour, the name (wrapped), then small boxes for the line style (a short sample) and width
-  double const ssf{utils::ssf()};
-  auto         px = [ssf](double value) { return static_cast<int>(value * ssf); };
+  // a card: shown, colour and the name (the whole width left, wrapped); under the name, while shown, small boxes for
+  // the line style (a short sample) and width (beside the name they leave it no room in the narrow side column)
   setObjectName("channelRow");
   delete layout(); // its widgets stay, laid out again below
-  auto *lay = new QHBoxLayout(this);
-  lay->setContentsMargins(px(10), px(8), px(8), px(8));
-  lay->setSpacing(px(8));
-  m_colorPicker->setFixedSize(px(22), px(22));
+  auto *grid = new QGridLayout(this);
+  grid->setContentsMargins(theme::dp(16), theme::dp(12), theme::dp(16), theme::dp(12));
+  grid->setHorizontalSpacing(theme::dp(14));
+  grid->setVerticalSpacing(theme::dp(8));
+  m_colorPicker->setFixedSize(theme::dp(41), theme::dp(41));
   m_lineSample = 22;
-  m_lineStyle->setIconSize(QSize(px(m_lineSample), px(14)));
-  m_lineStyle->setFixedSize(px(44), px(30));
-  m_lineWidth->setFixedSize(px(54), px(30));
-  m_visibility->setFixedSize(px(22), px(22));
+  m_lineStyle->setIconSize(QSize(qRound(m_lineSample * utils::ssf()), theme::dp(26)));
+  m_lineStyle->setFixedSize(theme::dp(82), theme::dp(48));
+  m_lineWidth->setFixedSize(theme::dp(101), theme::dp(48));
+  m_visibility->setFixedSize(theme::dp(41), theme::dp(41));
   QFont small = m_label->font();
   small.setPointSizeF(small.pointSizeF() * 0.9);
   m_label->setFont(small);
   m_label->setWordWrap(true);
   m_label->setMinimumWidth(0);
   m_label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-  lay->addWidget(m_visibility);
-  lay->addWidget(m_colorPicker);
-  lay->addWidget(m_label, 1);
-  lay->addWidget(m_lineStyle);
-  lay->addWidget(m_lineWidth);
+  m_styleBox    = new QWidget(this);
+  auto *boxLay  = new QHBoxLayout(m_styleBox);
+  boxLay->setContentsMargins(0, 0, 0, 0);
+  boxLay->setSpacing(theme::dp(12));
+  boxLay->addWidget(m_lineStyle);
+  boxLay->addWidget(m_lineWidth);
+  boxLay->addStretch();
+  grid->addWidget(m_visibility, 0, 0);
+  grid->addWidget(m_colorPicker, 0, 1);
+  grid->addWidget(m_label, 0, 2);
+  grid->addWidget(m_styleBox, 1, 2);
+  grid->setColumnStretch(2, 1);
+  m_styleBox->setVisible(m_stateMap["visible"].toBool());
   int const pen{m_lineStyle->currentIndex()};
   updateLineStyleBox();
   m_lineStyle->setCurrentIndex(pen);

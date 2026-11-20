@@ -16,7 +16,8 @@ public:
   // defaultShown channels (state names) are shown
   GraphStyleEditor(ResHolder *resHolder, QString const &settingsKey, QStringList const &defaultShown, QWidget *parent = nullptr);
   QVariantList getStateStylesList(); // to call on hide/select all/unselect all
-  // inside the Analysis page's side panel: no title or Done, narrower line style boxes, not a window
+  // inside the Analysis page's side panel: no title or Done, the count with small Show all / Hide all on top, narrower
+  // line style boxes, not a window; the changes reach the charts on Save (closed without it: dropped)
   void setCompact();
   // exactly these channels shown (state names, or labels without their unit), the others hidden
   void showOnly(QStringList const &channels);
@@ -40,7 +41,13 @@ private:
   QPushButton                        *m_showAllBtn{nullptr};
   QPushButton                        *m_hideAllBtn{nullptr};
   QHBoxLayout                        *m_footerLay{nullptr};
+  // compact: changes wait for Save; the styles the charts show
+  bool                                m_compact{false};
+  QPushButton                        *m_saveBtn{nullptr};
+  QVariantList                        m_applied;
   void                                updateCount();
+  void                                persist(); // into the settings
+  void                                save();    // compact: to the charts, and kept
 
   // QWidget interface
 protected:

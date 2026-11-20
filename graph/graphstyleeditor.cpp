@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QScrollArea>
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 namespace {
@@ -48,10 +49,9 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QWidget *parent)
 
 GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QString const &settingsKey, QStringList const &defaultShown, QWidget *parent)
     : QDialog{parent}, m_resHolder{resHolder}, m_settingsKey{settingsKey}, m_styles(stylesOf(resHolder, settingsKey, defaultShown)) { // parentheses: braces make a list holding the list
-  double const ssf{utils::ssf()};
   auto        *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(16 * ssf, 14 * ssf, 16 * ssf, 14 * ssf);
-  mainLay->setSpacing(10 * ssf);
+  mainLay->setContentsMargins(theme::dp(32), theme::dp(28), theme::dp(32), theme::dp(28));
+  mainLay->setSpacing(theme::dp(20));
 
   // header: title and how many channels are shown
   auto *header = new QHBoxLayout();
@@ -67,8 +67,8 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QString const &settings
   // one row per channel
   auto *list       = new QWidget();
   auto *elementLay = new QVBoxLayout(list);
-  elementLay->setContentsMargins(0, 0, 6 * ssf, 0);
-  elementLay->setSpacing(6 * ssf);
+  elementLay->setContentsMargins(0, 0, theme::dp(12), 0);
+  elementLay->setSpacing(theme::dp(12));
 
   QVariantList const statesList = m_styles;
 
@@ -77,7 +77,9 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QString const &settings
     if (stateMap.contains("visible")) {
       auto *stateStyleWidget = new GraphStyleSingleWidget(i, stateMap, list);
       connect(stateStyleWidget, &GraphStyleSingleWidget::styleUpdated, this, [this, i, stateStyleWidget]() {
-        emit styleChanged(i, stateStyleWidget->getStateMapVariant());
+        if (!m_compact) {
+          emit styleChanged(i, stateStyleWidget->getStateMapVariant());
+        }
         updateCount();
       });
       elementLay->addWidget(stateStyleWidget);
@@ -103,12 +105,12 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QString const &settings
   m_showAllBtn        = selectAllBtn;
   m_hideAllBtn        = selectNoneBtn;
   for (QPushButton *item : {closeBtn, selectAllBtn, selectNoneBtn}) {
-    item->setMinimumSize(100 * ssf, 30 * ssf);
+    item->setMinimumSize(theme::dp(187), theme::dp(56));
   }
 
   auto *btnLay = new QHBoxLayout();
   m_footerLay  = btnLay;
-  btnLay->setSpacing(8 * ssf);
+  btnLay->setSpacing(theme::dp(16));
   btnLay->addWidget(selectAllBtn);
   btnLay->addWidget(selectNoneBtn);
   btnLay->addStretch();
@@ -117,24 +119,20 @@ GraphStyleEditor::GraphStyleEditor(ResHolder *resHolder, QString const &settings
   mainLay->addLayout(btnLay);
   connect(closeBtn, &QPushButton::clicked, this, &GraphStyleEditor::hide);
 
-  connect(selectAllBtn, &QPushButton::clicked, this, [this] {
+  auto showAll = [this](bool shown) {
     for (auto &item : widgetsMap) {
-      item->setEnabled(true);
+      item->setEnabled(shown);
     }
-    emit styleAllChanged(getStateStylesList());
-    updateCount();
-  });
-
-  connect(selectNoneBtn, &QPushButton::clicked, this, [this] {
-    for (auto &item : widgetsMap) {
-      item->setEnabled(false);
+    if (!m_compact) { // compact: on Save
+      emit styleAllChanged(getStateStylesList());
     }
-    emit styleAllChanged(getStateStylesList());
     updateCount();
-  });
+  };
+  connect(selectAllBtn, &QPushButton::clicked, this, [showAll] { showAll(true); });
+  connect(selectNoneBtn, &QPushButton::clicked, this, [showAll] { showAll(false); });
 
   updateCount();
-  setMinimumSize(640 * ssf, 520 * ssf);
+  setMinimumSize(theme::dp(1200), theme::dp(975));
   setModal(true);
   setWindowTitle(tr("Channels"));
 }
@@ -146,6 +144,24 @@ void GraphStyleEditor::updateCount() {
   }
   m_countLabel->setText(tr("%1 of %2 shown").arg(shown).arg(widgetsMap.size()));
   emit countChanged(m_countLabel->text());
+  if (m_saveBtn) {
+    m_saveBtn->setEnabled(getStateStylesList() != m_applied); // something to save
+  }
+}
+
+void GraphStyleEditor::persist() {
+  if (m_settingsKey == QLatin1String("states")) {
+    m_resHolder->settings->setStatesSettings(getStateStylesList());
+  } else {
+    m_resHolder->settings->setEntries({{m_settingsKey, getStateStylesList()}});
+  }
+}
+
+void GraphStyleEditor::save() {
+  m_applied = getStateStylesList();
+  emit styleAllChanged(m_applied);
+  persist();
+  updateCount();
 }
 
 QVariantList GraphStyleEditor::getStateStylesList() {
@@ -166,46 +182,32 @@ QVariantList GraphStyleEditor::getStateStylesList() {
 }
 
 void GraphStyleEditor::hideEvent(QHideEvent *event) {
-  if (m_settingsKey == QLatin1String("states")) {
-    m_resHolder->settings->setStatesSettings(getStateStylesList());
+  if (m_compact) {
+    // closed without Save: the rows back to what the charts show
+    for (auto it = widgetsMap.begin(); it != widgetsMap.end(); ++it) {
+      if (it.key() < m_applied.size()) {
+        it.value()->setStateMap(m_applied[it.key()].toMap());
+      }
+    }
+    updateCount();
   } else {
-    m_resHolder->settings->setEntries({{m_settingsKey, getStateStylesList()}});
+    persist();
   }
 
   // Call the base class implementation
   QDialog::hideEvent(event);
 }
 void GraphStyleEditor::setCompact() {
-  double const ssf{utils::ssf()};
   setWindowFlags(Qt::Widget);
   setModal(false);
   setMinimumSize(0, 0);
-  layout()->setContentsMargins(0, 0, static_cast<int>(8 * ssf), 0);
-  // the panel has its own title (the count under it), and its × instead of Done
+  auto *mainLay = static_cast<QVBoxLayout *>(layout());
+  mainLay->setContentsMargins(0, 0, theme::dp(16), 0);
+  mainLay->setSpacing(theme::dp(16));
+  // the panel has its own title, and its × instead of Done
   for (QLabel *label : findChildren<QLabel *>()) {
     if (label->objectName() == QLatin1String("cardTitle")) {
       label->hide();
-    }
-  }
-  m_countLabel->hide();
-  // the rows as wide as the panel (they wrap their names): no sideways scrolling
-  for (QScrollArea *area : findChildren<QScrollArea *>()) {
-    area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  }
-  // Show all and Hide all share the width; Hide all dark
-  for (QPushButton *button : {m_showAllBtn, m_hideAllBtn}) {
-    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    button->setMinimumSize(0, static_cast<int>(44 * ssf));
-    button->setProperty("panelFooter", true); // roomy, rounded (theme)
-  }
-  m_footerLay->setSpacing(static_cast<int>(10 * ssf));
-  if (auto *list = findChild<QScrollArea *>(); list && list->widget() && list->widget()->layout()) {
-    list->widget()->layout()->setSpacing(static_cast<int>(8 * ssf)); // the cards apart
-  }
-  m_hideAllBtn->setObjectName("darkButton");
-  for (int i{m_footerLay->count() - 1}; i >= 0; --i) {
-    if (m_footerLay->itemAt(i)->spacerItem()) {
-      delete m_footerLay->takeAt(i);
     }
   }
   for (QPushButton *button : findChildren<QPushButton *>()) {
@@ -213,9 +215,49 @@ void GraphStyleEditor::setCompact() {
       button->hide();
     }
   }
+  // on top: "6 of 8 shown", then Show all and Hide all, small
+  auto *top = new QHBoxLayout();
+  top->setContentsMargins(0, 0, 0, 0);
+  top->setSpacing(theme::dp(8));
+  if (QLayout *header = mainLay->itemAt(0)->layout()) { // the dialog's header: its title, the count
+    header->removeWidget(m_countLabel);
+  }
+  top->addWidget(m_countLabel);
+  top->addStretch();
+  for (QPushButton *button : {m_showAllBtn, m_hideAllBtn}) {
+    m_footerLay->removeWidget(button);
+    button->setMinimumSize(0, 0);
+    button->setFixedHeight(theme::dp(44));
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setStyleSheet(QStringLiteral("padding: 0 %1px;").arg(theme::dp(14)));
+    top->addWidget(button);
+  }
+  mainLay->insertLayout(0, top);
+  // the rows as wide as the panel (they wrap their names): no sideways scrolling
+  for (QScrollArea *area : findChildren<QScrollArea *>()) {
+    area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  }
+  if (auto *list = findChild<QScrollArea *>(); list && list->widget() && list->widget()->layout()) {
+    list->widget()->layout()->setSpacing(theme::dp(16)); // the cards apart
+  }
+  // at the bottom: Save, the whole width; the charts change only then
+  while (QLayoutItem *item = m_footerLay->takeAt(0)) {
+    delete item; // the spacer (the buttons moved, Done hidden)
+  }
+  m_saveBtn = new QPushButton(tr("Save"), this);
+  m_saveBtn->setObjectName("primaryButton");
+  m_saveBtn->setProperty("panelFooter", true); // roomy, rounded (theme)
+  m_saveBtn->setMinimumHeight(theme::dp(72));
+  m_saveBtn->setFocusPolicy(Qt::NoFocus);
+  m_saveBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  m_footerLay->addWidget(m_saveBtn);
+  connect(m_saveBtn, &QPushButton::clicked, this, &GraphStyleEditor::save);
   for (GraphStyleSingleWidget *row : std::as_const(widgetsMap)) {
     row->setCompact();
   }
+  m_compact = true;
+  m_applied = getStateStylesList();
+  updateCount();
 }
 
 void GraphStyleEditor::showOnly(QStringList const &channels) {
@@ -229,6 +271,10 @@ void GraphStyleEditor::showOnly(QStringList const &channels) {
     QString const name  = names.value(it.key()).toLower();
     QString const label = styles.value(it.key()).toMap().value("label").toString().section(QLatin1Char(','), 0, 0).trimmed().toLower();
     it.value()->setEnabled(wanted.contains(name) || (!label.isEmpty() && wanted.contains(label)));
+  }
+  if (m_compact) { // asked for (the assistant): applied and kept at once
+    save();
+    return;
   }
   emit styleAllChanged(getStateStylesList());
   updateCount();

@@ -1,6 +1,5 @@
 #include "comparisondialog.h"
 
-#include <QComboBox>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -11,7 +10,6 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
-#include <QSpinBox>
 #include <QVBoxLayout>
 
 #include "comparison.h"
@@ -24,10 +22,6 @@
 namespace deepvaccontrol {
 
 namespace {
-int px(double value) {
-  return qMax(1, static_cast<int>(value * utils::ssf()));
-}
-
 QLabel *caption(QString const &text, QWidget *parent) {
   auto *label = new QLabel(text.toUpper(), parent);
   label->setProperty("muted", true);
@@ -39,15 +33,45 @@ QLabel *caption(QString const &text, QWidget *parent) {
   return label;
 }
 
+// Cobalt on a light tint: ticked rows and the counts (dark theme: the accent, faint)
+QColor tint() {
+  theme::Colors const &c = theme::colors();
+  return theme::isDark() ? QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 45) : theme::guide::cobaltTint;
+}
+
+// a card's heading (as on Home): a Cobalt icon, the name, and at the right a tinted badge with what is chosen
+QHBoxLayout *heading(QString const &icon, QString const &text, QWidget *parent, QLabel **badge) {
+  auto *row = new QHBoxLayout();
+  row->setSpacing(theme::dp(10));
+  auto *mark = new QLabel(parent);
+  theme::setThemedIcon(mark, icon, theme::dp(24));
+  row->addWidget(mark);
+  row->addWidget(caption(text, parent));
+  row->addStretch(1);
+  *badge     = new QLabel(parent);
+  QFont font = (*badge)->font();
+  font.setBold(true);
+  font.setPointSizeF(font.pointSizeF() * 0.82);
+  (*badge)->setFont(font);
+  (*badge)->setStyleSheet(QStringLiteral("QLabel { background: %1; color: %2; border-radius: %3px; padding: %4px %5px; }")
+                            .arg(tint().name(QColor::HexArgb), theme::colors().accent.name())
+                            .arg(theme::dp(12))
+                            .arg(theme::dp(3))
+                            .arg(theme::dp(12)));
+  row->addWidget(*badge);
+  return row;
+}
+
+// a white card with its outline, as on Home
 QFrame *card(QWidget *parent) {
   auto *frame = new QFrame(parent);
   frame->setObjectName("compareCard");
   theme::Colors const &c = theme::colors();
   frame->setStyleSheet(QStringLiteral("QFrame#compareCard { background: %1; border: %2px solid %3; border-radius: %4px; }")
-                         .arg(c.panelAlt.name())
-                         .arg(px(1))
+                         .arg(c.panel.name())
+                         .arg(theme::dp(1))
                          .arg(c.border.name())
-                         .arg(px(8)));
+                         .arg(theme::radius()));
   return frame;
 }
 
@@ -60,15 +84,18 @@ public:
     theme::Colors const &c = theme::colors();
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
-    if (option.state & QStyle::State_Selected) {
-      painter->fillRect(option.rect, QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 30));
+    bool const checked{index.data(Qt::CheckStateRole).toInt() == Qt::Checked};
+    // a ticked row on the Cobalt tint
+    if (checked || (option.state & QStyle::State_Selected)) {
+      painter->setPen(Qt::NoPen);
+      painter->setBrush(checked ? tint() : QColor(c.accent.red(), c.accent.green(), c.accent.blue(), 20));
+      painter->drawRoundedRect(QRectF(option.rect).adjusted(0, theme::dp(2), 0, -theme::dp(2)), theme::radius(), theme::radius());
     }
-    bool const   checked{index.data(Qt::CheckStateRole).toInt() == Qt::Checked};
-    double const box{static_cast<double>(px(16))};
-    QRectF const indicator(option.rect.left() + px(4), option.rect.center().y() - box / 2 + 0.5, box, box);
-    painter->setPen(QPen(checked ? c.accent : c.muted, px(1)));
+    double const box{static_cast<double>(theme::dp(30))};
+    QRectF const indicator(option.rect.left() + theme::dp(7), option.rect.center().y() - box / 2 + 0.5, box, box);
+    painter->setPen(QPen(checked ? c.accent : c.border.darker(125), theme::dp(2)));
     painter->setBrush(checked ? c.accent : c.panel);
-    painter->drawRoundedRect(indicator, px(3), px(3));
+    painter->drawRoundedRect(indicator, theme::dp(5), theme::dp(5));
     if (checked) {
       QPen tick(Qt::white, std::max(1.5, box / 8.0), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
       painter->setPen(tick);
@@ -78,17 +105,19 @@ public:
       QPointF const d(indicator.left() + box * 0.77, indicator.top() + box * 0.32);
       painter->drawPolyline(QPolygonF{{a, b, d}});
     }
-    QRect const text = option.rect.adjusted(static_cast<int>(indicator.right()) - option.rect.left() + px(8), 0, -px(4), 0);
+    QRect const text = option.rect.adjusted(static_cast<int>(indicator.right()) - option.rect.left() + theme::dp(15), 0, -theme::dp(7), 0);
     painter->setPen((index.flags() & Qt::ItemIsEnabled) ? c.text : c.off);
-    painter->setFont(option.font);
+    QFont font = option.font;
+    font.setBold(checked);
+    painter->setFont(font);
     painter->drawText(text, Qt::AlignLeft | Qt::AlignVCenter,
                       option.fontMetrics.elidedText(index.data(Qt::DisplayRole).toString(), Qt::ElideRight, text.width()));
     painter->restore();
   }
 
   QSize sizeHint(QStyleOptionViewItem const &option, QModelIndex const &index) const override {
-    int const width{option.fontMetrics.horizontalAdvance(index.data(Qt::DisplayRole).toString()) + px(32)};
-    return {width, std::max(px(28), option.fontMetrics.height() + px(10))};
+    int const width{option.fontMetrics.horizontalAdvance(index.data(Qt::DisplayRole).toString()) + theme::dp(60)};
+    return {width, std::max(theme::dp(52), option.fontMetrics.height() + theme::dp(18))};
   }
 
   bool editorEvent(QEvent *event, QAbstractItemModel *model, QStyleOptionViewItem const &option, QModelIndex const &index) override {
@@ -116,11 +145,12 @@ public:
 QListWidget *checkList(QWidget *parent) {
   auto *list = new QListWidget(parent);
   list->setFrameShape(QFrame::NoFrame);
-  // tick boxes: an empty box, or a filled one
-  theme::Colors const &c = theme::colors();
-  list->setStyleSheet(QStringLiteral("QListWidget { background: transparent; }"));
+  // on the card: an inner zone (Home's value boxes), the rows a little in from its edges
+  list->setStyleSheet(QStringLiteral("QListWidget { background: %1; border: none; border-radius: %2px; padding: %3px; }")
+                        .arg(theme::colors().panelAlt.name())
+                        .arg(theme::radius())
+                        .arg(theme::dp(6)));
   list->setItemDelegate(new CheckDelegate(list));
-  Q_UNUSED(c)
   touch::enableScrolling(list);
   return list;
 }
@@ -132,8 +162,8 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
   bool const editing{!initial.members.isEmpty()};
   setWindowTitle(editing ? tr("Change comparison") : tr("New comparison"));
   auto *lay = new QVBoxLayout(this);
-  lay->setContentsMargins(px(16), px(12), px(16), px(12));
-  lay->setSpacing(px(8));
+  lay->setContentsMargins(theme::dp(32), theme::dp(24), theme::dp(32), theme::dp(24));
+  lay->setSpacing(theme::dp(16));
   auto *title = new QLabel(windowTitle(), this);
   QFont font  = title->font();
   font.setBold(true);
@@ -142,14 +172,15 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
   lay->addWidget(title);
 
   auto *columns = new QHBoxLayout();
-  columns->setSpacing(px(12));
+  columns->setSpacing(theme::dp(24));
   lay->addLayout(columns, 1);
 
   // ---- experiments: open tabs, then the ones added from the list
   auto *experimentsCard = card(this);
   auto *experimentsLay  = new QVBoxLayout(experimentsCard);
-  experimentsLay->setContentsMargins(px(14), px(12), px(14), px(14));
-  experimentsLay->setSpacing(px(6));
+  experimentsLay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(28));
+  experimentsLay->setSpacing(theme::dp(12));
+  experimentsLay->addLayout(heading(QStringLiteral("chart"), tr("Experiments"), experimentsCard, &m_experimentsBadge));
   experimentsLay->addWidget(caption(tr("Open tabs"), experimentsCard));
   m_tabsList = checkList(experimentsCard);
   QStringList initialKeys;
@@ -165,6 +196,7 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
     item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
   }
   experimentsLay->addWidget(m_tabsList, 1);
+  experimentsLay->addSpacing(theme::dp(4));
   experimentsLay->addWidget(caption(tr("Added from the experiment list"), experimentsCard));
   m_addedList = checkList(experimentsCard);
   m_addedList->setToolTip(tr("Untick to leave an experiment out"));
@@ -180,20 +212,22 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
   // ---- the experiment list: a click adds an experiment
   auto *listCard = card(this);
   auto *listLay  = new QVBoxLayout(listCard);
-  listLay->setContentsMargins(px(14), px(12), px(14), px(14));
-  listLay->setSpacing(px(6));
-  listLay->addWidget(caption(tr("Experiment list"), listCard));
+  listLay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(28));
+  listLay->setSpacing(theme::dp(12));
+  QLabel *listBadge{nullptr};
+  listLay->addLayout(heading(QStringLiteral("analysis"), tr("Experiment list"), listCard, &listBadge));
+  listBadge->setText(tr("Tap to add"));
   auto *browser = new ExperimentBrowser(library, false, listCard);
   connect(browser, &ExperimentBrowser::openRequested, this, [this](ExperimentRun const &run) { addFromList(run); });
   listLay->addWidget(browser, 1);
   columns->addWidget(listCard, 3);
 
-  // ---- channels and alignment
+  // ---- channels (the experiments are aligned on their starts)
   auto *channelsCard = card(this);
   auto *channelsLay  = new QVBoxLayout(channelsCard);
-  channelsLay->setContentsMargins(px(14), px(12), px(14), px(14));
-  channelsLay->setSpacing(px(6));
-  channelsLay->addWidget(caption(tr("Channels"), channelsCard));
+  channelsLay->setContentsMargins(theme::dp(28), theme::dp(24), theme::dp(28), theme::dp(28));
+  channelsLay->setSpacing(theme::dp(12));
+  channelsLay->addLayout(heading(QStringLiteral("channels"), tr("Channels"), channelsCard, &m_channelsBadge));
   m_channelsList = checkList(channelsCard);
   QStringList const  names  = resHolder->states->getNames();
   QVariantList const styles = resHolder->settings->settingsMap()["states"].toList();
@@ -206,40 +240,20 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
     item->setCheckState(checkedChannels.contains(names[i]) ? Qt::Checked : Qt::Unchecked);
   }
   channelsLay->addWidget(m_channelsList, 1);
-  channelsLay->addSpacing(px(6));
-  channelsLay->addWidget(caption(tr("Align on"), channelsCard));
-  auto *alignRow = new QHBoxLayout();
-  m_alignCombo   = new QComboBox(channelsCard);
-  m_alignCombo->addItem(tr("Experiment start"), static_cast<int>(core::AlignMode::START));
-  m_alignCombo->addItem(tr("Setpoint change #"), static_cast<int>(core::AlignMode::SETPOINT_CHANGE));
-  m_alignCombo->addItem(tr("Target crossing after change #"), static_cast<int>(core::AlignMode::TARGET_CROSSING));
-  m_alignCombo->addItem(tr("Stage #"), static_cast<int>(core::AlignMode::STAGE));
-  m_alignCombo->setCurrentIndex(std::max(0, m_alignCombo->findData(initial.alignMode)));
-  m_alignSpin = new QSpinBox(channelsCard);
-  m_alignSpin->setRange(1, 99);
-  m_alignSpin->setValue(initial.alignN);
-  for (QWidget *widget : std::initializer_list<QWidget *>{m_alignCombo, m_alignSpin}) {
-    widget->setMinimumHeight(px(28));
-  }
-  alignRow->addWidget(m_alignCombo, 1);
-  alignRow->addWidget(m_alignSpin);
-  channelsLay->addLayout(alignRow);
   columns->addWidget(channelsCard, 2);
 
   // ---- buttons
   auto *buttons   = new QHBoxLayout();
-  auto *hint      = new QLabel(tr("Two to %1 experiments, at least one channel.").arg(MAX_EXPERIMENTS), this);
-  hint->setProperty("muted", true);
+  m_hint          = new QLabel(this);
   auto *cancelBtn = new QPushButton(tr("Cancel"), this);
   m_okBtn         = new QPushButton(editing ? tr("Update") : tr("Compare"), this);
-  cancelBtn->setProperty("outline", true);
   m_okBtn->setObjectName("primaryButton");
   m_okBtn->setDefault(true);
   for (QPushButton *button : {cancelBtn, m_okBtn}) {
-    button->setMinimumSize(px(100), px(32));
+    button->setMinimumSize(theme::dp(187), theme::dp(60));
     button->setFocusPolicy(Qt::NoFocus);
   }
-  buttons->addWidget(hint);
+  buttons->addWidget(m_hint);
   buttons->addStretch();
   buttons->addWidget(cancelBtn);
   buttons->addWidget(m_okBtn);
@@ -250,12 +264,11 @@ ComparisonDialog::ComparisonDialog(ResHolder *resHolder, ExperimentLibrary *libr
   for (QListWidget *list : {m_tabsList, m_addedList, m_channelsList}) {
     connect(list, &QListWidget::itemChanged, this, &ComparisonDialog::updateState);
   }
-  connect(m_alignCombo, &QComboBox::currentIndexChanged, this, &ComparisonDialog::updateState);
   updateState();
   // most of the window, never bigger than it
   QWidget const *window = parent ? parent->window() : nullptr;
-  QSize const    room   = window ? window->size() : QSize(px(1000), px(600));
-  resize(std::min(px(940), static_cast<int>(room.width() * 0.8)), std::min(px(560), static_cast<int>(room.height() * 0.8)));
+  QSize const    room   = window ? window->size() : QSize(theme::dp(1875), theme::dp(1125));
+  resize(std::min(theme::dp(1762), static_cast<int>(room.width() * 0.8)), std::min(theme::dp(1050), static_cast<int>(room.height() * 0.8)));
 }
 
 void ComparisonDialog::addFromList(ExperimentRun const &run) {
@@ -291,8 +304,27 @@ void ComparisonDialog::updateState() {
     return; // still being built
   }
   ChartComparison const chosen = comparison();
-  m_okBtn->setEnabled((chosen.members.size() >= 2) && (chosen.members.size() <= MAX_EXPERIMENTS) && !chosen.channels.isEmpty());
-  m_alignSpin->setEnabled(m_alignCombo->currentData().toInt() != static_cast<int>(core::AlignMode::START));
+  int const             experiments{static_cast<int>(chosen.members.size())};
+  int const             channels{static_cast<int>(chosen.channels.size())};
+  bool const            ready{(experiments >= 2) && (experiments <= MAX_EXPERIMENTS) && (channels > 0)};
+  m_okBtn->setEnabled(ready);
+  m_experimentsBadge->setText(tr("%1 of %2").arg(experiments).arg(MAX_EXPERIMENTS));
+  m_channelsBadge->setText(tr("%1 chosen").arg(channels));
+  // what is missing, or ready (green)
+  theme::Colors const &c = theme::colors();
+  QString              text;
+  if (experiments < 2) {
+    text = tr("Tick at least two experiments.");
+  } else if (experiments > MAX_EXPERIMENTS) {
+    text = tr("At most %1 experiments.").arg(MAX_EXPERIMENTS);
+  } else if (channels == 0) {
+    text = tr("Tick at least one channel.");
+  } else {
+    text = tr("Ready: %1 experiments from their starts, %2 channel(s).").arg(experiments).arg(channels);
+  }
+  m_hint->setText(text);
+  m_hint->setStyleSheet(QStringLiteral("QLabel { color: %1; font-weight: %2; }")
+                          .arg((ready ? c.active : c.muted).name(), ready ? QStringLiteral("bold") : QStringLiteral("normal")));
 }
 
 ChartComparison ComparisonDialog::comparison() const {
@@ -314,8 +346,8 @@ ChartComparison ComparisonDialog::comparison() const {
       chosen.channels << m_channelsList->item(i)->data(Qt::UserRole).toString();
     }
   }
-  chosen.alignMode = m_alignCombo->currentData().toInt();
-  chosen.alignN    = m_alignSpin->value();
+  chosen.alignMode = static_cast<int>(core::AlignMode::START); // always from the experiments' starts
+  chosen.alignN    = 1;
   return chosen;
 }
 
