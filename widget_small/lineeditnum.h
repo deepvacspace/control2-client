@@ -30,6 +30,8 @@ public:
   void                   setMax(int value);
   bool                   getIsScientific() const;
   void                   setIsScientific(bool value);
+  // an empty field stays empty (no value: the placeholder tells what that means), not the minimum
+  void                   setAllowEmpty(bool allow) { m_allowEmpty = allow; }
   // a value as this edit shows it: fixed decimals, or scientific as "1.0·E-02"
   QString                formatted(double value) const;
   // the value in the text (whatever way it is written)
@@ -51,6 +53,7 @@ private:
   SystemValue        *m_sysValue;
   bool                m_weakCheck;
   bool                m_isScientific = false;
+  bool                m_allowEmpty   = false;
 
 protected:
   bool   eventFilter(QObject *object, QEvent *event);

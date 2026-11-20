@@ -2,11 +2,13 @@
 
 #include <QEvent>
 #include <QMouseEvent>
+#include <QPointer>
 
 #include "touchsupport.h"
 
 #include "utils.h"
 #include "virtualnumkeyboard.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 LineEditNum::LineEditNum(double min, double max, int prec, bool weakCkeck, QWidget *parent)
@@ -47,10 +49,16 @@ LineEditNum::~LineEditNum() {
 }
 
 void LineEditNum::callVirtualKBoard() {
-  m_keyboard = new VirtualNumKeyboard(this);
-  connect(m_keyboard, &VirtualNumKeyboard::accepted, this, &LineEditNum::afterCheck);
-  connect(m_keyboard, &VirtualNumKeyboard::rejected, this, &LineEditNum::keyboradClosed);
-  m_keyboard->exec();
+  // one per tap, gone when it closes (not kept until the field goes). The field itself may go while it is open (its
+  // page rebuilt): nothing of the field is touched after exec()
+  QPointer<VirtualNumKeyboard> const keyboard = new VirtualNumKeyboard(this);
+  m_keyboard                                  = keyboard;
+  connect(keyboard, &VirtualNumKeyboard::accepted, this, &LineEditNum::afterCheck);
+  connect(keyboard, &VirtualNumKeyboard::rejected, this, &LineEditNum::keyboradClosed);
+  keyboard->exec();
+  if (keyboard) {
+    keyboard->deleteLater();
+  }
 }
 
 void LineEditNum::setMinMaxPrec(double min, double max, int prec) {
@@ -66,8 +74,8 @@ void LineEditNum::setScreenInputStyle() {
   font.setStyleHint(QFont::TypeWriter);
   font.setPointSize(20 * utils::ssf());
   setFont(font);
-  setFixedWidth(152 * utils::ssf());
-  //    setStyleSheet("selection-background-color: #CCCCCC");
+  setFixedWidth(theme::dp(285));
+  //    setStyleSheet("selection-background-color: #dce6ff");
 }
 
 void LineEditNum::setValue(float value) {
@@ -84,6 +92,9 @@ void LineEditNum::afterCheck() {
 }
 
 void LineEditNum::checkValidator() {
+  if (m_allowEmpty && text().trimmed().isEmpty()) {
+    return;
+  }
   double value{number()};
 
   if (value < m_validator->bottom()) {
