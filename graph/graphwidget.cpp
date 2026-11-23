@@ -2851,8 +2851,10 @@ void GraphWidget::refreshExportPanel() {
   }
   Tab const *tab   = m_focused ? m_focused->currentTab() : nullptr;
   auto const shown = m_focused ? viewer()->getData() : nullptr;
-  m_exportEmpty->setVisible(!tab || !shown || shown->getTimes().isEmpty());
-  if (m_exportEmpty->isVisible()) {
+  // not isVisible(): false while the panel itself is not shown yet, which let an empty tab through to a null `shown`
+  bool const empty{!tab || !shown || shown->getTimes().isEmpty()};
+  m_exportEmpty->setVisible(empty);
+  if (empty) {
     return;
   }
   QVector<double> const shownTimes = shown->getTimes();
