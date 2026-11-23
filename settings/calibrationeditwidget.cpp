@@ -1,10 +1,14 @@
 #include "calibrationeditwidget.h"
 
+#include <QFrame>
 #include <QGridLayout>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QLabel>
 
 #include "labelplus.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 CalibrationEditWidget::CalibrationEditWidget(
@@ -14,13 +18,38 @@ CalibrationEditWidget::CalibrationEditWidget(
   m_correctedSysValue = new SystemValue{"", 0.0f, this};
   m_deltaSysValue     = new SystemValue{"", 0.0f, this};
 
-  auto *mainLay = new QGridLayout(this);
+  auto        *mainLay = new QVBoxLayout(this);
+  mainLay->setContentsMargins(0, 0, 0, 0);
+  mainLay->setSpacing(theme::dp(12));
 
-  mainLay->addWidget(new QLabel(tr("Текущее значение")), 0, 0);
-  mainLay->addWidget(new LabelPlus(m_currentValue, this), 0, 1);
-
-  mainLay->addWidget(new QLabel(tr("Значение без корректировки")), 1, 0);
-  mainLay->addWidget(new LabelPlus(m_rawValue, this), 1, 1);
+  auto muted = [this](QString const &text) {
+    auto *label = new QLabel(text, this);
+    label->setProperty("muted", true);
+    return label;
+  };
+  // live readings side by side
+  auto *readings = new QGridLayout();
+  readings->setHorizontalSpacing(theme::dp(44));
+  readings->setVerticalSpacing(theme::dp(4));
+  QFont bigFont = font();
+  bigFont.setBold(true);
+  bigFont.setPointSizeF(font().pointSizeF() * 1.5);
+  auto *currentLabel = new LabelPlus(m_currentValue, this);
+  auto *rawLabel     = new LabelPlus(m_rawValue, this);
+  currentLabel->setFont(bigFont);
+  rawLabel->setFont(bigFont);
+  readings->addWidget(muted(tr("Current value")), 0, 0);
+  readings->addWidget(muted(tr("Uncalibrated value")), 0, 1);
+  readings->addWidget(currentLabel, 1, 0);
+  readings->addWidget(rawLabel, 1, 1);
+  readings->setColumnStretch(2, 1);
+  mainLay->addLayout(readings);
+  auto *divider = new QFrame(this);
+  divider->setObjectName("cardDivider");
+  divider->setFixedHeight(qMax(1, theme::dp(1)));
+  mainLay->addSpacing(theme::dp(12));
+  mainLay->addWidget(divider);
+  mainLay->addSpacing(theme::dp(12));
 
   m_valueSysValue->setMin(model->getMin());
   m_valueSysValue->setMax(model->getMax());
@@ -39,26 +68,37 @@ CalibrationEditWidget::CalibrationEditWidget(
   m_deltaEdit     = new LineEditNum(m_deltaSysValue);
   m_deltaEdit->setEnabled(false);
 
-  mainLay->addWidget(new QLabel(tr("Датчик камеры")), 2, 0);
-  mainLay->addWidget(m_valueEdit, 2, 1);
-
-  mainLay->addWidget(new QLabel(tr("Датчик внешнего прибора")), 3, 0);
-  mainLay->addWidget(m_correctedEdit, 3, 1);
-
-  mainLay->addWidget(new QLabel(tr("Корректировка")), 4, 0);
-  mainLay->addWidget(m_deltaEdit, 4, 1);
-
-  m_addBtn = new QPushButton(tr("Добавить точку"), this);
-  m_delBtn = new QPushButton(tr("Удалить точку"), this);
-
-  mainLay->addWidget(m_addBtn, 5, 0);
-  mainLay->addWidget(m_delBtn, 5, 1);
-  mainLay->setRowStretch(6, 1);
-
-  for (auto &btn : {m_addBtn, m_delBtn}) {
-    mainLay->setAlignment(btn, Qt::AlignHCenter);
-    btn->setFixedSize(150 * utils::ssf(), 50 * utils::ssf());
+  // the selected point
+  auto *fields = new QGridLayout();
+  fields->setHorizontalSpacing(theme::dp(24));
+  fields->setVerticalSpacing(theme::dp(16));
+  int row{0};
+  for (auto const &[title, edit] : {std::pair{tr("Chamber sensor"), m_valueEdit}, std::pair{tr("External reference"), m_correctedEdit},
+                                    std::pair{tr("Correction"), m_deltaEdit}}) {
+    auto *label = new QLabel(title, this);
+    label->setObjectName("rowTitle");
+    edit->setFont(font());
+    edit->setFixedSize(theme::dp(281), theme::dp(56));
+    fields->addWidget(label, row, 0);
+    fields->addWidget(edit, row, 1);
+    ++row;
   }
+  fields->setColumnStretch(2, 1);
+  mainLay->addLayout(fields);
+  mainLay->addSpacing(theme::dp(20));
+
+  m_addBtn = new QPushButton(tr("Add point"), this);
+  m_addBtn->setObjectName("primaryButton");
+  m_delBtn = new QPushButton(tr("Delete point"), this);
+  m_delBtn->setProperty("outline", true);
+  auto *buttons = new QHBoxLayout();
+  buttons->setSpacing(theme::dp(16));
+  for (auto &btn : {m_addBtn, m_delBtn}) {
+    btn->setMinimumSize(theme::dp(243), theme::dp(56));
+    buttons->addWidget(btn);
+  }
+  buttons->addStretch();
+  mainLay->addLayout(buttons);
 
   connect(m_model, &CalibrationModel::indexSelected, this, &CalibrationEditWidget::updateGui);
   connect(m_model, &CalibrationModel::sizeChanged, this, &CalibrationEditWidget::handleSizeChanged);
@@ -140,4 +180,4 @@ void CalibrationEditWidget::handleSizeChanged(int newSize) {
   m_delBtn->setEnabled(0 != newSize);
   m_addBtn->setEnabled(newSize < m_model->getPoints());
 }
-} // namespace deepvaccontrol
+}

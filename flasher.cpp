@@ -58,4 +58,4 @@ bool Flasher::eventFilter(QObject *watched, QEvent *event) {
   }
   return QLabel::eventFilter(watched, event);
 }
-} // namespace deepvaccontrol
+}

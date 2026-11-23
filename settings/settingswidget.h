@@ -1,6 +1,7 @@
 #ifndef SETTINGSWIDGET_H
 #define SETTINGSWIDGET_H
 
+#include <QTabWidget>
 #include <QWidget>
 
 #include "calibrationwidget.h"
@@ -30,10 +31,15 @@ private:
 
   void updatePidsAndCalibrations();
 
+  // the Users tab for every level; the other tabs for the Service Engineer only
+  void handleAccessChange(QString const &, AccessManager::AccessLevel newLevel);
+
   ResHolder                 *m_resHolder;
+  QTabWidget                *m_tabWidget{nullptr};
+  QWidget                   *m_usersTab{nullptr};
   QList<PidWidget *>         m_pidWidgets;
   QList<CalibrationWidget *> m_calibWidgets;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSWIDGET_H

@@ -48,6 +48,6 @@ inline QByteArray StreamBuffer::makePackage(QByteArray const &data) {
 
   return packet;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // STREAMBUFFER_H

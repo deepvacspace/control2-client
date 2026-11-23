@@ -20,6 +20,6 @@ private:
 public:
   void paint(QPainter *painter, QStyleOptionViewItem const &option, QModelIndex const &index) const override;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // PROGRAMTABLEDELEGATE_H

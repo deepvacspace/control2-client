@@ -33,6 +33,6 @@ protected:
   // Абстрактный класс чтения данных класса из файла.
   virtual bool readData(QFile &file)  = 0;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // FILEHANDLER_H

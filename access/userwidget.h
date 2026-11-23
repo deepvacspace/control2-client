@@ -1,7 +1,9 @@
 #ifndef USERWIDGET_H
 #define USERWIDGET_H
 
-#include <QListWidget>
+#include <QDateTime>
+#include <QLabel>
+#include <QTableWidget>
 #include <QPushButton>
 #include <QWidget>
 
@@ -14,6 +16,9 @@ class UserWidget : public QWidget {
 public:
   explicit UserWidget(Logger *logger, AccessManager *accessManager, QWidget *parent = nullptr);
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 private:
   void    initGui();
   void    updateBtnsEnable();
@@ -24,13 +29,18 @@ private:
   Logger        *m_logger;
   AccessManager *m_accessManager;
 
-  QListWidget *m_usersList;
+  QTableWidget *m_usersList;
+  QLabel       *m_currentName{nullptr};
+  QLabel       *m_currentLevel{nullptr};
+  QLabel       *m_loggedInSince{nullptr};
+  QDateTime     m_since;
+  void          updateCurrentUser(QString const &name, AccessManager::AccessLevel level);
 
   QPushButton *m_selectUserBtn;
   QPushButton *m_editUserBtn;
   QPushButton *m_addUserBtn;
   QPushButton *m_delUserBtn;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // USERWIDGET_H

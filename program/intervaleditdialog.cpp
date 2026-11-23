@@ -1,15 +1,21 @@
 #include "intervaleditdialog.h"
 
 #include <QHBoxLayout>
+#include <QLabel>
+#include <QFrame>
+#include <QButtonGroup>
 
 #include "constants.h"
 #include "intervaleditdelegate.h"
 #include "lineeditnum.h"
+#include "lineeditscreen.h"
 #include "lineedittime.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
-IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QWidget *parent) : QDialog{parent}, m_model{model} {
+IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QStringList *labels, QWidget *parent)
+    : QDialog{parent}, m_model{model}, m_labels{labels} {
   paramsOrder = m_model->getParamListOrder();
 
   initGui();
@@ -47,6 +53,13 @@ IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QWidget *parent) : Q
 
   connect(newButton, &QPushButton::clicked, this, [this] {
     localCommit();
+    if (m_labels) {
+      while (m_labels->size() < m_model->getStandardModel()->columnCount()) {
+        m_labels->append(QString());
+      }
+      m_labels->insert(mapper->currentIndex() + 1, QString());
+      emit labelsChanged();
+    }
     m_model->newItem(mapper->currentIndex() + 1);
     mapper->toNext();
   });
@@ -60,26 +73,53 @@ IntervalEditDialog::IntervalEditDialog(ProgramModel *model, QWidget *parent) : Q
 void IntervalEditDialog::initGui() {
   intervalInfo = new QLabel(this);
 
-  nextButton  = new QPushButton(tr("Следующий"), this);
-  prevButton  = new QPushButton(tr("Предыдущий"), this);
-  newButton   = new QPushButton(tr("Добавить новый"), this);
-  closeButton = new QPushButton(tr("Закрыть"), this);
+  double const ssf{utils::ssf()};
+  QFont        titleFont = intervalInfo->font();
+  titleFont.setBold(true);
+  titleFont.setPointSizeF(titleFont.pointSizeF() * 1.1);
+  intervalInfo->setFont(titleFont);
+
+  // ‹ previous · next ›, add after, close
+  auto navButton = [this, ssf](QString const &kind, QString const &tip) {
+    auto *button = new QPushButton(this);
+    theme::setThemedIcon(button, kind, static_cast<int>(16 * ssf));
+    button->setFixedSize(theme::dp(63), theme::dp(63));
+    button->setToolTip(tip);
+    return button;
+  };
+  prevButton  = navButton("left", tr("Previous interval"));
+  nextButton  = navButton("right", tr("Next interval"));
+  newButton   = new QPushButton(tr("Add interval after"), this);
+  closeButton = new QPushButton(tr("Close"), this);
+  closeButton->setObjectName("primaryButton");
+  for (QPushButton *btn : {newButton, closeButton}) {
+    btn->setFixedHeight(theme::dp(63));
+    btn->setMinimumWidth(theme::dp(243));
+  }
   buttons << nextButton << prevButton << newButton << closeButton;
 
-  for (QPushButton *btn : buttons) {
-    btn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
-  }
-
-  maxSpeedCheck = new TempChangeSelector(tr("Изменение температуры"), this);
-  maxSpeedCheck->setMaximumWidth(300 * utils::ssf());
+  maxSpeedCheck = new TempChangeSelector(QString(), this);
 
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(10 * utils::ssf(), 10 * utils::ssf(), 10 * utils::ssf(), 10 * utils::ssf());
+  mainLay->setContentsMargins(theme::dp(32), theme::dp(28), theme::dp(32), theme::dp(28));
+  mainLay->setSpacing(theme::dp(24));
   auto *bottomLay = new QHBoxLayout();
   auto *paramLay  = new QGridLayout();
+  paramLay->setHorizontalSpacing(theme::dp(20));
+  paramLay->setVerticalSpacing(theme::dp(16));
 
   // cycle all params in Interval Model Struct (duration, temp, hum, etc.)
-  int indexPositionInLay = 0; // != index in model->getModelStruct(), so count separately
+  // interval label (shown in the interval table, saved with the program)
+  labelEdit = new LineEditScreen(this, VirtualKeyboard::EN);
+  labelEdit->setPlaceholderText(tr("e.g. Ramp up, Hot dwell"));
+  labelEdit->setMinimumHeight(theme::dp(60));
+  labelEdit->setEnabled(m_labels != nullptr);
+  auto *labelTitle = new QLabel(tr("Label"), this);
+  labelTitle->setProperty("muted", true);
+  labelEdit->setFixedHeight(theme::dp(60));
+  paramLay->addWidget(labelTitle, 0, 0);
+  paramLay->addWidget(labelEdit, 0, 2);
+  int indexPositionInLay = 1; // != index in model->getModelStruct(), so count separately
   for (auto const &item : m_model->getParamListVariant()) {
     int const     type{item.toMap()["type"].toInt()};
     QString const label{item.toMap()["label"].toString()};
@@ -97,6 +137,8 @@ void IntervalEditDialog::initGui() {
         double const  max{item.toMap()["max"].toDouble()};
         double const  prec{item.toMap()["prec"].toDouble()};
         auto         *numEditWidget = new LineEditNum(min, max, prec, true, this);
+        numEditWidget->setFont(font());
+        numEditWidget->setFixedSize(theme::dp(300), theme::dp(60));
         QString const notation{item.toMap()["notation"].toString()};
         numEditWidget->setIsScientific(notation == "scientific");
         paramWidgetList << numEditWidget;
@@ -108,7 +150,14 @@ void IntervalEditDialog::initGui() {
         break;
       }
       case static_cast<int>(Qt::UserRole) + 0: {
-        paramWidgetList << new LineEditTime(true, this);
+        auto *timeEdit = new LineEditTime(true, this);
+        timeEdit->setFont(font());
+        timeEdit->setFixedSize(theme::dp(300), theme::dp(60));
+        for (LineEditNum *part : timeEdit->findChildren<LineEditNum *>()) {
+          part->setFont(font());
+          part->setFixedHeight(theme::dp(60));
+        }
+        paramWidgetList << timeEdit;
         break;
       }
       // case (int)Qt::UserRole + 2: {
@@ -146,6 +195,7 @@ void IntervalEditDialog::initGui() {
 
     // param's name label widget
     auto *nameWidget = new QLabel(label, this);
+    nameWidget->setProperty("muted", true);
     if (QStringList{"flags", "lum"}.contains(name)) {
       nameWidget->setVisible(false);
     }
@@ -227,31 +277,34 @@ void IntervalEditDialog::initGui() {
   }
   //
 
-  paramLay->addWidget(maxSpeedCheck, indexPositionInLay, 0, 1, 3);
-  paramLay->setRowStretch(indexPositionInLay + 1, 1);
+  auto *modeTitle = new QLabel(tr("Temperature change"), this);
+  modeTitle->setProperty("muted", true);
+  paramLay->addWidget(modeTitle, indexPositionInLay, 0);
+  paramLay->addWidget(maxSpeedCheck, indexPositionInLay, 2);
+  paramLay->setColumnStretch(3, 1);
 
-  auto *buttonLay = new QVBoxLayout();
-  buttonLay->addWidget(prevButton);
-  buttonLay->addWidget(nextButton);
-  buttonLay->addWidget(newButton);
-  buttonLay->addStretch();
-  buttonLay->addWidget(closeButton);
-
-  bottomLay->addLayout(buttonLay);
-  bottomLay->addLayout(paramLay);
-
-  mainLay->addWidget(intervalInfo);
+  auto *header = new QHBoxLayout();
+  header->setSpacing(theme::dp(20));
+  header->addWidget(prevButton);
+  header->addWidget(intervalInfo);
+  header->addWidget(nextButton);
+  header->addStretch();
+  mainLay->addLayout(header);
+  auto *divider = new QFrame(this);
+  divider->setObjectName("cardDivider");
+  divider->setFixedHeight(qMax(1, theme::dp(1)));
+  mainLay->addWidget(divider);
+  mainLay->addLayout(paramLay);
+  mainLay->addStretch();
+  bottomLay->addWidget(newButton);
+  bottomLay->addStretch();
+  bottomLay->addWidget(closeButton);
   mainLay->addLayout(bottomLay);
-
-  mainLay->setAlignment(intervalInfo, Qt::AlignHCenter);
-
-  setStyleSheet(utils::readStyleFromFile(":/styles/checkBoxBig.qss")
-                + QString("QCheckBox::indicator{width: %1px; height: %1px;}").arg(26 * utils::ssf()));
 
   //    mainLay->setSizeConstraint(QLayout::SetFixedSize);
   this->adjustSize(); // NOTE to avoid "setGeometry: Unable to set geometry"
-  this->setWindowTitle("Редактирование интервала");
-  this->setMinimumWidth(400);
+  this->setWindowTitle(tr("Edit interval"));
+  this->setMinimumWidth(theme::dp(1050));
 }
 
 void IntervalEditDialog::updateGuiElements(int newIndex) {
@@ -270,12 +323,13 @@ void IntervalEditDialog::updateGuiElements(int newIndex) {
   // }
 
   maxSpeedCheck->setChecked(utils::getBitOfDword(flags, deepvaccontrol::AWAIT_BIT));
+  labelEdit->setText(m_labels ? m_labels->value(newIndex) : QString());
 
   int const count{m_model->getStandardModel()->columnCount()};
 
   prevButton->setEnabled(newIndex > 0);
   nextButton->setEnabled(newIndex < (count - 1));
-  intervalInfo->setText(QString(tr("Интервал %1/%2")).arg(newIndex + 1).arg(count));
+  intervalInfo->setText(tr("Interval %1 of %2").arg(newIndex + 1).arg(count));
 }
 
 void IntervalEditDialog::localCommit() {
@@ -296,6 +350,17 @@ void IntervalEditDialog::localCommit() {
   utils::setBitOfDword(flags, deepvaccontrol::AWAIT_BIT, tempIsEnabled & maxSpeedCheck->isChecked());
   utils::setBitOfDword(flags, deepvaccontrol::RAMP_BIT, tempIsEnabled & (!maxSpeedCheck->isChecked()));
 
+  if (m_labels) {
+    while (m_labels->size() < m_model->getStandardModel()->columnCount()) {
+      m_labels->append(QString());
+    }
+    QString const label = labelEdit->text().trimmed();
+    if ((curIndex >= 0) && (curIndex < m_labels->size()) && ((*m_labels)[curIndex] != label)) {
+      (*m_labels)[curIndex] = label;
+      emit labelsChanged();
+    }
+  }
+
   // flags does not mapped to anything, so 'commit' it value manualy
   m_model->getStandardModel()->item(m_model->getFlagsIndex(), curIndex)->setData(flags, Qt::UserRole + 1);
   mapper->submit();
@@ -308,29 +373,34 @@ void IntervalEditDialog::reject() {
   QDialog::reject();
 }
 
-TempChangeSelector::TempChangeSelector(QString const &label, QWidget *parent) : QGroupBox{label, parent} {
-  auto bbLay0 = new QHBoxLayout(this);
-  auto bbLay  = new QVBoxLayout();
-  bbLay0->addLayout(bbLay);
-  auto bbBtn = new QPushButton();
-  bbBtn->setIcon(QIcon(":/imgs/question_mark.png"));
-  bbBtn->setIconSize(QSize(15 * utils::ssf(), 15 * utils::ssf()));
-  bbBtn->setFixedSize(25 * utils::ssf(), 25 * utils::ssf());
-
-  ramp     = new QRadioButton(tr("линеное"), this);
-  setpoint = new QRadioButton(tr("с максимальной скоростью"), this);
-
-  bbLay->addWidget(setpoint);
-  bbLay->addWidget(ramp);
-  bbLay0->addWidget(bbBtn);
-  bbLay0->setAlignment(bbBtn, Qt::AlignBottom);
-  setStyleSheet(QString("QRadioButton::indicator{width: %1px; height: %1px;}").arg(20 * utils::ssf())
-                + utils::readStyleFromFile(":/styles/stateVisBox.qss")
-                    .arg(4 * utils::ssf())
-                    .arg(8.5 * utils::ssf())
-                    .arg(0 * utils::ssf())
-                    .arg(25 * utils::ssf())
-                    .arg(26 * utils::ssf()));
+TempChangeSelector::TempChangeSelector(QString const &label, QWidget *parent) : QWidget{parent} {
+  Q_UNUSED(label)
+  auto        *lay = new QHBoxLayout(this);
+  lay->setContentsMargins(0, 0, 0, 0);
+  lay->setSpacing(0);
+  setpoint = new QPushButton(tr("At maximum rate"), this);
+  ramp     = new QPushButton(tr("Linear ramp"), this);
+  setpoint->setToolTip(tr("Full speed to the target, then hold it"));
+  ramp->setToolTip(tr("Ramp linearly over the interval"));
+  auto *group = new QButtonGroup(this);
+  int   index{0};
+  for (QPushButton *button : {setpoint, ramp}) {
+    button->setCheckable(true);
+    button->setProperty("segment", true);
+    button->setProperty("segmentFirst", index == 0);
+    button->setProperty("segmentLast", index == 1);
+    button->setFixedHeight(theme::dp(60));
+    button->setMinimumWidth(theme::dp(262));
+    group->addButton(button, index++);
+    lay->addWidget(button);
+  }
+  group->setExclusive(true);
+  lay->addSpacing(theme::dp(16));
+  auto *bbBtn = new QPushButton(QStringLiteral("?"), this);
+  bbBtn->setFixedSize(theme::dp(60), theme::dp(60));
+  bbBtn->setToolTip(tr("How the two modes differ"));
+  lay->addWidget(bbBtn);
+  lay->addStretch();
   setpoint->setChecked(true);
   connect(bbBtn, &QPushButton::clicked, this, [this] {
     auto *aa = new IntervalHelpWindow(this);
@@ -348,7 +418,7 @@ IntervalHelpWindow::IntervalHelpWindow(QWidget *parent) : QDialog(parent) {
   lay->addWidget(pixLabel);
 
   connect(pixLabel, &IntervalHelpImageLabel::closeIt, this, &QDialog::accept);
-  setWindowTitle(tr("Изменение скорости"));
+  setWindowTitle(tr("Rate change"));
   setAttribute(Qt::WA_DeleteOnClose);
 }
-} // namespace deepvaccontrol
+}

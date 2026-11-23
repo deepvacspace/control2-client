@@ -68,6 +68,6 @@ private:
   ComparisonResult         m_result;
 };
 
-} // namespace deepvaccontrol::ai
+}
 
 #endif // ADVISOREXPERIMENT_H

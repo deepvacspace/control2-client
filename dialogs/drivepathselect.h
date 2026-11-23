@@ -20,6 +20,6 @@ private:
 inline QString DrivePathSelect::getSelectedPath() const {
   return m_selectedPath;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // DRIVEPATHSELECT_H

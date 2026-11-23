@@ -5,6 +5,7 @@
 
 #include "constants.h"
 #include "labelplus.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 
@@ -18,8 +19,8 @@ QString setValueFormat(float value, int prec) {
 
 StatusBar::StatusBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
   auto *mainLay = new QHBoxLayout(this);
-  mainLay->setContentsMargins(3 * utils::ssf(), 3 * utils::ssf(), 3 * utils::ssf(), 0);
-  mainLay->setSpacing(3 * utils::ssf());
+  mainLay->setContentsMargins(theme::dp(4), theme::dp(4), theme::dp(4), 0);
+  mainLay->setSpacing(theme::dp(4));
 
   stateLay = new QHBoxLayout();
   stateLay->setContentsMargins(0, 0, 0, 0);
@@ -46,7 +47,7 @@ StatusBar::StatusBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
       stateLay->addWidget(stateLabel);
       stateLay->addWidget(stateValueLabel);
       stateLay->addWidget(stateRefLabel);
-      stateLay->addSpacing(3 * utils::ssf());
+      stateLay->addSpacing(theme::dp(4));
     }
   }
   mainLay->addStretch();
@@ -116,7 +117,7 @@ StatusBar::StatusBar(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m
   installEventFilter(this);
 #endif
 
-  this->setFixedHeight(20 * utils::ssf());
+  this->setFixedHeight(theme::dp(37));
 }
 
 QFrame *StatusBar::makeSeparator() {
@@ -137,19 +138,8 @@ void StatusBar::handleHardStatusCahnged(HardwareStatus::HardwareStatusEnum const
 }
 
 void StatusBar::handleOpcStateCahnged(int newState) {
-  QString opcStatusString;
-  switch (newState) {
-    case 0:
-      opcStatusString = "OPC OK";
-      break;
-    case -1:
-      opcStatusString = "OPC ERR";
-      break;
-    default:
-      opcStatusString = "OPC OFF";
-      break;
-  }
-  m_opcState->setText(opcStatusString);
+  // OK only while the OPC UA server broadcasts; stopped or failed to start: OFF
+  m_opcState->setText((newState == 0) ? tr("OPC OK") : tr("OPC OFF"));
 }
 
 void StatusBar::handleUsb(QStringList driveList) {
@@ -168,4 +158,4 @@ bool StatusBar::eventFilter(QObject *watched, QEvent *event) {
   }
   return QObject::eventFilter(watched, event);
 }
-} // namespace deepvaccontrol
+}

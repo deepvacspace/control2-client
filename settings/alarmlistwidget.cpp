@@ -7,31 +7,46 @@
 #include "alarmsinglewidget.h"
 #include "systemvalue.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 AlarmListWidget::AlarmListWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
-  auto *mainLay = new QVBoxLayout(this);
-  auto *label0  = new QLabel(tr("Условие срабатывания"), this);
+  double const ssf{utils::ssf()};
+  auto        *pageLay = new QVBoxLayout(this);
+  pageLay->setContentsMargins(0, theme::dp(16), 0, 0);
+  auto *card = new QFrame(this);
+  card->setObjectName("pageCard");
+  pageLay->addWidget(card);
+  auto *cardLay = new QVBoxLayout(card);
+  cardLay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  cardLay->setSpacing(theme::dp(16));
 
-  auto *headerLay = new QHBoxLayout();
-  headerLay->addWidget(label0);
-  headerLay->setAlignment(label0, Qt::AlignRight);
+  // header: title; column captions over the input state and the trigger condition
+  auto *header = new QHBoxLayout();
+  header->setContentsMargins(0, 0, theme::dp(20), 0);
+  header->setSpacing(theme::dp(20));
+  auto *title = new QLabel(tr("Alarms"), card);
+  title->setObjectName("cardTitle");
+  header->addWidget(title, 1);
+  auto caption = [card](QString const &text, int width) {
+    auto *label = new QLabel(text.toUpper(), card);
+    label->setProperty("muted", true);
+    label->setAlignment(Qt::AlignCenter);
+    label->setFixedWidth(width);
+    QFont font = label->font();
+    font.setPointSizeF(font.pointSizeF() * 0.85);
+    label->setFont(font);
+    return label;
+  };
+  header->addWidget(caption(tr("Input"), static_cast<int>(70 * ssf)));
+  header->addSpacing(theme::dp(20));
+  header->addWidget(caption(tr("Trigger condition"), static_cast<int>(240 * ssf)));
+  cardLay->addLayout(header);
 
-  auto *headerCommentBox = new QFrame();
-  headerCommentBox->setMinimumWidth(200 * utils::ssf());
-  headerLay->addWidget(headerCommentBox);
-  headerLay->setStretch(0, 1);
-  mainLay->addLayout(headerLay);
+  auto *mainLay = new QVBoxLayout();
+  mainLay->setSpacing(theme::dp(12));
+  cardLay->addLayout(mainLay);
 
-  auto *headerCommentLay = new QGridLayout(headerCommentBox);
-  headerCommentLay->setContentsMargins(11 * utils::ssf(), 0, 11, 0 * utils::ssf());
-  headerCommentLay->addWidget(new QLabel(tr("замыкание"), this), 1, 0, 1, 2);
-  headerCommentLay->addWidget(new QLabel(tr("размыкание"), this), 0, 1, 1, 3);
-
-  auto *label1 = new QLabel(tr("выкл"), this);
-  headerCommentLay->addWidget(label1, 1, 3, 1, 1);
-  headerCommentLay->setAlignment(label1, Qt::AlignRight);
-  
   QVariantList const alarmLabelsVariantList = resHolder->settings->settingsMap()["alarms"].toList();
 
   // unused indexes for forced reset
@@ -69,6 +84,6 @@ AlarmListWidget::AlarmListWidget(ResHolder *resHolder, QWidget *parent) : QWidge
   alarm_cfg_1->notify();
   alarm_cfg_2->notify();
 
-  mainLay->addStretch(0);
+  cardLay->addStretch(1);
 }
-} // namespace deepvaccontrol
+}

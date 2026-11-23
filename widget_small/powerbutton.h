@@ -1,12 +1,13 @@
 #ifndef POWERBUTTON_H
 #define POWERBUTTON_H
 
-#include <QPushButton>
+#include <QToolButton>
 
 #include "resholder.h"
 
 namespace deepvaccontrol {
-class PowerButton : public QPushButton {
+// sidebar item: a power icon (tooltip "Off"); asks whether to turn the chamber off and closes the application
+class PowerButton : public QToolButton {
   Q_OBJECT
 public:
   explicit PowerButton(ResHolder *resHolder, QWidget *parent = nullptr);
@@ -14,6 +15,6 @@ public:
 signals:
   void prepareToCloseApp();
 };
-} // namespace deepvaccontrol
+}
 
 #endif // POWERBUTTON_H

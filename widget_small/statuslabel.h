@@ -20,6 +20,6 @@ private:
   QString    m_statusStr;
   QString    m_typeStr;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // STATUSLABEL_H

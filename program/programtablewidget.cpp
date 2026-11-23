@@ -90,4 +90,4 @@ void ProgramTableWidget::verticalResizeTableViewToContents() {
   }
   m_tableView->setFixedHeight(rowTotalHeight + 2);
 }
-} // namespace deepvaccontrol
+}

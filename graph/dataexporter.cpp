@@ -29,7 +29,7 @@ bool DataExporter::writeData(QFile &file) {
   QString const sepSymbol{sep.value(m_fileExtension)};
 
   // time lamel & param labels
-  out << QString(tr("Дата/время")) << sepSymbol;
+  out << QString(tr("Date/time")) << sepSymbol;
   for (auto const &label : m_stateLabels) {
     out << label;
     if (label != m_stateLabels.last()) {
@@ -52,4 +52,4 @@ bool DataExporter::writeData(QFile &file) {
 
   return true;
 }
-} // namespace deepvaccontrol
+}

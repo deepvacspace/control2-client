@@ -30,6 +30,12 @@ public:
   void                   setMax(int value);
   bool                   getIsScientific() const;
   void                   setIsScientific(bool value);
+  // an empty field stays empty (no value: the placeholder tells what that means), not the minimum
+  void                   setAllowEmpty(bool allow) { m_allowEmpty = allow; }
+  // a value as this edit shows it: fixed decimals, or scientific as "1.0·E-02"
+  QString                formatted(double value) const;
+  // the value in the text (whatever way it is written)
+  double                 number(bool *ok = nullptr) const;
 
 signals:
   // user make some changes
@@ -47,9 +53,11 @@ private:
   SystemValue        *m_sysValue;
   bool                m_weakCheck;
   bool                m_isScientific = false;
+  bool                m_allowEmpty   = false;
 
 protected:
-  bool eventFilter(QObject *object, QEvent *event);
+  bool   eventFilter(QObject *object, QEvent *event);
+  QPoint m_pressAt; // a tap opens the keyboard, a scroll does not
 };
 
 inline DoubleValidator const *LineEditNum::getValidator() const {
@@ -87,6 +95,6 @@ inline bool LineEditNum::getIsScientific() const {
   return m_isScientific;
 }
 
-} // namespace deepvaccontrol
+}
 
 #endif // LINEEDITNUM_H

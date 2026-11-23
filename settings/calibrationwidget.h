@@ -30,6 +30,6 @@ inline void CalibrationWidget::setDataVariant(QVariantMap const &data) {
 inline QVariantMap CalibrationWidget::getDataVariant() const {
   return m_calibModel.getDataVariant();
 }
-} // namespace deepvaccontrol
+}
 
 #endif // CALIBRATIONWIDGET_H

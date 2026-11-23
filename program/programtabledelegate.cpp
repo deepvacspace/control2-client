@@ -35,7 +35,7 @@ void ProgramTableDelegate::paint(
     int const    prec{m_model->getParamListVariant().at(index.row()).toMap().value("prec").toInt()};
     bool const   isSci{m_model->getParamListVariant().at(index.row()).toMap().value("notation").toString()
                      == "scientific"};
-    textPaint(painter, rect, isSci ? utils::formatScientific(value, prec) : QString::number(value, 'f', prec));
+    textPaint(painter, rect, isSci ? utils::formatSci10(value) : QString::number(value, 'f', prec));
     return;
   }
 
@@ -55,10 +55,10 @@ void ProgramTableDelegate::paint(
   // }
   else if (index.data(Qt::UserRole + 3).isValid()) // "solar"
   {
-    textPaint(painter, rect, tr("вкл."));
+    textPaint(painter, rect, tr("on"));
     return;
   }
 
   QStyledItemDelegate::paint(painter, option, index);
 }
-} // namespace deepvaccontrol
+}

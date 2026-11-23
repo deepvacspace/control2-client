@@ -14,6 +14,10 @@ public:
   LineEditNum *getLineEditNumOwner() const;
   void         setLineEditNum(LineEditNum *value);
 
+protected:
+  // keys typed on a physical keyboard work like the on-screen buttons
+  void keyPressEvent(QKeyEvent *event) override;
+
 private slots:
   void reject();
   void handleNumKeysPress();

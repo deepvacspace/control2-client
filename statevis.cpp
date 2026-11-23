@@ -26,8 +26,8 @@ StateVis::StateVis(QString const &name, SystemValue *x, SystemValue *r, SystemVa
 
   mainLay->addWidget(box);
   lay->addWidget(xVal, 0, 0, 1, 2, Qt::AlignHCenter | Qt::AlignVCenter);
-  auto *newLabel1 = new QLabel(tr("Уставка:"), this);
-  auto *newLabel2 = new QLabel(tr("Управление, %:"), this);
+  auto *newLabel1 = new QLabel(tr("Setpoint:"), this);
+  auto *newLabel2 = new QLabel(tr("Control, %:"), this);
   newLabel1->setFont(QFont("MS Shell Dlg 2", 6 * (1 + (sf - 1) * 0.25) * utils::ssf()));
   newLabel2->setFont(QFont("MS Shell Dlg 2", 6 * (1 + (sf - 1) * 0.25) * utils::ssf()));
   lay->addWidget(newLabel1, 1, 0, Qt::AlignVCenter);
@@ -38,4 +38,4 @@ StateVis::StateVis(QString const &name, SystemValue *x, SystemValue *r, SystemVa
   setMinimumWidth((x->isSciNotation() ? 270 : 180) * (1 + (sf - 1) * 0.25) * utils::ssf());
   setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 }
-} // namespace deepvaccontrol
+}

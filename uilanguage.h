@@ -5,8 +5,9 @@ namespace deepvaccontrol {
 
 enum class UiLanguage {
   Russian,
-  English
+  English,
+  German
 };
 
-} // namespace deepvaccontrol
-#endif // UILANGUAGE_H
+}
+#endif

@@ -1,5 +1,7 @@
 #include "aiadvisorwidget.h"
 
+#include "theme.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFrame>
@@ -14,7 +16,9 @@
 #include <cmath>
 #include <limits>
 
+#include "accessmanager.h"
 #include "actionmanager.h"
+#include "experimentrecorder.h"
 #include "confdialog.h"
 #include "constants.h"
 #include "gatetcp.h"
@@ -31,7 +35,7 @@ namespace deepvaccontrol {
 
 namespace {
 QString formatNumber(double value, int prec = 2) {
-  return QString::number(value, 'f', prec);
+  return std::isfinite(value) ? QString::number(value, 'f', prec) : QStringLiteral("—");
 }
 
 QString formatPid(double kp, double ki, double kd) {
@@ -42,16 +46,34 @@ QString formatPid(double kp, double ki, double kd) {
 constexpr double SAFETY_MAX_OVERSHOOT_C{1.0};
 constexpr int    SAFETY_MAX_SETPOINT_CROSSINGS{3};
 constexpr double SAFETY_CROSSING_DEADBAND_C{0.2};
-// ~4x the GRU's held-out one-step RMSE (foresight validation_rollout_2026-09-02:
-// test_one_step.rmse_delta_t1 = 0.056 degC on unseen PID configs).
 constexpr double SAFETY_PREDICTION_DRIFT_C{0.2};
 constexpr int    SAFETY_PREDICTION_DRIFT_MIN_SAMPLES{3};
 constexpr int    SAFETY_PREDICTION_DRIFT_WINDOW{5};
-} // namespace
+constexpr int    SAFETY_MAX_TWIN_FAILURES{5};            // consecutive failed one-step predictions
+constexpr qint64 SAFETY_TELEMETRY_TIMEOUT_MS{10'000};    // no telemetry for this long aborts the run
+}
 
 AiAdvisorWidget::AiAdvisorWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent}, m_resHolder{resHolder} {
+  m_pidGuard = new ai::ManualPidGuard(m_resHolder, QStringLiteral("online_advisor"), this);
   initGui();
   loadModels();
+
+  connect(m_pidGuard, &ai::ManualPidGuard::restoreConfirmed, this, [this] {
+    m_pidLabel->setText(tr("Manual PID restored (confirmed by the chamber)"));
+    updateRunButtonEnabled();
+  });
+  connect(m_pidGuard, &ai::ManualPidGuard::restoreFailed, this, [this](QString const &message) {
+    setStatusText(message, true);
+    updateRunButtonEnabled();
+  });
+  connect(m_pidGuard, &ai::ManualPidGuard::recoveredPreviousSession, this,
+          [this](QString const &reason, bool jobMayBeRunning) {
+            setStatusText(tr("Restored the manual PID the AI Advisor had replaced (%1)").arg(reason), true);
+            ai::notifyRecoveredSession(this, m_pidGuard, reason, jobMayBeRunning);
+          });
+  if (m_resHolder->users) {
+    connect(m_resHolder->users, &AccessManager::userSelected, this, &AiAdvisorWidget::onAccessChanged);
+  }
 
   connect(&m_decisionTimer, &QTimer::timeout, this, &AiAdvisorWidget::onDecisionTimerTick);
   connect(&m_progressTimer, &QTimer::timeout, this, &AiAdvisorWidget::onProgressTick);
@@ -71,6 +93,7 @@ AiAdvisorWidget::~AiAdvisorWidget() {
     m_progressTimer.stop();
     m_shadowPidTimer.stop();
     m_twinCheckTimer.stop();
+    m_pidGuard->restoreNow(true, tr("application closed during an AI Advisor experiment"));
   }
   if (m_comparisonWorker) {
     m_comparisonWorker->wait();
@@ -85,6 +108,7 @@ void AiAdvisorWidget::loadModels() {
   bool const advisorOk = m_advisor.load(modelDir.filePath("ppo_advisor.json"));
 
   bool const ok = gruOk && advisorOk;
+  m_envelope    = m_advisor.envelope();
   if (!ok) {
     setStatusText(gruOk ? m_advisor.statusMessage() : m_model.statusMessage(), true);
   } else {
@@ -97,13 +121,15 @@ void AiAdvisorWidget::updateRunButtonEnabled() {
   bool const modelsOk = m_model.isLoaded() && m_advisor.isLoaded();
   bool const online    = m_resHolder->status
                        && (StatusManager::AppState::ONLINE == m_resHolder->status->getAppState());
-  m_runBtn->setEnabled(modelsOk && online && !m_running);
+  bool const allowed = ai::advisorControlDenied(m_resHolder).isEmpty();
+  bool const settled = !m_pidGuard || !m_pidGuard->isPending(); // previous restore confirmed
+  m_runBtn->setEnabled(modelsOk && online && allowed && settled && !m_running);
 }
 
 void AiAdvisorWidget::initGui() {
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(4 * utils::ssf(), 4 * utils::ssf(), 4 * utils::ssf(), 4 * utils::ssf());
-  mainLay->setSpacing(4 * utils::ssf());
+  mainLay->setContentsMargins(theme::dp(8), theme::dp(8), theme::dp(8), theme::dp(8));
+  mainLay->setSpacing(theme::dp(8));
 
   mainLay->addWidget(buildFormCard());
   mainLay->addWidget(buildChartCard(), 1);
@@ -113,15 +139,15 @@ void AiAdvisorWidget::initGui() {
 QWidget *AiAdvisorWidget::buildFormCard() {
   auto *frame = new QFrame(this);
   frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  frame->setStyleSheet("QFrame {border: 1px solid #d9dee5;}");
 
   auto *lay = new QGridLayout(frame);
-  lay->setSpacing(3 * utils::ssf());
+  lay->setSpacing(theme::dp(4));
 
   auto addField = [this, lay](int col, QString const &title, double min, double max, int prec, float defaultValue) {
     auto *label = new QLabel(title, lay->parentWidget());
     auto *edit  = new LineEditNum(min, max, prec, false, lay->parentWidget());
-    edit->setFixedWidth(110 * utils::ssf());
+    edit->setFixedWidth(theme::dp(206));
     edit->setValue(defaultValue);
     lay->addWidget(label, 0, col, Qt::AlignHCenter);
     lay->addWidget(edit, 1, col);
@@ -133,12 +159,12 @@ QWidget *AiAdvisorWidget::buildFormCard() {
   m_targetTempEdit = addField(2, tr("Target temp, °C"), -ai::MAX_ABS_TEMP, ai::MAX_ABS_TEMP, 1, ai::DEFAULT_TARGET_TEMP);
 
   m_runBtn = new QPushButton(tr("Run experiment"), frame);
-  m_runBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  m_runBtn->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
   lay->addWidget(m_runBtn, 1, 3);
 
   m_stopBtn = new QPushButton(tr("Stop"), frame);
-  m_stopBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-  m_stopBtn->setStyleSheet("QPushButton { background-color: #c0392b; color: white; }");
+  m_stopBtn->setFixedHeight(theme::dp(UI_BTN_HEIGHT));
+  m_stopBtn->setStyleSheet("QPushButton { background-color: #d4122e; color: white; }");
   m_stopBtn->setVisible(false);
   lay->addWidget(m_stopBtn, 1, 4);
 
@@ -163,18 +189,18 @@ QWidget *AiAdvisorWidget::buildFormCard() {
 QWidget *AiAdvisorWidget::buildMetricsCard() {
   auto *frame = new QFrame(this);
   frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  frame->setStyleSheet("QFrame {border: 1px solid #d9dee5;}");
 
   auto *lay = new QVBoxLayout(frame);
-  lay->setSpacing(2 * utils::ssf());
+  lay->setSpacing(theme::dp(4));
 
   m_pidLabel = new QLabel(frame);
   lay->addWidget(m_pidLabel);
 
-  m_metricsTable = new QTableWidget(5, 3, frame);
+  m_metricsTable = new QTableWidget(4, 3, frame);
   m_metricsTable->setHorizontalHeaderLabels({tr("Expected"), tr("Actual"), tr("CEM baseline")});
   m_metricsTable->setVerticalHeaderLabels(
-    {tr("Cost"), tr("Tail MAE"), tr("Overshoot max, °C"), tr("Settle time, s"), tr("Final temp, °C")});
+    {tr("Tail MAE"), tr("Overshoot max, °C"), tr("Settle time, s"), tr("Final temp, °C")});
   m_metricsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   m_metricsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_metricsTable->setSelectionMode(QAbstractItemView::NoSelection);
@@ -198,14 +224,14 @@ QWidget *AiAdvisorWidget::buildMetricsCard() {
 QWidget *AiAdvisorWidget::buildChartCard() {
   auto *frame = new QFrame(this);
   frame->setFrameStyle(QFrame::Box | QFrame::Plain);
-  frame->setStyleSheet("QFrame {border: 1px solid #b9b9b9;}");
+  frame->setStyleSheet("QFrame {border: 1px solid #d9dee5;}");
 
   auto *lay = new QVBoxLayout(frame);
-  lay->setContentsMargins(2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf(), 2 * utils::ssf());
+  lay->setContentsMargins(theme::dp(4), theme::dp(4), theme::dp(4), theme::dp(4));
 
   m_plot = new QCustomPlot(frame);
   m_plot->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  m_plot->setMinimumHeight(320 * utils::ssf());
+  m_plot->setMinimumHeight(theme::dp(600));
   m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
   m_plot->xAxis->setLabel(tr("Time, s"));
   m_plot->yAxis->setLabel(tr("Temperature, °C"));
@@ -224,6 +250,7 @@ QWidget *AiAdvisorWidget::buildChartCard() {
 
   m_plot->addGraph(); // 3: CEM baseline (filled in only after the comparison runs)
   m_plot->graph(3)->setPen(QPen(QColor(40, 170, 90), 2, Qt::DotLine));
+  theme::stylePlot(m_plot);
   m_plot->graph(3)->setName(tr("CEM baseline"));
 
   m_plot->legend->setVisible(true);
@@ -235,7 +262,7 @@ QWidget *AiAdvisorWidget::buildChartCard() {
 
 void AiAdvisorWidget::setStatusText(QString const &text, bool isError) {
   m_statusLabel->setText(text);
-  m_statusLabel->setStyleSheet(isError ? "color: #b03030;" : "");
+  m_statusLabel->setStyleSheet(isError ? "color: #d4122e;" : "");
 }
 
 std::array<double, 8> AiAdvisorWidget::buildObservation(int decisionIdx) const {
@@ -299,6 +326,10 @@ void AiAdvisorWidget::onShadowPidTick() {
 }
 
 bool AiAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd) {
+  if (!m_envelope.containsPid(kp, ki, kd) || !m_resHolder->status
+      || (StatusManager::AppState::ONLINE != m_resHolder->status->getAppState())) {
+    return false;
+  }
   QVariantMap const plcSettings = m_resHolder->settings->settingsMap().value("plc_settings").toMap();
   QVariantList const pidsList   = plcSettings.value("pids").toList();
   if (pidsList.isEmpty()) {
@@ -360,9 +391,7 @@ bool AiAdvisorWidget::writePidToActiveBand(double kp, double ki, double kd) {
 }
 
 bool AiAdvisorWidget::startChamberJob(double targetTemp) {
-  constexpr quint32 LONG_TIME{100 * 3600 - 1}; // matches Manual::sendProgram(); comfortably exceeds any AI run duration
-
-  QVariantList const controlParamsList = m_resHolder->settings->settingsMap().value("control_params").toList();
+  QVariantList const controlParamsList = m_resHolder->settings->controlParams();
   if (controlParamsList.isEmpty()) {
     return false;
   }
@@ -384,7 +413,7 @@ bool AiAdvisorWidget::startChamberJob(double targetTemp) {
 
   for (QString const &name : paramOrder) {
     if ("duration" == name) {
-      model.setParamValue(0, name, LONG_TIME);
+      model.setParamValue(0, name, HOLD_UNTIL_STOPPED); // comfortably exceeds any AI run duration
     } else if ("flags" == name) {
       model.setParamValue(0, name, flags);
     } else if ("temp" == name) {
@@ -395,6 +424,11 @@ bool AiAdvisorWidget::startChamberJob(double targetTemp) {
     }
   }
 
+  if (m_resHolder->recorder) {
+    m_resHolder->recorder->setNextJob(ExperimentRecorder::JobInfo{
+      QStringLiteral("ai_advisor"), tr("AI Advisor"), {}, model.programVariant(),
+      QJsonObject{{"target_temp", targetTemp}, {"duration_s", m_targetDurationS}, {"model", "ppo_advisor"}}});
+  }
   m_resHolder->tcpGate->sendGeneral(GateTcp::OutcomeMessageCode::JOB, model.makeSendData());
   if (m_resHolder->actions) {
     m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("AI Advisor started the chamber"));
@@ -402,65 +436,15 @@ bool AiAdvisorWidget::startChamberJob(double targetTemp) {
   return true;
 }
 
-void AiAdvisorWidget::stopChamberJob() {
-  m_resHolder->tcpGate->sendTextCmd("stop");
-  if (m_resHolder->actions) {
-    m_resHolder->actions->addAction(ActionManager::ActionType::PLC, tr("AI Advisor stopped the chamber"));
-  }
-}
-
-void AiAdvisorWidget::captureManualPid() {
-  QVariantMap const plcSettings = m_resHolder->settings->settingsMap().value("plc_settings").toMap();
-  QVariantList const pidsList   = plcSettings.value("pids").toList();
-  if (pidsList.isEmpty()) {
-    m_manualPList.clear();
-    m_manualIList.clear();
-    m_manualDList.clear();
-    return;
-  }
-
-  QVariantMap const pidMap = pidsList.first().toMap();
-  m_manualPList            = pidMap.value("p").toList();
-  m_manualIList            = pidMap.value("i").toList();
-  m_manualDList            = pidMap.value("d").toList();
-}
-
-bool AiAdvisorWidget::lookupManualPidForActiveBand(double &kp, double &ki, double &kd) const {
-  int const points = m_manualPList.size();
-  if ((0 == points) || (m_manualIList.size() != points) || (m_manualDList.size() != points)) {
-    return false;
-  }
-
-  int           activeIdx{-1};
-  SystemValue *idxVal = m_resHolder->states->getSysValue("temp_pid_idx");
-  if (idxVal && std::isfinite(idxVal->getValue())) {
-    activeIdx = static_cast<int>(std::lround(idxVal->getValue()));
-  } else {
-    SystemValue *tempVal = m_resHolder->states->getSysValue("temp");
-    QVariantMap const pidMap =
-      m_resHolder->settings->settingsMap().value("plc_settings").toMap().value("pids").toList().value(0).toMap();
-    double const bandMin = pidMap.value("min").toDouble();
-    double const bandMax = pidMap.value("max").toDouble();
-    double const range   = std::max(bandMax - bandMin, 1e-9);
-    double const liveTemp = (tempVal && std::isfinite(tempVal->getValue())) ? tempVal->getValue() : m_startTemp;
-    activeIdx              = static_cast<int>(std::floor((liveTemp - bandMin) / range * points));
-  }
-  activeIdx = std::clamp(activeIdx, 0, points - 1);
-
-  bool okP{false}, okI{false}, okD{false};
-  kp = m_manualPList.at(activeIdx).toDouble(&okP);
-  ki = m_manualIList.at(activeIdx).toDouble(&okI);
-  kd = m_manualDList.at(activeIdx).toDouble(&okD);
-  return okP && okI && okD;
-}
-
 void AiAdvisorWidget::revertToManualPid(QString const &reason) {
   if (m_safetyTripped) {
     return;
   }
 
-  double kp{0.0}, ki{0.0}, kd{0.0};
-  if (!lookupManualPidForActiveBand(kp, ki, kd) || !writePidToActiveBand(kp, ki, kd)) {
+  SystemValue *tempVal = m_resHolder->states->getSysValue("temp");
+  double       kp{qQNaN()}, ki{qQNaN()}, kd{qQNaN()};
+  m_pidGuard->manualPidForBand(tempVal ? tempVal->getValue() : m_startTemp, kp, ki, kd);
+  if (ai::ManualPidGuard::Result::NOTHING == m_pidGuard->restore(false, reason)) {
     stopExperiment(
       true, tr("Safety interlock triggered (%1) but manual PID could not be restored - experiment aborted").arg(reason));
     return;
@@ -622,11 +606,16 @@ void AiAdvisorWidget::onTwinCheckTick() {
   }
 
   float predDelta{0.0f};
-  if (m_model.predictDeltaT1(m_liveFeatureWindow, predDelta)) {
+  if (m_model.predictDeltaT1(m_liveFeatureWindow, predDelta) && std::isfinite(predDelta)) {
     m_pendingPredictedTemp = temp + static_cast<double>(predDelta);
     m_hasPendingPrediction = true;
+    m_twinFailures         = 0;
   } else {
     m_hasPendingPrediction = false;
+    if (++m_twinFailures >= SAFETY_MAX_TWIN_FAILURES) {
+      revertToManualPid(tr("digital twin inference failed %1 times in a row").arg(m_twinFailures));
+      return;
+    }
   }
 
   m_liveWindowPreviousTemp = temp;
@@ -642,6 +631,14 @@ void AiAdvisorWidget::runExperiment() {
   }
   if (!m_resHolder->status || (StatusManager::AppState::ONLINE != m_resHolder->status->getAppState())) {
     setStatusText(tr("Chamber is not connected"), true);
+    return;
+  }
+  if (QString const denied = ai::advisorControlDenied(m_resHolder); !denied.isEmpty()) {
+    setStatusText(denied, true);
+    return;
+  }
+  if (m_pidGuard->isPending()) {
+    setStatusText(tr("The manual PID from the previous experiment has not been confirmed by the chamber yet"), true);
     return;
   }
 
@@ -664,12 +661,22 @@ void AiAdvisorWidget::runExperiment() {
     setStatusText(tr("Chamber temperature reading is invalid - cannot run"), true);
     return;
   }
+  if (QString const outside = m_envelope.checkScenario(m_startTemp, m_targetTemp, durationS); !outside.isEmpty()) {
+    setStatusText(outside + tr(" - the advisor was not trained for it"), true);
+    return;
+  }
 
+  // the operator's PID table, put back whenever the advisor stops being in charge
+  if (!m_pidGuard->capture()) {
+    setStatusText(tr("No valid manual Temperature PID table to fall back to - cannot run"), true);
+    return;
+  }
+  m_targetDurationS = durationS; // before the job is sent: recorded in the run's configuration snapshot
   if (!startChamberJob(m_targetTemp)) {
+    m_pidGuard->restore(false, tr("chamber could not be started"));
     setStatusText(tr("Failed to start the chamber"), true);
     return;
   }
-  m_targetDurationS = durationS;
 
   m_currentParams             = ai::SimParams{};
   m_currentParams.startTemp   = m_startTemp;
@@ -711,10 +718,11 @@ void AiAdvisorWidget::runExperiment() {
   m_hasPendingPrediction = false;
   m_pendingPredictedTemp = 0.0;
   m_recentPredictionErrors.clear();
-  captureManualPid();
+  m_twinFailures = 0;
 
   m_running = true;
   m_runClock.start();
+  m_lastTelemetryMs = 0;
 
   m_runBtn->setEnabled(false);
   m_stopBtn->setVisible(true);
@@ -732,14 +740,38 @@ void AiAdvisorWidget::runExperiment() {
 }
 
 void AiAdvisorWidget::onDecisionTimerTick() {
-  if (!m_running) {
+  if (!m_running || m_safetyTripped) {
+    return;
+  }
+
+  SystemValue *tempVal = m_resHolder->states->getSysValue("temp");
+  double const temp    = tempVal ? tempVal->getValue() : qQNaN();
+  if (!std::isfinite(temp)) {
+    revertToManualPid(tr("chamber temperature reading is invalid"));
+    return;
+  }
+  if (!m_envelope.containsTemp(temp)) {
+    revertToManualPid(tr("chamber temperature %1 °C is outside the advisor's valid range (%2)")
+                        .arg(formatNumber(temp, 1), m_envelope.describe()));
+    return;
+  }
+  if (QString const denied = ai::advisorControlDenied(m_resHolder); !denied.isEmpty()) {
+    revertToManualPid(denied);
     return;
   }
 
   std::array<double, 8> const obs = buildObservation(m_decisionIdx);
+  if (!std::all_of(obs.cbegin(), obs.cend(), [](double value) { return std::isfinite(value); })) {
+    revertToManualPid(tr("advisor input is invalid (missing telemetry)"));
+    return;
+  }
   std::array<double, 3> const pid = m_advisor.decide(obs);
+  if (!m_envelope.containsPid(pid[0], pid[1], pid[2])) {
+    revertToManualPid(tr("advisor produced an invalid PID (%1)").arg(formatPid(pid[0], pid[1], pid[2])));
+    return;
+  }
 
-  m_tempAtLastDecision         = m_resHolder->states->getSysValue("temp")->getValue();
+  m_tempAtLastDecision        = temp;
   m_realSecondsAtLastDecision = m_runClock.elapsed() / 1000.0;
 
   if (!writePidToActiveBand(pid[0], pid[1], pid[2])) {
@@ -762,6 +794,10 @@ void AiAdvisorWidget::onProgressTick() {
     stopExperiment(false);
     return;
   }
+  if (m_runClock.elapsed() - m_lastTelemetryMs > SAFETY_TELEMETRY_TIMEOUT_MS) {
+    stopExperiment(true, tr("No chamber telemetry for %1 s - experiment aborted").arg(SAFETY_TELEMETRY_TIMEOUT_MS / 1000));
+    return;
+  }
 
   m_progressBar->setValue(static_cast<int>(elapsedS));
   if (m_safetyTripped) {
@@ -781,6 +817,8 @@ void AiAdvisorWidget::onTelemetryUpdated() {
   if (!m_running) {
     return;
   }
+
+  m_lastTelemetryMs = m_runClock.elapsed();
 
   SystemValue *tempVal    = m_resHolder->states->getSysValue("temp");
   SystemValue *tempRefVal = m_resHolder->states->getSysValue("temp_ref");
@@ -829,6 +867,15 @@ void AiAdvisorWidget::onAlarmReceived(quint32 alarmCode) {
   }
 }
 
+void AiAdvisorWidget::onAccessChanged() {
+  updateRunButtonEnabled();
+  if (m_running && !m_safetyTripped) {
+    if (QString const denied = ai::advisorControlDenied(m_resHolder); !denied.isEmpty()) {
+      revertToManualPid(denied);
+    }
+  }
+}
+
 void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   if (!m_running) {
     return;
@@ -838,15 +885,19 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
   m_progressTimer.stop();
   m_shadowPidTimer.stop();
   m_twinCheckTimer.stop();
-  stopChamberJob();
+  // manual PID table first, then stop the job the advisor started
+  ai::ManualPidGuard::Result const restored =
+    m_pidGuard->restore(true, aborted ? (reason.isEmpty() ? tr("experiment aborted") : reason) : tr("experiment finished"));
+  QString const restoreNote = (ai::ManualPidGuard::Result::PENDING == restored)
+                                ? tr(" - manual PID and stop will be sent when the chamber is reachable again")
+                                : QString();
 
-  m_runBtn->setEnabled(true);
   m_stopBtn->setVisible(false);
   m_progressBar->setVisible(false);
   updateRunButtonEnabled();
 
   if (aborted) {
-    setStatusText(reason.isEmpty() ? tr("Experiment aborted") : reason, true);
+    setStatusText((reason.isEmpty() ? tr("Experiment aborted") : reason) + restoreNote, true);
     if (!m_actualTrajectory.isEmpty()) {
       setMetricsColumn(1, computeActualMetrics());
     }
@@ -855,22 +906,22 @@ void AiAdvisorWidget::stopExperiment(bool aborted, QString const &reason) {
 
   setMetricsColumn(1, computeActualMetrics());
   if (m_safetyTripped) {
-    setStatusText(tr("Actual run finished - safety interlock was triggered: %1").arg(m_safetyReason), true);
+    setStatusText(tr("Actual experiment finished - safety interlock was triggered: %1").arg(m_safetyReason), true);
   } else {
-    setStatusText(tr("Actual run finished"), false);
+    setStatusText(tr("Actual experiment finished"), false);
   }
   promptForComparison();
 }
 
 void AiAdvisorWidget::promptForComparison() {
   auto *dialog = new ConfDialog(tr("Compare without Digital Twin?"),
-                                 tr("The run has finished. Compare the result without using the Digital Twin?"),
+                                 tr("The experiment has finished. Compare the result without using the Digital Twin?"),
                                  tr("Yes"), tr("No"), this);
   connect(dialog, &ConfDialog::finished, this, [this](int result) {
     if (1 == result) { // == accepted()
       runComparison();
     } else {
-      setStatusText(tr("Showing actual run only"), false);
+      setStatusText(tr("Showing actual experiment only"), false);
     }
   });
   dialog->open();
@@ -956,126 +1007,43 @@ void AiAdvisorWidget::redrawComparisonChart(ai::ComparisonResult const &result) 
 }
 
 ai::SimMetrics AiAdvisorWidget::computeActualMetrics() const {
-  ai::SimMetrics metrics;
-  metrics.valid = true;
-
   if (m_actualTrajectory.isEmpty()) {
+    ai::SimMetrics metrics;
+    metrics.valid = true;
     return metrics;
   }
-
-  double const tailStart = std::max(0.0, m_targetDurationS - ai::TAIL_WINDOW_S);
-  bool         anyTail{false};
+  // each point against its own live setpoint, so a setpoint change mid-run is judged correctly
+  QVector<double> times;
+  QVector<double> temps;
+  QVector<double> references;
   for (auto const &p : m_actualTrajectory) {
-    if (p.elapsedS >= tailStart) {
-      anyTail = true;
-      break;
-    }
+    times << p.elapsedS;
+    temps << p.temp;
+    references << p.tempRef;
   }
-
-  double sumAbsErrorFull{0.0};
-  double sumTailAbsError{0.0};
-  double sumTailError{0.0};
-  double tailTempSum{0.0};
-  int    tailCount{0};
-  double minTemp{std::numeric_limits<double>::infinity()};
-  double maxTemp{-std::numeric_limits<double>::infinity()};
-  double overshootMax{0.0};
-  double sumOvershootSq{0.0};
-  double timeToNear{m_targetDurationS + 999.0};
-  double timeToSettle{m_targetDurationS + 999.0};
-  bool   foundNear{false};
-  bool   foundSettle{false};
-
-  for (auto const &p : m_actualTrajectory) {
-    double const absErr = std::abs(p.error);
-    sumAbsErrorFull += absErr;
-    minTemp = std::min(minTemp, p.temp);
-    maxTemp = std::max(maxTemp, p.temp);
-
-    // Uses each point's own live setpoint (p.tempRef), not the value
-    // captured at run start, so a setpoint change mid-run is reflected
-    // immediately rather than judged against a stale target.
-    double overshoot{0.0};
-    if (p.tempRef <= m_startTemp) {
-      overshoot = std::max(p.tempRef - p.temp, 0.0);
-    } else {
-      overshoot = std::max(p.temp - p.tempRef, 0.0);
-    }
-    overshootMax = std::max(overshootMax, overshoot);
-    sumOvershootSq += overshoot * overshoot;
-
-    bool const inTail = anyTail ? (p.elapsedS >= tailStart) : true;
-    if (inTail) {
-      sumTailAbsError += absErr;
-      sumTailError += p.error;
-      tailTempSum += p.temp;
-      ++tailCount;
-    }
-
-    if (!foundNear && (absErr <= ai::NEAR_BAND)) {
-      timeToNear = p.elapsedS;
-      foundNear  = true;
-    }
-    if (!foundSettle && (absErr <= ai::SETTLE_BAND)) {
-      timeToSettle = p.elapsedS;
-      foundSettle  = true;
-    }
-  }
-
-  int const    n        = m_actualTrajectory.size();
-  double const tailMean = tailCount > 0 ? tailTempSum / tailCount : 0.0;
-  double       sumTailVar{0.0};
-  if (tailCount > 0) {
-    for (auto const &p : m_actualTrajectory) {
-      bool const inTail = anyTail ? (p.elapsedS >= tailStart) : true;
-      if (inTail) {
-        double const d = p.temp - tailMean;
-        sumTailVar += d * d;
-      }
-    }
-  }
-
-  metrics.maeFull        = sumAbsErrorFull / n;
-  metrics.tailMae        = tailCount > 0 ? sumTailAbsError / tailCount : 0.0;
-  metrics.tailBias       = tailCount > 0 ? sumTailError / tailCount : 0.0;
-  metrics.tailStd        = tailCount > 0 ? std::sqrt(sumTailVar / tailCount) : 0.0;
-  metrics.overshootMax   = overshootMax;
-  metrics.overshootRmse  = std::sqrt(sumOvershootSq / n);
-  metrics.finalError     = m_actualTrajectory.last().error;
-  metrics.finalAbsError  = std::abs(metrics.finalError);
-  metrics.timeToNearS    = timeToNear;
-  metrics.timeToSettleS  = timeToSettle;
-  metrics.minTemp        = minTemp;
-  metrics.maxTemp        = maxTemp;
-  metrics.endTemp        = m_actualTrajectory.last().temp;
-
-  metrics.cost = ai::W_TAIL_MAE * metrics.tailMae + ai::W_OVERSHOOT_MAX * metrics.overshootMax
-               + ai::W_TAIL_STD * metrics.tailStd + ai::W_FINAL_ERROR * metrics.finalAbsError;
-
-  return metrics;
+  return ai::metricsFromKpis(
+    core::computeKpis(times, temps, references, ai::kpiOptions(m_targetDurationS, m_startTemp)), true);
 }
 
 void AiAdvisorWidget::setMetricsColumn(int column, ai::SimMetrics const &metrics) {
-  auto *costItem   = new QTableWidgetItem(formatNumber(metrics.cost, 2));
   auto *maeItem    = new QTableWidgetItem(formatNumber(metrics.tailMae, 3));
   auto *osItem     = new QTableWidgetItem(formatNumber(metrics.overshootMax, 2));
   auto *settleItem = new QTableWidgetItem(formatNumber(metrics.timeToSettleS, 0));
   auto *endItem    = new QTableWidgetItem(formatNumber(metrics.endTemp, 2));
 
-  for (auto *item : {costItem, maeItem, osItem, settleItem, endItem}) {
+  for (auto *item : {maeItem, osItem, settleItem, endItem}) {
     item->setTextAlignment(Qt::AlignCenter);
   }
 
-  m_metricsTable->setItem(0, column, costItem);
-  m_metricsTable->setItem(1, column, maeItem);
-  m_metricsTable->setItem(2, column, osItem);
-  m_metricsTable->setItem(3, column, settleItem);
-  m_metricsTable->setItem(4, column, endItem);
+  m_metricsTable->setItem(0, column, maeItem); // (the search's cost is internal: not shown)
+  m_metricsTable->setItem(1, column, osItem);
+  m_metricsTable->setItem(2, column, settleItem);
+  m_metricsTable->setItem(3, column, endItem);
 }
 
 void AiAdvisorWidget::clearMetricsTable() {
   for (int col{0}; col < 3; ++col) {
-    for (int row{0}; row < 5; ++row) {
+    for (int row{0}; row < 4; ++row) {
       auto *item = new QTableWidgetItem(QStringLiteral("—"));
       item->setTextAlignment(Qt::AlignCenter);
       m_metricsTable->setItem(row, col, item);
@@ -1084,4 +1052,4 @@ void AiAdvisorWidget::clearMetricsTable() {
   m_pidLabel->clear();
 }
 
-} // namespace deepvaccontrol
+}

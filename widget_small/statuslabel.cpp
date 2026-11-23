@@ -3,10 +3,11 @@
 #include "constants.h"
 #include "hardwarestatus.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent} {
-  setFixedWidth(200 * utils::ssf());
+  setFixedWidth(theme::dp(375));
 
   {
     auto fnt = font();
@@ -29,7 +30,7 @@ StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent}
       if ((jobTypeIndex < 0) || (2 < jobTypeIndex)) {
         jobTypeIndex = 0;
       }
-      m_typeStr = QStringList({"", "tr(по уставке)", "tr(по программе)"}).at(jobTypeIndex);
+      m_typeStr = QStringList({"", tr("(setpoint)"), tr("(program)")}).at(jobTypeIndex);
       updateString();
     });
   }
@@ -38,4 +39,4 @@ StatusLabel::StatusLabel(ResHolder *resHolder, QWidget *parent) : QLabel{parent}
 void StatusLabel::updateString() {
   setText(m_statusStr + " " + m_typeStr);
 }
-} // namespace deepvaccontrol
+}

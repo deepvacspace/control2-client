@@ -30,6 +30,6 @@ public:
     dialog->open();
   };
 };
-} // namespace deepvaccontrol
+}
 
 #endif // FILELOADDIALOGPATHPROVIDER_H

@@ -72,6 +72,6 @@ inline float CalibrationModel::getMax() const {
 inline quint32 CalibrationModel::getPoints() const {
   return m_points;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // CALIBRATIONMODEL_H

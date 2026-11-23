@@ -13,6 +13,10 @@ OfflineTuneResult const &OfflineTuneWorker::result() const {
   return m_result;
 }
 
+void OfflineTuneWorker::cancel() {
+  m_cancel = true;
+}
+
 void OfflineTuneWorker::run() {
   m_result = OfflineTuneResult{};
 
@@ -21,11 +25,15 @@ void OfflineTuneWorker::run() {
     return;
   }
 
-  CemOptimizer const cem(m_model);
+  CemOptimizer const cem(m_model, &m_cancel);
   CemResult const    cemResult = cem.run(m_params, [this](int done, int total) {
     emit progress(done, total);
   });
 
+  if (m_cancel) {
+    m_result.cancelled = true;
+    return;
+  }
   if (!cemResult.valid) {
     m_result.errorMessage = QObject::tr("AI Advisor failed");
     return;
@@ -48,4 +56,4 @@ void OfflineTuneWorker::run() {
   m_result.ok = true;
 }
 
-} // namespace deepvaccontrol::ai
+}

@@ -3,46 +3,55 @@
 #include <QProcess>
 #include <qprocess.h>
 
-#include "confdialog.h"
+#include "choicedialog.h"
 #include "constants.h"
 #include "messagedialog.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
-PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QPushButton{"Выкл.", parent} {
-  setText(tr("Выкл"));
-  setFixedHeight(deepvaccontrol::UI_MENU_BTN_HEIGHT * utils::ssf());
+PowerButton::PowerButton(ResHolder *resHolder, QWidget *parent) : QToolButton{parent} {
+  setToolTip(tr("Off"));
+  setObjectName("offButton");
+  setFocusPolicy(Qt::NoFocus);
+  // the power icon alone: it says "off" without a caption
+  setToolButtonStyle(Qt::ToolButtonIconOnly);
+  setFixedSize(theme::dp(116), theme::dp(86));
+  QColor const danger = theme::sidebarColors().danger; // drawn on the navigation sidebar
+  setIcon(theme::menuIcon(QStringLiteral("power"), danger, danger, static_cast<int>(22 * utils::ssf())));
+  setIconSize(QSize(theme::dp(41), theme::dp(41)));
+  setStyleSheet(QStringLiteral("QToolButton#offButton { border: %2px solid %1; background: %4; border-radius: %3px; } "
+                               "QToolButton#offButton:pressed { background: %5; }")
+                  .arg(danger.name())
+                  .arg(qMax(1, static_cast<int>(1.5 * utils::ssf())))
+                  .arg(static_cast<int>(9 * utils::ssf()))
+                  .arg(QColor(danger.red(), danger.green(), danger.blue(), 30).name(QColor::HexArgb))
+                  .arg(QColor(danger.red(), danger.green(), danger.blue(), 70).name(QColor::HexArgb)));
 
-  setIcon(QIcon(":/imgs/power.png"));
-  setIconSize(QSize(30 * utils::ssf(), 30 * utils::ssf()));
-  {
-    auto ft = font();
-    ft.setPointSize(ft.pointSize() * 1.5);
-    ft.setBold(true);
-    setFont(ft);
-  }
-
-  connect(this, &QPushButton::clicked, this, [this, resHolder] {
-    if (HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()) {
-      auto *msgDlg
-        = new MessageDialog(tr("Предупреждение"), tr("Для выключения оборудования необходимо остановить работу"), this);
-      msgDlg->open();
-    } else {
-      ConfDialog *confDialog
-        = new ConfDialog(tr("Подтверждение"),
-                         tr("The chamber will be turned off and the program will be closed.\n\nThe Windows computer will stay on.\n\nDo you want to continue?"),
-                         tr("Да"),
-                         tr("Нет"),
-                         this);
-      connect(confDialog, &ConfDialog::finished, this, [this, resHolder](int result) {
-        if (1 == result) {
-          resHolder->tcpGate->sendTextCmd("shutdown");
-          emit prepareToCloseApp();
-          // system("c:\\windows\\system32\\shutdown /s /t 1");
+  connect(this, &QToolButton::clicked, this, [this, resHolder] {
+    // the chamber turned off with the application, or left as it is (a running job goes on without the application)
+    bool const working{HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()};
+    enum { CANCEL = 1, APP_ONLY = 2, STOP_AND_EXIT = 3 };
+    auto *dialog = new ChoiceDialog(tr("Confirmation"),
+                                    working ? tr("A job is running. Stop the chamber and close the application, or close only the "
+                                                 "application and let the job go on?")
+                                            : tr("Turn the chamber off and close the application, or close only the application?"),
+                                    QStringLiteral("question"), this);
+    dialog->addChoice(tr("Cancel"), CANCEL);
+    dialog->addChoice(tr("Exit app only"), APP_ONLY);
+    dialog->addChoice(tr("Stop chamber and exit"), STOP_AND_EXIT, true);
+    connect(dialog, &QDialog::finished, this, [this, resHolder, working](int result) {
+      if (STOP_AND_EXIT == result) {
+        if (working) {
+          resHolder->tcpGate->sendTextCmd("stop");
         }
-      });
-      confDialog->show();
-    }
+        resHolder->tcpGate->sendTextCmd("shutdown");
+        emit prepareToCloseApp();
+      } else if (APP_ONLY == result) {
+        emit prepareToCloseApp();
+      }
+    });
+    dialog->open();
   });
 }
-} // namespace deepvaccontrol
+}

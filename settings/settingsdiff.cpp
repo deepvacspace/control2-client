@@ -24,8 +24,8 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
   auto *btnLay = new QHBoxLayout();
   mainLay->addLayout(btnLay);
 
-  auto *sendBtn = new QPushButton(tr("Загрузить текущие настройки"), this);
-  auto *getBtn  = new QPushButton(tr("Принять настройки из ПЛК"), this);
+  auto *sendBtn = new QPushButton(tr("Load current settings"), this);
+  auto *getBtn  = new QPushButton(tr("Accept settings from PLC"), this);
   sendBtn->setMinimumHeight(40);
   getBtn->setMinimumHeight(40);
   btnLay->addWidget(getBtn);
@@ -56,7 +56,7 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
 
   table->setRowCount(diff.size());
   table->setColumnCount(3);
-  table->setHorizontalHeaderLabels({tr("Настройка"), tr("ПЛК"), tr("Компьютер")});
+  table->setHorizontalHeaderLabels({tr("Setting"), tr("PLC"), tr("Computer")});
 
   auto diffNames = diff.keys();
   int  uniquePlc{0};
@@ -72,9 +72,9 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
     table->setItem(i, 2, new QTableWidgetItem(inLocal ? QString::number(local[diffName]) : ""));
 
     if (inPlc != inLocal) {
-      table->item(i, 0)->setBackground(QBrush(QColor(255, 0, 0, 50)));
-      table->item(i, 1)->setBackground(QBrush(QColor(255, 0, 0, 50)));
-      table->item(i, 2)->setBackground(QBrush(QColor(255, 0, 0, 50)));
+      table->item(i, 0)->setBackground(QBrush(QColor(212, 18, 46, 50)));
+      table->item(i, 1)->setBackground(QBrush(QColor(212, 18, 46, 50)));
+      table->item(i, 2)->setBackground(QBrush(QColor(212, 18, 46, 50)));
       auto font = table->itemAt(i, 0)->font();
       font.setBold(true);
       table->item(i, 0)->setFont(font);
@@ -83,9 +83,9 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
       uniquePlc += static_cast<int>(inPlc);
       uniqueLocal += static_cast<int>(inLocal);
     } else {
-      table->item(i, 0)->setBackground(QBrush(QColor(255, 255, 0, 50)));
-      table->item(i, 1)->setBackground(QBrush(QColor(255, 255, 0, 50)));
-      table->item(i, 2)->setBackground(QBrush(QColor(255, 255, 0, 50)));
+      table->item(i, 0)->setBackground(QBrush(QColor(242, 166, 12, 50)));
+      table->item(i, 1)->setBackground(QBrush(QColor(242, 166, 12, 50)));
+      table->item(i, 2)->setBackground(QBrush(QColor(242, 166, 12, 50)));
     }
   }
 
@@ -106,7 +106,7 @@ SettingsDiff::SettingsDiff(QMap<QString, float> const &local, QMap<QString, floa
   });
 
   setAttribute(Qt::WA_DeleteOnClose);
-  setWindowTitle(tr("Отличающиеся настройки"));
+  setWindowTitle(tr("Different settings"));
   setMinimumSize(410, 450);
 }
-} // namespace deepvaccontrol
+}

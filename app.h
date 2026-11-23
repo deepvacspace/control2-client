@@ -29,7 +29,12 @@ public:
   ~App() override;
   void       start();
   UiLanguage uiLanguage() const noexcept;
-  void runtimeSetups();      // right after loading settings file
+  void runtimeSetups();      // right after loading settings file (the window made, not shown yet)
+  // the window shown, maximized, laid out at the screen's size from its first frame; returns it
+  QWidget *showWindow();
+  // --demo-shot: an example run as if a chamber were connected (nothing sent, nothing recorded in experiments), the
+  // Live tab saved into path at twice the window's resolution, then quits. Not after start(): no chamber is connected
+  void runDemoShot(QString const &path);
 
 private:
   void initSettings();
@@ -46,7 +51,16 @@ private:
   void checkConfigIdentical();
   // 0 - ok, -1 - error, -2 - disabled
   void setupOpc();
+  // the chamber reports other values than settings.json: explain, keep it unused, offer the ways out
+  void handleStateMismatch(QStringList const &chamberStates);
+  void adoptChamberStates(QStringList const &chamberStates);
+  void switchBack();
+  // settings.json at start: keep a copy of a good one, or replace an unusable one by a backup
+  void keepSettingsBackup();
+  bool restoreSettings(QString const &backup);
   void stopOpc();
+  // re-reads opc settings: stops the server and starts it again if enabled and online
+  void restartOpc();
   void startOnline();
 
   ResHolder m_resHolder;
@@ -71,6 +85,7 @@ private:
 
   DataManager *m_dataManager;
 
+
   ActionManager m_actions;
 
   HardwareStatus m_hardStatus;
@@ -82,11 +97,14 @@ private:
   UsbManager m_usbManager;
 
   QTimer *m_paramsRequestTimer;
+  QString m_settingsNotice;  // settings.json was restored at start: told once the window is up
+  QString m_lastGoodAddress; // last chamber whose value list matched (to go back to)
+  QString m_mismatchAddress; // chamber whose mismatch was explained already (no repeated dialog on reconnects)
   QTimer *m_settingsRequestTimer;
 
   bool m_windowMode;
   bool m_debugMode;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // APP_H

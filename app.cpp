@@ -1,15 +1,32 @@
 #include "app.h"
 
+#include "demoshot.h"
+
+#include "experimentrecorder.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QHash>
+#include <QFileInfo>
+#include <QGuiApplication>
+#include <QScreen>
+#include <QProcess>
+#include <QSaveFile>
 #include <QMessageBox>
 #include <QThread>
+#include <QTimer>
 
+#include "confdialog.h"
 #include "connectiondialog.h"
 #include "constants.h"
+#include "recordingfile.h"
 #include "messagedialog.h"
 #include "programmodel.h"
 #include "settingsdiff.h"
+#include "settingsrecoverydialog.h"
+#include "statemismatchdialog.h"
 
 namespace deepvaccontrol {
 
@@ -24,6 +41,7 @@ App::App(bool windowMode, bool debugMode, QObject *parent)
     , m_finishDialog{nullptr}
     , m_states{&m_logger, this}
     , m_settings{&m_logger, SETTINGS_FILE, this}
+    , m_dataManager{nullptr}
     , m_actions{&m_logger, ACTIONS_FILE, this}
     , m_hardStatus{&m_resHolder}
     , m_opcThread{nullptr}
@@ -73,6 +91,11 @@ App::~App() {
 
 void App::start() {
   m_status.setAppState(StatusManager::AppState::IDLE);
+  if (!m_settingsNotice.isEmpty()) {
+    // settings.json was replaced by a backup at start (initSettings)
+    m_actions.addAction(ActionManager::ActionType::ERR, m_settingsNotice);
+    QTimer::singleShot(0, this, [this] { (new MessageDialog(tr("Warning"), m_settingsNotice, m_mainWindow))->open(); });
+  }
 }
 
 UiLanguage App::uiLanguage() const noexcept {
@@ -80,14 +103,73 @@ UiLanguage App::uiLanguage() const noexcept {
 }
 
 void App::initSettings() {
-  bool const result{m_settings.loadFromSettingsFile()};
-  if (!result) {
-    QMessageBox::critical(
-      nullptr, tr("Критическая ошибка"), QString(tr("Не удалось прочитать файл настроек '%1'")).arg(SETTINGS_FILE));
-    // todo: maybe there is better solution
-    m_logger.stream(Logger::Level::ERR) << tr("Не удалось прочитать файл настроек") << SETTINGS_FILE;
-    exit(1);
+  if (m_settings.loadFromSettingsFile()) {
+    keepSettingsBackup();
+    return;
   }
+  QString problem = SettingsManager::fileProblem(SETTINGS_FILE);
+  m_logger.stream(Logger::Level::ERR) << SETTINGS_FILE << "cannot be used:" << problem;
+
+  // the last copy that loaded correctly replaces it without asking
+  if (SettingsManager::fileProblem(SETTINGS_BACKUP_FILE).isEmpty() && restoreSettings(SETTINGS_BACKUP_FILE)) {
+    m_settingsNotice = tr("settings.json could not be used: %1 It was replaced by settings_backup.json, the last copy that "
+                          "loaded correctly (saved %2). Changes made after that copy are lost.")
+                         .arg(problem, QFileInfo(SETTINGS_BACKUP_FILE).lastModified().toString("yyyy-MM-dd HH:mm"));
+    return;
+  }
+
+  // nothing to fall back on: explain and let the operator choose
+  SettingsRecoveryDialog dialog(SETTINGS_FILE, problem);
+  while (true) {
+    int const choice = dialog.exec();
+    if (SettingsRecoveryDialog::RETRY == choice) {
+      if (m_settings.loadFromSettingsFile()) {
+        keepSettingsBackup();
+        return;
+      }
+      problem = SettingsManager::fileProblem(SETTINGS_FILE);
+    } else if (SettingsRecoveryDialog::RESTORE == choice) {
+      QString const backup = dialog.selectedBackup();
+      if (restoreSettings(backup)) {
+        m_settingsNotice = tr("settings.json could not be used: %1 It was replaced by %2.").arg(problem, QFileInfo(backup).fileName());
+        return;
+      }
+      problem = tr("%1 could not be restored either: %2").arg(QFileInfo(backup).fileName(), SettingsManager::fileProblem(backup));
+    } else {
+      m_logger.stream(Logger::Level::ERR) << "Closed at start: no usable settings file";
+      exit(1);
+    }
+    m_logger.stream(Logger::Level::ERR) << SETTINGS_FILE << "cannot be used:" << problem;
+    dialog.setProblem(problem);
+  }
+}
+
+void App::keepSettingsBackup() {
+  // copy of a settings.json that loads correctly, written safely (never a half copy)
+  QFile source(SETTINGS_FILE);
+  QSaveFile copy(SETTINGS_BACKUP_FILE);
+  if (source.open(QIODevice::ReadOnly) && copy.open(QIODevice::WriteOnly)) {
+    copy.write(source.readAll());
+    if (!copy.commit()) {
+      m_logger.stream(Logger::Level::WAR) << "Could not update" << SETTINGS_BACKUP_FILE;
+    }
+  }
+}
+
+bool App::restoreSettings(QString const &backup) {
+  if (!m_settings.loadFrom(backup)) {
+    return false;
+  }
+  // the unusable file is kept aside for a look, then settings.json is written from the backup
+  if (QFile::exists(SETTINGS_FILE)) {
+    QString const aside = QStringLiteral("settings_unusable_%1.json").arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
+    QFile::rename(SETTINGS_FILE, aside);
+    m_logger.stream(Logger::Level::WAR) << "Unusable" << SETTINGS_FILE << "kept as" << aside;
+  }
+  m_settings.saveToSettingsFile();
+  m_logger.stream(Logger::Level::WAR) << SETTINGS_FILE << "restored from" << backup;
+  keepSettingsBackup(); // a broken settings_backup.json is replaced as well
+  return true;
 }
 
 void App::runtimeSetups() {
@@ -104,6 +186,12 @@ void App::runtimeSetups() {
 
   connect(m_gateTcp, &GateTcp::connected, this, &App::onConnectToServer);
   connect(m_gateTcp, &GateTcp::disconnected, this, &App::onDisconnectFromServer);
+  // another chamber (Settings -> TCP): its value list and settings are checked again before it is used
+  connect(m_gateTcp, &GateTcp::serverChanged, this, [this] {
+    m_status.setStatesIdentical(false);
+    m_status.setSettingsListIdentical(false);
+    m_mismatchAddress.clear();
+  });
   connect(m_gateTcp, &GateTcp::stateListReceived, this, &App::onStateNamesReceive);
   connect(m_gateTcp, &GateTcp::settingsReceived, this, &App::onSettingsMapReceived);
   connect(m_gateTcp, &GateTcp::stateValuesListReceived, this, &App::onStateValuesReceive);
@@ -112,14 +200,23 @@ void App::runtimeSetups() {
 
   // Load states
   m_states.addWithVariantList(settingMapVariant["states"].toList());
+  // the day recordings name their columns after them (recordingfile.h)
+  QVector<recordingfile::Channel> recordingChannels;
+  for (QVariant const &state : settingMapVariant["states"].toList()) {
+    QVariantMap const map = state.toMap();
+    recordingChannels.push_back({map.value("name").toString(), map.value("label").toString()});
+  }
+  recordingfile::setChannels(recordingChannels);
 
   // Data manager
   m_dataManager           = new DataManager(&m_resHolder, m_states.size(), deepvaccontrol::INTERVAL_DURATION, this);
   m_resHolder.dataManager = m_dataManager;
 
+  connect(&m_settings, &SettingsManager::opcSettingsChanged, this, &App::restartOpc);
+
   // Make default program, todo: add settings checks
   m_resHolder.defaultProgram
-    = new ProgramModel{settingMapVariant["control_params"].toList(), ProgramModel::ProgType::PROG, this};
+    = new ProgramModel{m_settings.controlParams(), ProgramModel::ProgType::PROG, this};
   m_resHolder.defaultProgram->setIntervalFromVariantMap(0, settingMapVariant["default_program"].toMap());
 
   //
@@ -127,22 +224,21 @@ void App::runtimeSetups() {
   m_resHolder.users = m_users;
 
   m_actions.addAction(ActionManager::ActionType::APP,
-                      QString(tr("Запуск приложения. Пользователь '%1'")).arg(m_users->getCurrentUserName()));
+                      QString(tr("Application started. User '%1'")).arg(m_users->getCurrentUserName()));
 
   // Init UI window
   m_mainWindow = new MainWindow(&m_resHolder, m_windowMode);
   connect(m_mainWindow, &MainWindow::aboutClosed, this, &App::stopOpc);
-  m_mainWindow->showMaximized();
   m_hardStatus.requestStatusEmit(); // to update window
 
   // Create Alarm dialog
   m_alarmDialog = new AlarmDialog(m_mainWindow);
 
   connect(m_alarmDialog, &AlarmDialog::accepted, this, [this]() {
-    m_gateTcp->sendTextCmd("confrim_alarm");
+    m_gateTcp->sendTextCmd("confirm_alarm");
   });
 
-  // Second way to display finish confrim dialog
+  // Second way to display finish confirm dialog
   connect(
     &m_hardStatus,
     &HardwareStatus::statusChanged,
@@ -154,10 +250,20 @@ void App::runtimeSetups() {
     });
 
   connect(m_gateTcp, &GateTcp::jobFinishedReceived, this, [this]() {
-    m_actions.addAction(ActionManager::ActionType::PLC, tr("Работа камеры завешена"));
+    m_actions.addAction(ActionManager::ActionType::PLC, tr("Chamber operation completed"));
   });
 
   connect(m_gateTcp, &GateTcp::showRedFlag, m_mainWindow, &MainWindow::setConnectionErrorFlash);
+}
+
+QWidget *App::showWindow() {
+  // its size before it is shown: otherwise it is laid out first at the size its contents ask for and drawn so until
+  // the maximized size arrives (a cramped first frame while the start goes on)
+  if (QScreen const *screen = QGuiApplication::primaryScreen()) {
+    m_mainWindow->setGeometry(screen->availableGeometry());
+  }
+  m_mainWindow->showMaximized();
+  return m_mainWindow;
 }
 
 void App::connectToServer() {
@@ -169,28 +275,144 @@ void App::connectToServer() {
 
 void App::onConnectToServer() {
   m_status.setAppState(StatusManager::AppState::CONNECTED);
+  // a device that accepts the connection but never answers as a chamber: say so instead of waiting silently
+  QString const address = m_gateTcp->serverAddress();
+  QTimer::singleShot(20'000, this, [this, address] {
+    if ((StatusManager::AppState::CONNECTED != m_status.getAppState()) || (m_gateTcp->serverAddress() != address)) {
+      return;
+    }
+    m_logger.stream(Logger::Level::WAR) << address << "accepted the connection but sent no value list";
+    auto *notice = new MessageDialog(tr("Connection"), tr("%1 accepts the connection but does not answer as a chamber.\n"
+                                                          "Check the address and the port (Settings → TCP).")
+                                                         .arg(address));
+    notice->open(8000);
+  });
 }
 
 void App::onDisconnectFromServer() {
+  // the chamber may come back restarted with another configuration (and other components): checked again on reconnect
+  m_status.setStatesIdentical(false);
+  m_status.setSettingsListIdentical(false);
   m_status.setAppState(StatusManager::AppState::CONNECTING);
 }
 
 void App::onStateNamesReceive(QStringList states) {
   m_paramsRequestTimer->stop();
-  if (states == m_states.getNames()) {
-    m_status.setStatesIdentical(true);
-    m_logger.stream(Logger::Level::INFO) << tr("Список переменных состояний на ПЛК и ПК совпадают");
-  } else {
-    QMessageBox::critical(
-      nullptr, tr("Критическая ошибка"), QString(tr("Переменные состояний на ПЛК и ПК отличаются")));
-    m_logger.stream(Logger::Level::ERR) << tr("Список переменных состояний на ПЛК и ПК отличаются");
-    m_logger.stream(Logger::Level::ERR) << "PLC:" << states;
-    m_logger.stream(Logger::Level::ERR) << "PC:" << m_states.getNames();
-    // todo: maybe there is better solution
-    exit(1);
+  if (states != m_states.getNames()) {
+    handleStateMismatch(states);
+    return;
   }
+  m_status.setStatesIdentical(true);
+  m_lastGoodAddress = m_gateTcp->serverAddress();
+  m_mismatchAddress.clear();
+  m_logger.stream(Logger::Level::INFO) << tr("PLC and PC state variable lists match");
+  requestSettingList(); // compared once the values are known to match
 
   checkConfigIdentical();
+}
+
+void App::handleStateMismatch(QStringList const &chamberStates) {
+  QString const address = m_gateTcp->serverAddress();
+  m_status.setStatesIdentical(false);
+  m_settingsRequestTimer->stop();
+  m_status.setAppState(StatusManager::AppState::OFFLINE); // values ignored, nothing sent
+  m_logger.stream(Logger::Level::ERR) << "Chamber" << address << "reports another value list than settings.json";
+  m_logger.stream(Logger::Level::ERR) << "PLC:" << chamberStates;
+  m_logger.stream(Logger::Level::ERR) << "PC:" << m_states.getNames();
+  if (m_mismatchAddress == address) {
+    return; // explained already (a reconnection of the same chamber)
+  }
+  m_mismatchAddress = address;
+  m_actions.addAction(ActionManager::ActionType::ERR,
+                      tr("Chamber %1 not used: its values differ from this application's configuration").arg(address));
+
+  // values this application cannot work without: adopting a list that lacks them is not offered
+  QVariantMap const settings = m_settings.settingsMap();
+  QStringList       needed{"temp", "temp_ref", "status_condition"};
+  for (QVariant const &entry : settings.value("monitor").toList()) {
+    needed.push_back(entry.toMap().value("name").toString());
+  }
+  for (QVariant const &entry : settings.value("plc_settings").toMap().value("calibrations").toList()) {
+    QString const state = entry.toMap().value("state_name").toString();
+    needed << state << state + "_raw";
+  }
+  QStringList missing;
+  for (QString const &name : std::as_const(needed)) {
+    if (!name.isEmpty() && m_states.contains(name) && !chamberStates.contains(name) && !missing.contains(name)) {
+      missing.push_back(name);
+    }
+  }
+
+  auto *dialog = new StateMismatchDialog(address, chamberStates, m_states.getNames(),
+                                         m_lastGoodAddress == address ? QString() : m_lastGoodAddress, missing, m_mainWindow);
+  connect(dialog, &QDialog::finished, this, [this, chamberStates](int choice) {
+    if (StateMismatchDialog::BACK == choice) {
+      switchBack();
+    } else if (StateMismatchDialog::ADOPT == choice) {
+      adoptChamberStates(chamberStates);
+    }
+  });
+  dialog->open();
+}
+
+void App::switchBack() {
+  QString const   address = m_lastGoodAddress;
+  qsizetype const colon   = address.lastIndexOf(':');
+  if (colon <= 0) {
+    return;
+  }
+  QString const host = address.left(colon);
+  auto const    port = static_cast<quint16>(address.mid(colon + 1).toUInt());
+  m_settings.setTcpServer(host, port);
+  m_gateTcp->setServer(QHostAddress(host), port);
+  m_mainWindow->setWindowTitle(QStringLiteral("Deepvac Control (%1)").arg(host));
+}
+
+void App::adoptChamberStates(QStringList const &chamberStates) {
+  QString const backup = QStringLiteral("settings_backup_%1.json").arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
+  auto *confirm = new ConfDialog(
+    tr("Use the chamber's value list?"),
+    tr("settings.json gets the chamber's %1 values: the known ones keep their names, units and colours, new ones are "
+       "added hidden on the chart, and OPC variables of values that are gone are dropped. The current file is kept as "
+       "%2. The application then restarts.")
+      .arg(chamberStates.size())
+      .arg(backup),
+    tr("Use and restart"), tr("Cancel"), m_mainWindow);
+  connect(confirm, &QDialog::accepted, this, [this, chamberStates, backup] {
+    if (!QFile::copy(SETTINGS_FILE, backup)) {
+      (new MessageDialog(tr("Error"), tr("No backup of settings.json could be written, nothing was changed."), m_mainWindow))->open();
+      return;
+    }
+    QVariantMap const           settings = m_settings.settingsMap();
+    QHash<QString, QVariantMap> known;
+    for (QVariant const &entry : settings.value("states").toList()) {
+      known.insert(entry.toMap().value("name").toString(), entry.toMap());
+    }
+    QVariantList states;
+    for (QString const &name : chamberStates) {
+      states.push_back(known.contains(name) ? known.value(name)
+                                            : QVariantMap{{"name", name}, {"label", name}, {"visible", false},
+                                                          {"color", "#64748b"}, {"width", 2}, {"pen", 1}});
+    }
+    QVariantMap  opc = settings.value("opc_settings").toMap();
+    QVariantList tags;
+    for (QVariant const &tag : opc.value("tags").toList()) {
+      if (chamberStates.contains(tag.toMap().value("state").toString())) {
+        tags.push_back(tag);
+      }
+    }
+    opc["tags"] = tags;
+    if (!m_settings.setEntries({{"states", states}, {"opc_settings", opc}})) {
+      (new MessageDialog(tr("Error"), tr("settings.json could not be written; the backup %1 is unchanged.").arg(backup), m_mainWindow))
+        ->open();
+      return;
+    }
+    m_logger.stream(Logger::Level::INFO) << "settings.json takes the value list of" << m_gateTcp->serverAddress()
+                                         << "(backup" << backup << ") - restarting";
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1), QDir::currentPath());
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+  });
+  confirm->open();
 }
 
 void App::onSettingsMapReceived(QMap<QString, float> plcSettings) {
@@ -201,14 +423,14 @@ void App::onSettingsMapReceived(QMap<QString, float> plcSettings) {
 
   if (plcSettings == localSetting) {
     if (m_status.getSettingsListIdentical()) { // not first time
-      auto *msgDlg = new MessageDialog(tr("Подтверждение"), tr("Настройки совпадают"));
+      auto *msgDlg = new MessageDialog(tr("Confirmation"), tr("Settings match"));
       msgDlg->open();
     }
     m_status.setSettingsListIdentical(true);
-    m_logger.stream(Logger::Level::INFO) << tr("Список настроек на ПЛК и ПК совпадают");
+    m_logger.stream(Logger::Level::INFO) << tr("PLC and PC settings lists match");
   } else {
-    QMessageBox::critical(nullptr, tr("Внимание"), QString(tr("Настройки на ПЛК и ПК отличаются")));
-    m_logger.stream(Logger::Level::WAR) << tr("Настройки на ПЛК и ПК отличаются");
+    QMessageBox::critical(nullptr, tr("Warning"), QString(tr("PLC and PC settings differ")));
+    m_logger.stream(Logger::Level::WAR) << tr("PLC and PC settings differ");
 
     auto *diffDialog = new SettingsDiff(localSetting, plcSettings);
     connect(diffDialog, &QDialog::finished, this, [this, localSetting, plcSettings](int result) {
@@ -245,7 +467,7 @@ void App::onAlarmReceived(quint32 alarmCode) {
     bool const ithAlarm{static_cast<bool>(alarmCode & 0x01)};
     if (ithAlarm) {
       QString const alarmLabel{m_settings.getAlarmsMap().contains(i) ? m_settings.getAlarmsMap()[i]
-                                                                     : tr("Неизвестная ошибка")};
+                                                                     : tr("Unknown error")};
       QString const alarmText{QString("%1. %2").arg(i + 1).arg(alarmLabel)};
       alarmLabelsList.push_back(alarmText);
     }
@@ -255,14 +477,14 @@ void App::onAlarmReceived(quint32 alarmCode) {
 
   m_alarmDialog->showAlarmsList(alarmLabelsList);
 
-  m_actions.addAction(ActionManager::ActionType::ERR, tr("Ошибка") + ": " + alarmLabelsList.join(" "));
+  m_actions.addAction(ActionManager::ActionType::ERR, tr("Error") + ": " + alarmLabelsList.join(" "));
 }
 
 void App::onJobFinishedReceived() {
   if (nullptr == m_finishDialog) {
-    m_finishDialog = new MessageDialog(tr("Окончание работы"), tr("Камера завершила работу"), m_mainWindow);
+    m_finishDialog = new MessageDialog(tr("Operation complete"), tr("Chamber operation completed"), m_mainWindow);
     connect(m_finishDialog, &MessageDialog::finished, this, [this](int) {
-      m_gateTcp->sendTextCmd("confrim_finish");
+      m_gateTcp->sendTextCmd("confirm_finish");
       m_finishDialog->deleteLater();
       m_finishDialog = nullptr;
     });
@@ -276,10 +498,10 @@ void App::onStateValuesReceive(QVector<float> stateValues) {
   }
 
   if (stateValues.size() != m_states.size()) {
-    QString const errMsg{QString(tr("Количество значений (%1) отличается от количества переменных состояний (%2)"))
+    QString const errMsg{QString(tr("Number of values (%1) differs from number of state variables (%2)"))
                            .arg(stateValues.size())
                            .arg(m_states.size())};
-    QMessageBox::critical(nullptr, tr("Критическая ошибка"), errMsg);
+    QMessageBox::critical(nullptr, tr("Critical error"), errMsg);
     m_logger.stream(Logger::Level::ERR) << errMsg;
     return;
   }
@@ -287,7 +509,12 @@ void App::onStateValuesReceive(QVector<float> stateValues) {
   m_states.setFloatValues(stateValues);
 
   QVector<double> valuesDouble{stateValues.cbegin(), stateValues.cend()};
-  m_dataManager->addPoint(static_cast<double>(QDateTime::currentSecsSinceEpoch()), valuesDouble);
+  qint64 const    timestampMs = QDateTime::currentMSecsSinceEpoch();
+  // millisecond resolution: samples arriving within the same second are all kept
+  m_dataManager->addPoint(static_cast<double>(timestampMs) / 1000.0, valuesDouble);
+  if (m_resHolder.recorder) {
+    m_resHolder.recorder->addSample(static_cast<double>(timestampMs) / 1000.0, valuesDouble); // experiment database
+  }
 
   if (m_opcServer && (0 == m_status.getOpcStatus())) {
     QVector<double> opcStateValuesVector;
@@ -344,9 +571,23 @@ void App::setupOpc() {
 }
 
 // После установления соединения с оборудованием
+void App::runDemoShot(QString const &path) {
+  // "connected" without the OPC server or any request to a chamber
+  disconnect(&m_status, &StatusManager::requestOnline, this, &App::startOnline);
+  m_status.setAppState(StatusManager::AppState::ONLINE);
+  if (m_states.contains("status_condition")) {
+    m_hardStatus.setup(true, m_states.getSysValue("status_condition"));
+  }
+  demo::fillExampleRun(&m_states, m_dataManager);
+  connect(m_mainWindow, &MainWindow::screensExported, qApp, &QCoreApplication::quit, Qt::QueuedConnection);
+  m_mainWindow->saveLiveShot(path, 2.0);
+}
+
 void App::startOnline() {
-  // start OPC if need
-  setupOpc();
+  // start OPC if need (after a reconnection or a chamber switch the running server is kept)
+  if (!m_opcThread) {
+    setupOpc();
+  }
 
   if (m_states.contains("status_condition")) {
     m_hardStatus.setup(true, m_states.getSysValue("status_condition"));
@@ -357,6 +598,18 @@ void App::stopOpc() {
   if (m_opcThread) {
     m_opcThread->quit();
     m_opcThread->wait();
+    // both are deleted by the thread's finished() connections
+    m_opcThread = nullptr;
+    m_opcServer = nullptr;
+  }
+  m_opcStates.clear();
+}
+
+void App::restartOpc() {
+  stopOpc();
+  m_status.setOpcStatus(-2); // OPC OFF
+  if (StatusManager::AppState::ONLINE == m_status.getAppState()) {
+    setupOpc();
   }
 }
 
@@ -371,8 +624,8 @@ void App::requestStateList() {
 }
 
 void App::requestSettingList() {
-  if (m_status.getSettingsListIdentical()) {
-    return;
+  if (m_status.getSettingsListIdentical() || !m_status.getStatesIdentical()) {
+    return; // asked again by onStateNamesReceive() once the value list matches
   }
   auto period = m_settings.settingsMap()["communication"].toMap()["base_params_request_period_sec"].toInt();
   m_settingsRequestTimer->start(1000 * period);
@@ -380,4 +633,4 @@ void App::requestSettingList() {
   m_gateTcp->sendTextCmd("get_settings");
 }
 
-} // namespace deepvaccontrol
+}

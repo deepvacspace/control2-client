@@ -199,4 +199,4 @@ QVariantMap updateCalibrationValuesFromMap(QMap<QString, float> const &map, QVar
   return calibrationVariantMap;
 }
 
-} // namespace deepvaccontrol
+}

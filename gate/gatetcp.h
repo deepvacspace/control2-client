@@ -39,7 +39,8 @@ private:
     CONFIGURATION = 0x04,
     ALARM         = 0x05,
     JOB_FINISHED  = 0x06,
-    USER_MSG      = 0x07
+    USER_MSG      = 0x07,
+    COMPONENTS    = 0x08 // the parts fitted on the chamber (optional: a PLC that does not send it is judged by its outputs)
   };
 
 public:
@@ -49,17 +50,25 @@ public:
                    ConnectionDialog *connectionDialog,
                    QObject          *parent = nullptr);
   void connectToServer();
+  // closes the current connection and connects to another chamber (Settings -> TCP)
+  void setServer(QHostAddress const &serverIp4Address, quint16 port);
+  QString serverAddress() const;
 
   void sendTextCmd(QString const &cmd);
   void sendSettingMap(QMap<QString, float> const &map);
   void sendGeneral(OutcomeMessageCode cmdCode, QByteArray data);
   void sendPair(QString const &text, float value);
+  // Blocks until everything queued has been handed to the OS (app shutdown
+  // path, no event loop left). False if not connected or timed out.
+  bool flush(int timeoutMs);
 
 signals:
   // Display RED BLINKING WARNING
   void showRedFlag(bool enable);
 
   void disconnected();
+  // setServer(): another chamber, its configuration must be checked again
+  void serverChanged();
 
   // dsiable blinking warning
   void connected();
@@ -82,6 +91,9 @@ signals:
   //
   void userMsgReceived(QString userMsg);
 
+  // the component keys the chamber reports as fitted ("tmp", "vk", "bp", ...); empty when disconnected
+  void componentsReceived(QStringList components);
+
 private slots:
   void onConnected();
   void onDisconnected();
@@ -103,6 +115,7 @@ private slots:
   void parsePlcMessage(QByteArray const &data);
 
   bool parseStateNamesList(QByteArray data);
+  bool parseComponents(QByteArray data);
 
   bool parseStateValuesList(QByteArray data);
 
@@ -129,6 +142,6 @@ private:
   ConnectionDialog *m_connectionDialog;
   quint8            m_sendPacketCount;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // GATETCP_H

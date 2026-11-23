@@ -2,11 +2,13 @@
 #define CHAMBERTWINSIM_H
 
 #include <QString>
+#include <algorithm>
 #include <QStringList>
 #include <QVector>
 #include <array>
 
 #include "gruonnxmodel.h"
+#include "kpis.h"
 
 namespace deepvaccontrol::ai {
 
@@ -44,6 +46,8 @@ constexpr double DEFAULT_KD{10.0};
 constexpr double DEFAULT_START_TEMP{27.0};
 constexpr double DEFAULT_TARGET_TEMP{0.0};
 constexpr double DEFAULT_DURATION_S{1200.0};
+// longest stretch the twin is validated for (program segments are simulated up to this)
+constexpr double MAX_HORIZON_S{3600.0};
 constexpr double DEFAULT_DT_S{2.0};
 
 struct SimParams {
@@ -54,10 +58,20 @@ struct SimParams {
   double targetTemp{DEFAULT_TARGET_TEMP};
   double durationS{DEFAULT_DURATION_S};
   double dtS{DEFAULT_DT_S};
+  double rampS{0.0}; // > 0: the setpoint ramps linearly from startTemp to targetTemp over this time (a ramp interval)
   double initialP{0.0};
   double initialI{0.0};
   double initialD{0.0};
 };
+
+// The setpoint after elapsedS: the target, or on a ramp the point reached along it.
+inline double setpointAt(SimParams const &params, double elapsedS) {
+  if (params.rampS <= 0.0) {
+    return params.targetTemp;
+  }
+  double const f = std::clamp(elapsedS / params.rampS, 0.0, 1.0);
+  return params.startTemp + (params.targetTemp - params.startTemp) * f;
+}
 
 struct TrajectoryPoint {
   double elapsedS{0.0};
@@ -89,6 +103,11 @@ struct SimMetrics {
   double  maxTemp{0.0};
   double  endTemp{0.0};
 };
+
+// SimMetrics (the AI pages' view of the KPIs) from the shared core::computeKpis() result
+SimMetrics metricsFromKpis(core::ControlKpis const &kpis, bool valid, QString const &invalidReason = {});
+// core KPI options matching the AI constants (bands, tail window)
+core::KpiOptions kpiOptions(double tailEndS, double initialValue);
 
 class CodesysDiff {
 public:

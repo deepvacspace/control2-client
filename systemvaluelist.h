@@ -49,6 +49,6 @@ inline int SystemValueList::size() const {
 inline QStringList SystemValueList::getNames() const {
   return m_nameOrderList;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // SYSTEMVALUELIST_H

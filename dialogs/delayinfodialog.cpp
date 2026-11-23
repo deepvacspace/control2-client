@@ -4,19 +4,20 @@
 #include <QVBoxLayout>
 
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime, QWidget *parent)
     : QDialog{parent}, m_startTime{startTime} {
   auto *mainLay = new QVBoxLayout(this);
 
-  auto *cancelBtn = new QPushButton(tr("Отмена"), this);
-  cancelBtn->setFixedSize(100 * utils::ssf(), 50 * utils::ssf());
+  auto *cancelBtn = new QPushButton(tr("Cancel"), this);
+  cancelBtn->setFixedSize(theme::dp(187), theme::dp(93));
 
   auto *timeLabelStart = new QLabel(this);
   m_timeLabelCurrent   = new QLabel(this);
   auto *labelDesc      = new QLabel(desription, this);
-  auto *labelTitle     = new QLabel(tr("Отложенный пуск"), this);
+  auto *labelTitle     = new QLabel(tr("Delayed start"), this);
 
   {
     QFont font = timeLabelStart->font();
@@ -31,12 +32,12 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
   auto *fr = new QFrame();
   fr->setFrameStyle(QFrame::HLine | QFrame::Plain);
   fr->setLineWidth(1);
-  fr->setFixedWidth(350 * utils::ssf());
+  fr->setFixedWidth(theme::dp(656));
 
   auto *gridLay = new QGridLayout(this);
-  gridLay->addWidget(new QLabel(tr("Текущее время:"), this), 0, 0);
+  gridLay->addWidget(new QLabel(tr("Current time:"), this), 0, 0);
   gridLay->addWidget(m_timeLabelCurrent, 0, 1);
-  gridLay->addWidget(new QLabel(tr("Время пуска:"), this), 1, 0);
+  gridLay->addWidget(new QLabel(tr("Start time:"), this), 1, 0);
   gridLay->addWidget(timeLabelStart, 1, 1);
 
   auto *labelLay = new QHBoxLayout();
@@ -45,12 +46,12 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
   labelLay->addStretch();
   mainLay->addWidget(labelTitle);
   mainLay->addWidget(fr);
-  mainLay->addSpacing(15 * utils::ssf());
+  mainLay->addSpacing(theme::dp(28));
   mainLay->addLayout(labelLay);
-  mainLay->addSpacing(15 * utils::ssf());
+  mainLay->addSpacing(theme::dp(28));
   mainLay->addWidget(labelDesc);
   mainLay->addStretch();
-  mainLay->addSpacing(15 * utils::ssf());
+  mainLay->addSpacing(theme::dp(28));
   mainLay->addWidget(cancelBtn);
 
   QList<QWidget *> list1{labelTitle, fr, timeLabelStart, m_timeLabelCurrent, labelDesc, cancelBtn};
@@ -67,7 +68,7 @@ DelayInfoDialog::DelayInfoDialog(QString const &desription, QDateTime startTime,
 
   connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
-  this->setWindowTitle(tr("Отложенный пуск"));
+  this->setWindowTitle(tr("Delayed start"));
   this->setAttribute(Qt::WA_DeleteOnClose);
   //    this->setModal(true);
   this->adjustSize();
@@ -82,4 +83,4 @@ void DelayInfoDialog::checkTime() {
     accept();
   }
 }
-} // namespace deepvaccontrol
+}

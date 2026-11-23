@@ -4,7 +4,7 @@ namespace deepvaccontrol {
 CalibrationModel::CalibrationModel(QVariantMap calibVariantMap, QObject *parent)
     : QStandardItemModel{parent}, m_selectedIndex{0U} {
   this->setColumnCount(3);
-  setHorizontalHeaderLabels({tr("Датчик камеры"), tr("Датчик внешний"), tr("Корректировка")});
+  setHorizontalHeaderLabels({tr("Chamber sensor"), tr("External sensor"), tr("Correction")});
 
   Q_ASSERT(!calibVariantMap.empty());
   setDataVariant(calibVariantMap);
@@ -102,4 +102,4 @@ void CalibrationModel::removePoint(int index) {
   selectIndex(index, /*force*/ true);
 }
 
-} // namespace deepvaccontrol
+}

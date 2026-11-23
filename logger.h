@@ -74,6 +74,6 @@ inline void Logger::setLogLevel(Level newLevel)
 {
   m_currentLevel = newLevel;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // LOGGER_H

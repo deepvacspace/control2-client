@@ -11,6 +11,13 @@ namespace deepvaccontrol {
 AccessManager::AccessManager(ResHolder *resHolder, Logger *logger, QObject *parent)
     : QObject(parent), FileHandler{}, m_resHolder{resHolder}, m_logger{logger} {
   loadUsers();
+  // the administrator was called "System Engineer": the same account (password, level) under its new name
+  if (m_users.contains(LEGACY_ADMIN_USER_NAME) && !m_users.contains(ADMIN_USER_NAME)) {
+    m_users.insert(ADMIN_USER_NAME, m_users.take(LEGACY_ADMIN_USER_NAME));
+    if (m_lastUserFromFile == LEGACY_ADMIN_USER_NAME) {
+      m_lastUserFromFile = ADMIN_USER_NAME;
+    }
+  }
 
   if (!m_users.contains(SPECTATOR_USER_NAME)) {
     m_logger->stream(Logger::Level::WAR) << QString("There is no default user '%1'. Add it.").arg(SPECTATOR_USER_NAME);
@@ -51,7 +58,7 @@ bool AccessManager::addUser(QString const &username, AccessLevel accessLevel, QS
   QString const hashedPassword{hashPassword(password, salt)};
   m_users[username] = User{accessLevel, salt, hashedPassword};
   m_resHolder->actions->addAction(ActionManager::ActionType::APP,
-                                  QString(tr("Пользователь '%1' добавлен")).arg(username));
+                                  QString(tr("User '%1' added")).arg(username));
   emit userListChanged();
   return true;
 }
@@ -88,7 +95,7 @@ bool AccessManager::removeUser(QString const &username) {
   }
 
   m_users.remove(username);
-  m_resHolder->actions->addAction(ActionManager::ActionType::APP, QString(tr("Пользователь '%1' удалён")).arg(username));
+  m_resHolder->actions->addAction(ActionManager::ActionType::APP, QString(tr("User '%1' deleted")).arg(username));
   emit userListChanged();
   return true;
 }
@@ -110,7 +117,7 @@ void AccessManager::switchUserImpl(QString const &username, bool shadow) {
     << QString("User '%1' with level %2 selected").arg(m_currentUser).arg(m_currentAccessLevel);
   if (!shadow) {
     m_resHolder->actions->addAction(ActionManager::ActionType::APP,
-                                    QString(tr("Выбран пользователь '%1'")).arg(m_currentUser));
+                                    QString(tr("User '%1' selected")).arg(m_currentUser));
   }
 }
 
@@ -208,4 +215,4 @@ QJsonObject AccessManager::User::toJson() const {
   return json;
 }
 
-} // namespace deepvaccontrol
+}

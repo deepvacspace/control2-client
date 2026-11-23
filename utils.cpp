@@ -1,15 +1,11 @@
 #include "utils.h"
 
-#include <QAbstractButton>
 #include <QApplication>
+
+#include "theme.h"
 #include <QColor>
-#include <QCoreApplication>
-#include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QJsonObject>
-#include <QMessageBox>
-#include <QProcess>
 
 namespace deepvaccontrol::utils {
 
@@ -64,7 +60,7 @@ QString timeFromSec(long sec, bool withDay) {
   int m  = static_cast<int>(floor(sec % 3600 / 60));
   int s  = static_cast<int>(sec % 60);
   if (d && withDay) {
-    return QString("%1д. %2:%3:%4")
+    return QCoreApplication::translate("deepvaccontrol::utils", "%1 d %2:%3:%4")
       .arg(d)
       .arg(h, 1, 10, QChar('0'))
       .arg(m, 2, 10, QChar('0'))
@@ -102,55 +98,23 @@ QString readStyleFromFile(QString const &filepath) {
     text = file.readAll();
     file.close();
   }
-  return (text);
+  return theme::adaptStyleSheet(text);
 }
 
 QPalette lightPalette() {
-  QPalette palette;
-  palette.setColor(QPalette::Window, QColor(240, 240, 240));
-  palette.setColor(QPalette::WindowText, Qt::black);
-  palette.setColor(QPalette::Base, Qt::white);
-  palette.setColor(QPalette::AlternateBase, QColor(233, 233, 233));
-  palette.setColor(QPalette::ToolTipBase, Qt::white);
-  palette.setColor(QPalette::ToolTipText, Qt::black);
-  palette.setColor(QPalette::Text, Qt::black);
-  palette.setColor(QPalette::Button, QColor(240, 240, 240));
-  palette.setColor(QPalette::ButtonText, Qt::black);
-  palette.setColor(QPalette::BrightText, Qt::white);
-  palette.setColor(QPalette::Link, QColor(0, 0, 255));
-  palette.setColor(QPalette::Highlight, QColor(0, 120, 215));
-  palette.setColor(QPalette::HighlightedText, Qt::white);
-  palette.setColor(QPalette::Disabled, QPalette::Text, QColor(120, 120, 120));
-  palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(120, 120, 120));
-  return palette;
+  return theme::palette(false);
 }
 
 QPalette darkPalette() {
-  QPalette palette;
-  palette.setColor(QPalette::Window, QColor(45, 45, 45));
-  palette.setColor(QPalette::WindowText, Qt::white);
-  palette.setColor(QPalette::Base, QColor(30, 30, 30));
-  palette.setColor(QPalette::AlternateBase, QColor(45, 45, 45));
-  palette.setColor(QPalette::ToolTipBase, Qt::white);
-  palette.setColor(QPalette::ToolTipText, Qt::white);
-  palette.setColor(QPalette::Text, Qt::white);
-  palette.setColor(QPalette::Button, QColor(53, 53, 53));
-  palette.setColor(QPalette::ButtonText, Qt::white);
-  palette.setColor(QPalette::BrightText, Qt::red);
-  palette.setColor(QPalette::Link, QColor(42, 130, 218));
-  palette.setColor(QPalette::Highlight, QColor(42, 130, 218));
-  palette.setColor(QPalette::HighlightedText, Qt::black);
-  palette.setColor(QPalette::Disabled, QPalette::Text, QColor(127, 127, 127));
-  palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(127, 127, 127));
-  return palette;
+  return theme::palette(true);
 }
 
 bool isDarkMode() {
-  return QApplication::palette().color(QPalette::Window).lightness() < 128;
+  return theme::isDark();
 }
 
 void applyDarkMode(bool enabled) {
-  QApplication::setPalette(enabled ? darkPalette() : lightPalette());
+  theme::apply(enabled);
 }
 
 int nLampToLux(int i) {
@@ -229,31 +193,6 @@ double calculateKey(quint64 epochSecTime) {
   return static_cast<double>(dateTime.toSecsSinceEpoch());
 }
 
-QString calculateFileName(quint64 epochSecTime) {
-  QDateTime dateTime{QDateTime::fromSecsSinceEpoch(utils::calculateKey(epochSecTime))};
-  return dateTime.toString("yyyy-MM-dd_HH-mm-ss") + ".dat";
-}
-
-void showAiAdvisorStartPromptAndRun(QWidget *parent) {
-  QMessageBox msgBox{parent};
-  msgBox.setIcon(QMessageBox::Information);
-  msgBox.setWindowTitle(QStringLiteral("AI Advisor"));
-  msgBox.setText(QStringLiteral("The AI module will choose the best coefficients for the experiment."));
-  msgBox.setStandardButtons(QMessageBox::Ok);
-  msgBox.button(QMessageBox::Ok)->setText(QStringLiteral("Accept"));
-  msgBox.exec();
-
-  QString const advisorPath = QDir(QCoreApplication::applicationDirPath()).filePath("DeepvacAIAdvisor.exe");
-  if (!QFileInfo::exists(advisorPath)) {
-    QMessageBox::warning(parent,
-                         QStringLiteral("AI Advisor"),
-                         QStringLiteral("DeepvacAIAdvisor.exe was not found next to the application executable."));
-    return;
-  }
-
-  QProcess::startDetached(advisorPath, {}, QCoreApplication::applicationDirPath());
-}
-
 QString toSuperscript(int exp) {
   constexpr static QChar s[10] = {u'⁰', u'¹', u'²', u'³', u'⁴', u'⁵', u'⁶', u'⁷', u'⁸', u'⁹'};
   if (exp == 0) {
@@ -321,8 +260,7 @@ QString formatScientific(double v, int frac, bool fixedWhenReadable) {
     m = QStringLiteral("0");
   }
 
-  // Middle dot (∙) by default; можно заменить на × (u'×') если хотите
-  return m + u'∙' + QStringLiteral("10") + toSuperscript(exp10);
+  return m + u'×' + QStringLiteral("10") + toSuperscript(exp10);
 }
 
 // Convenience overload for float
@@ -338,8 +276,35 @@ QString formatScientific(float v, int frac) {
   return formatScientific(v, frac, true);
 }
 
+QString formatSciE(double v) {
+  if (!std::isfinite(v)) {
+    return QStringLiteral("--");
+  }
+  QString text = QString::number(v, 'E', 1); // "1.0E-02"
+  return text.insert(text.indexOf(QLatin1Char('E')), QChar(0x00B7));
+}
+
+QString formatSci10(double v) {
+  if (!std::isfinite(v)) {
+    return QStringLiteral("--");
+  }
+  // rounded as formatSciE rounds it ("9.96E-03" -> "1.0E-02"), then written in base 10
+  QString const   text = QString::number(v, 'E', 1);
+  qsizetype const e    = text.indexOf(QLatin1Char('E'));
+  QString         mant = text.left(e);
+  if (mant.startsWith(QLatin1Char('-'))) {
+    mant.replace(0, 1, QChar(0x2212));
+  }
+  return mant + QChar(0x00D7) + QStringLiteral("10") + toSuperscript(text.mid(e + 1).toInt());
+}
+
+double parseNumber(QString text, bool *ok) {
+  text.remove(QChar(0x00B7)).remove(QChar(0x2219)).replace(QChar(0x2212), QLatin1Char('-')).replace(QLatin1Char(','), QLatin1Char('.'));
+  return text.trimmed().toDouble(ok);
+}
+
 QString formatScientificRef(float v, int frac) {
   return QString("(%1)").arg(formatScientific(v, frac, true));
 }
 
-} // namespace deepvaccontrol::utils
+}

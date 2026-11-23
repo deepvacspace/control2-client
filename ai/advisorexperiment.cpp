@@ -70,4 +70,4 @@ void ComparisonWorker::run() {
   m_result.ok = true;
 }
 
-} // namespace deepvaccontrol::ai
+}

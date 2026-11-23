@@ -26,6 +26,6 @@ private:
   QTableView *m_tableView;
   void verticalResizeTableViewToContents();
 };
-} // namespace deepvaccontrol
+}
 
 #endif // PROGRAMTABLEWIDGET_H

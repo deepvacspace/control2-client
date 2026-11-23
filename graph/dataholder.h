@@ -36,6 +36,9 @@ public:
   // No need to checks range as soon as DataManager controls it.
   bool addPoint(double epochSecTime, QVector<double> const &pointVector);
 
+  // Replaces all data at once (an experiment from the database); never saved to an interval file.
+  void setSeries(QVector<double> times, QVector<QVector<double>> states);
+
   // Add vector of nan values as point to make terminator (empty space on graph)
   void addNaN();
 
@@ -58,6 +61,10 @@ public:
   [[nodiscard]] double  getIntervalKey() const;
 
   bool isDirty() const noexcept;
+
+  // Saves the day's recording (recordingfile.h); inBackground: compressed and written in a thread
+  // (the autosave), else before returning (a day change, closing).
+  void save(bool inBackground = false);
 
   DataHolder &slice(double epochSecStartTime, double epochSecEndTime);
   void        append(DataHolder const *other);
@@ -113,6 +120,6 @@ inline bool DataHolder::isDirty() const noexcept {
 inline bool DataHolder::inRange(double epochSecTime) const {
   return (m_intervalKey <= epochSecTime) && ((epochSecTime - m_intervalKey) < m_maxLength);
 }
-} // namespace deepvaccontrol
+}
 
 #endif

@@ -87,4 +87,4 @@ SystemValue *SystemValueList::getSysValue(QString const &name) const {
     return nullptr;
   }
 }
-} // namespace deepvaccontrol
+}

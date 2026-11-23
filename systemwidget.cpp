@@ -1,8 +1,16 @@
 #include "systemwidget.h"
 
+#include <QScrollArea>
+#include "chamberindicators.h"
+#include "chamberview.h"
+#include "controloutput.h"
+
 #include <QApplication>
-#include <QCheckBox>
 #include <QColor>
+#include <QComboBox>
+#include <QEvent>
+#include <QFrame>
+#include <QLabel>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPalette>
@@ -10,10 +18,12 @@
 #include <QVBoxLayout>
 
 #include "actionwidget.h"
+#include "choicedialog.h"
 #include "confdialog.h"
 #include "constants.h"
 #include "forceoutlistwidget.h"
 #include "syslistwidget.h"
+#include "theme.h"
 namespace deepvaccontrol {
 namespace {
 char const SYSTEM_TAB_PAGE_OBJECT_NAME[]{"systemTabPage"};
@@ -22,7 +32,8 @@ QString systemTabStyleSheet() {
   QString styleSheet = utils::readStyleFromFile(":/styles/tabBar.qss")
                          .arg(40 * utils::ssf())
                          .arg(100 * utils::ssf())
-                         .arg(100 * utils::ssf());
+                         .arg(100 * utils::ssf())
+                         .arg(static_cast<int>(20 * utils::ssf()));
 
   QPalette const palette  = QApplication::palette();
   QColor const   tabColor = palette.color(QPalette::Button);
@@ -51,29 +62,78 @@ void prepareSystemTabPage(QWidget *widget) {
   widget->setObjectName(SYSTEM_TAB_PAGE_OBJECT_NAME);
 }
 
-} // namespace
+}
+
+namespace {
+// a card filling the tab, with a title and an optional muted note
+QFrame *tabCard(QWidget *page, QString const &title, QString const &note) {
+  auto        *pageLay = new QVBoxLayout(page);
+  pageLay->setContentsMargins(0, theme::dp(16), 0, 0);
+  auto *card = new QFrame(page);
+  card->setObjectName("pageCard");
+  pageLay->addWidget(card);
+  auto *lay = new QVBoxLayout(card);
+  lay->setContentsMargins(theme::dp(28), theme::dp(20), theme::dp(28), theme::dp(24));
+  lay->setSpacing(theme::dp(16));
+  auto *header = new QHBoxLayout();
+  auto *label  = new QLabel(title, card);
+  label->setObjectName("cardTitle");
+  header->addWidget(label);
+  if (!note.isEmpty()) {
+    header->addSpacing(theme::dp(24));
+    auto *noteLabel = new QLabel(note, card);
+    noteLabel->setProperty("muted", true);
+    header->addWidget(noteLabel);
+  }
+  header->addStretch();
+  lay->addLayout(header);
+  return card;
+}
+}
 
 SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
-  auto *mainLay = new QVBoxLayout(this);
+  double const ssf{utils::ssf()};
+  QFrame      *card    = tabCard(this, tr("PLC commands"), {});
+  auto        *mainLay = static_cast<QVBoxLayout *>(card->layout());
 
-  auto *lineBtnLay = new QHBoxLayout();
-  mainLay->addLayout(lineBtnLay);
-
-  auto *cmdLine = new QLineEdit("finish", this);
-  cmdLine->setFixedWidth(200 * utils::ssf());
-  auto *sendCmd = new QPushButton(tr("Отправить"), this);
-  sendCmd->setFixedSize(100 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-
+  // command line
+  auto *commandRow = new QFrame(card);
+  commandRow->setObjectName("outputRow");
+  auto *lineBtnLay = new QHBoxLayout(commandRow);
+  lineBtnLay->setContentsMargins(theme::dp(24), theme::dp(16), theme::dp(20), theme::dp(16));
+  lineBtnLay->setSpacing(theme::dp(20));
+  auto *commandLabel = new QLabel(tr("Command"), commandRow);
+  commandLabel->setObjectName("rowTitle");
+  auto *cmdLine = new QLineEdit("finish", commandRow);
+  cmdLine->setMinimumSize(theme::dp(600), theme::dp(56));
+  auto *sendCmd = new QPushButton(tr("Send"), commandRow);
+  sendCmd->setObjectName("primaryButton");
+  sendCmd->setFixedSize(theme::dp(187), theme::dp(56));
+  lineBtnLay->addWidget(commandLabel);
   lineBtnLay->addWidget(cmdLine);
   lineBtnLay->addWidget(sendCmd);
   lineBtnLay->addStretch();
+  mainLay->addWidget(commandRow);
+  mainLay->addSpacing(theme::dp(12));
 
+  // quick commands: fill in the command line
+  auto *quickLabel = new QLabel(tr("Quick commands").toUpper(), card);
+  quickLabel->setProperty("muted", true);
+  {
+    QFont font = quickLabel->font();
+    font.setPointSizeF(font.pointSizeF() * 0.85);
+    font.setLetterSpacing(QFont::PercentageSpacing, 106);
+    quickLabel->setFont(font);
+  }
+  mainLay->addWidget(quickLabel);
   auto *cmdBtnsLay = new QHBoxLayout();
+  cmdBtnsLay->setSpacing(theme::dp(16));
   mainLay->addLayout(cmdBtnsLay);
 
-  auto addBtn = [cmdLine, cmdBtnsLay, this](QString const &cmd) {
+  auto addBtn = [cmdLine, cmdBtnsLay, ssf, this](QString const &cmd) {
     auto *cmdBtn = new QPushButton(cmd, this);
-    cmdBtn->setFixedSize(80 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+    cmdBtn->setMinimumSize(theme::dp(206), theme::dp(56));
+    cmdBtn->setToolTip(tr("Put \"%1\" in the command line").arg(cmd));
     cmdBtnsLay->addWidget(cmdBtn);
 
     connect(cmdBtn, &QPushButton::clicked, this, [cmd, cmdLine]() {
@@ -87,7 +147,7 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   addBtn("get_settings");
   addBtn("delete_settings");
   addBtn("stop");
-  addBtn("confrim_alarm");
+  addBtn("confirm_alarm");
 
   cmdBtnsLay->addStretch();
   mainLay->addStretch();
@@ -98,56 +158,94 @@ SysCmdWidget::SysCmdWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
 };
 
 SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
-  auto *mainLay = new QVBoxLayout(this);
+  QFrame      *card    = tabCard(this, tr("Operating system"), {});
+  auto        *mainLay = static_cast<QVBoxLayout *>(card->layout());
 
-  auto *exitBtn = new QPushButton(tr("Выйти в ОС"), this);
-  exitBtn->setIcon(QIcon(":/imgs/os.png"));
-  exitBtn->setIconSize(
-    QSize((deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf(), (deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf()));
-  exitBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
-  exitBtn->setFixedSize(340 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  // one row per action: icon, title and what it does, button
+  auto addRow = [&](QString const &icon, QString const &title, QString const &text, QWidget *button) {
+    auto *row = new QFrame(card);
+    row->setObjectName("outputRow");
+    auto *rowLay = new QHBoxLayout(row);
+    rowLay->setContentsMargins(theme::dp(24), theme::dp(20), theme::dp(24), theme::dp(20));
+    rowLay->setSpacing(theme::dp(24));
+    auto *iconLabel = new QLabel(row);
+    iconLabel->setProperty("iconKind", icon);
+    iconLabel->setFixedSize(theme::dp(45), theme::dp(45));
+    rowLay->addWidget(iconLabel);
+    auto *texts = new QVBoxLayout();
+    texts->setSpacing(theme::dp(4));
+    auto *titleLabel = new QLabel(title, row);
+    titleLabel->setObjectName("rowTitle");
+    auto *textLabel = new QLabel(text, row);
+    textLabel->setProperty("muted", true);
+    texts->addWidget(titleLabel);
+    texts->addWidget(textLabel);
+    rowLay->addLayout(texts, 1);
+    button->setParent(row);
+    button->setMinimumSize(theme::dp(356), theme::dp(60));
+    rowLay->addWidget(button);
+    mainLay->addWidget(row);
+  };
 
-  auto *windowBtn = new QPushButton(tr("На весь экран / окно"), this);
-  windowBtn->setIcon(QIcon(":/imgs/fullscreen.png"));
-  windowBtn->setIconSize(
-    QSize((deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf(), (deepvaccontrol::UI_BTN_HEIGHT - 5) * utils::ssf()));
-  windowBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
-  windowBtn->setFixedSize(340 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-
-  auto *themeBtn = new QPushButton(this);
-  themeBtn->setStyleSheet(QString("QPushButton { text-align: left; padding-left: %1px}").arg(5 * utils::ssf()));
-  themeBtn->setFixedSize(340 * utils::ssf(), deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
+  auto *exitBtn = new QPushButton(tr("Exit"));
+  exitBtn->setProperty("outline", true);
+  auto *windowBtn = new QPushButton(tr("Full screen / window"));
+  auto *themeBtn  = new QPushButton();
   auto updateThemeBtnText = [themeBtn]() {
     themeBtn->setText(utils::isDarkMode() ? QStringLiteral("Switch to Light mode") : QStringLiteral("Switch to Dark mode"));
   };
   updateThemeBtnText();
 
-  {
-    auto font = exitBtn->font();
-    font.setPointSize(font.pointSize() * 1.5);
-    font.setBold(true);
-    exitBtn->setFont(font);
-    windowBtn->setFont(font);
-    themeBtn->setFont(font);
-  }
+  addRow("power", tr("Exit to the operating system"),
+         tr("Closes the application, and turns the chamber off or leaves it running its job."), exitBtn);
+  addRow("system", tr("Full screen or window"), tr("Switches the application between full screen and a window."), windowBtn);
+  addRow("settings", tr("Appearance"), tr("Light design (default) or dark mode."), themeBtn);
 
-  mainLay->addWidget(exitBtn);
-  mainLay->addWidget(windowBtn);
-  mainLay->addWidget(themeBtn);
+  // interface language (read at start: a change applies on the next start)
+  auto *languageBox = new QComboBox();
+  languageBox->addItem(QStringLiteral("English"), QStringLiteral("en"));
+  languageBox->addItem(QStringLiteral("Русский"), QStringLiteral("ru"));
+  languageBox->addItem(QStringLiteral("Deutsch"), QStringLiteral("de"));
+  QString const language = resHolder->settings->settingsMap().value("app_settings").toMap().value("language", "en").toString();
+  languageBox->setCurrentIndex(qMax(0, languageBox->findData(language))); // English for an unknown one
+  addRow("globe", tr("Language"), tr("Language of the interface. Applies the next time the application starts."), languageBox);
+  connect(languageBox, &QComboBox::currentIndexChanged, this, [this, resHolder, languageBox] {
+    QVariantMap appSettings = resHolder->settings->settingsMap().value("app_settings").toMap();
+    appSettings["language"] = languageBox->currentData().toString();
+    resHolder->settings->setSection("app_settings", appSettings);
+    (new MessageDialog(tr("Language"), tr("The new language is used the next time the application starts."), this))->open();
+  });
   mainLay->addStretch();
 
   connect(exitBtn, &QPushButton::clicked, this, [this, resHolder] {
-    auto *confDialog = new ConfDialog(tr("Подтверждение"),
-                                      tr("Вы действительно хотите выйти в ОС?\nРаботы камеры НЕ будет остановлена."),
-                                      tr("Да"),
-                                      tr("Нет"),
-                                      this);
-    connect(confDialog, &ConfDialog::finished, this, [&](int result) {
-      if (1 == result) { // == accepted()
+    // the chamber turned off with the application, or left as it is (a running job goes on without the application);
+    // an Observer may not stop the chamber, so only closes the application
+    bool const working{HardwareStatus::HardwareStatusEnum::WORK == resHolder->hard_status->getHardwareStatus()};
+    bool const mayStop{AccessManager::AccessLevel::SPECTATOR_0 != resHolder->users->getCurrentAccessLevel()};
+    enum { CANCEL = 1, APP_ONLY = 2, STOP_AND_EXIT = 3 };
+    QString const message = !mayStop ? tr("Close the application? The chamber is left as it is%1.")
+                                         .arg(working ? tr(" and the running job goes on") : QString{})
+                            : working ? tr("A job is running. Stop the chamber and close the application, or close only the "
+                                           "application and let the job go on?")
+                                      : tr("Turn the chamber off and close the application, or close only the application?");
+    auto *dialog = new ChoiceDialog(tr("Confirmation"), message, QStringLiteral("question"), this);
+    dialog->addChoice(tr("Cancel"), CANCEL);
+    dialog->addChoice(tr("Exit app only"), APP_ONLY, !mayStop);
+    if (mayStop) {
+      dialog->addChoice(tr("Stop chamber and exit"), STOP_AND_EXIT, true);
+    }
+    connect(dialog, &QDialog::finished, this, [this, resHolder, working](int result) {
+      if (STOP_AND_EXIT == result) {
+        if (working) {
+          resHolder->tcpGate->sendTextCmd("stop");
+        }
+        resHolder->tcpGate->sendTextCmd("shutdown");
+        emit prepareToCloseApp();
+      } else if (APP_ONLY == result) {
         emit prepareToCloseApp();
       }
     });
-    confDialog->open();
+    dialog->open();
   });
 
   connect(windowBtn, &QPushButton::clicked, this, &SysOsWidget::switchAppMaximizedClicked);
@@ -157,54 +255,92 @@ SysOsWidget::SysOsWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent
     updateThemeBtnText();
     emit appearanceChanged();
   });
+  QEvent paletteChange(QEvent::PaletteChange);
+  changeEvent(&paletteChange); // draw the icons
 };
+
+void SysOsWidget::changeEvent(QEvent *event) {
+  QWidget::changeEvent(event);
+  if (event->type() == QEvent::PaletteChange) {
+    int const size{static_cast<int>(22 * utils::ssf())};
+    for (QLabel *label : findChildren<QLabel *>()) {
+      QString const kind = label->property("iconKind").toString();
+      if (!kind.isEmpty()) {
+        label->setPixmap(theme::menuIcon(kind, theme::colors().muted, theme::colors().muted, size).pixmap(size));
+      }
+    }
+  }
+}
 
 SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{parent} {
   auto *mainLay = new QVBoxLayout(this);
   mainLay->setContentsMargins(0, 0, 0, 0);
 
   m_tabWidget = new QTabWidget(this);
-  m_tabWidget->setStyleSheet(systemTabStyleSheet());
+  theme::setFlatTabs(m_tabWidget);
   mainLay->addWidget(m_tabWidget);
+
+  // first - ос: exit (turning the chamber off or not), full screen, appearance, language
+  auto *osWidget = new SysOsWidget(resHolder, this);
+  prepareSystemTabPage(osWidget);
+  m_tabWidget->addTab(osWidget, tr("OS"));
+  m_osTab = osWidget;
 
   // 0 - список
   auto *sysListWidget = new SysListWidget(resHolder, this);
   prepareSystemTabPage(sysListWidget);
-  m_tabWidget->addTab(sysListWidget, tr("Состояния"));
+  m_tabWidget->addTab(sysListWidget, tr("States"));
+
+  // the chamber's diagram: every component with its live state
+  auto *diagramWidget = new QWidget(this);
+  {
+    // the drawing, and beside it every component with its state now and a display-only Fitted switch
+    auto *lay = new QHBoxLayout(diagramWidget);
+    lay->setContentsMargins(0, theme::dp(16), 0, 0);
+    lay->setSpacing(theme::dp(24));
+    auto *view    = new ChamberView(resHolder, diagramWidget);
+    m_chamberView = view;
+    // under the drawing: the temperature and pressure control outputs
+    auto *drawing = new QVBoxLayout();
+    drawing->setSpacing(theme::dp(20));
+    drawing->addWidget(view, 1);
+    auto *gauges = new QHBoxLayout();
+    gauges->setSpacing(theme::dp(20));
+    gauges->addWidget(new ControlOutputGauge(resHolder, ControlOutputGauge::Kind::TEMPERATURE, diagramWidget), 1);
+    gauges->addWidget(new ControlOutputGauge(resHolder, ControlOutputGauge::Kind::PRESSURE, diagramWidget), 1);
+    drawing->addLayout(gauges);
+    lay->addLayout(drawing, 1);
+    auto *scroll = new QScrollArea(diagramWidget);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setFixedWidth(theme::dp(750));
+    scroll->setWidget(new ChamberIndicators(resHolder, view, scroll));
+    scroll->viewport()->setAutoFillBackground(false);
+    scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
+    lay->addWidget(scroll);
+  }
+  prepareSystemTabPage(diagramWidget);
+  m_diagramTab = diagramWidget;
+  m_tabWidget->addTab(diagramWidget, tr("Diagram"));
 
   // 1 - журнал
   auto *actionWidget = new ActionWidget(resHolder->actions, this);
   prepareSystemTabPage(actionWidget);
-  m_tabWidget->addTab(actionWidget, tr("Журнал"));
-
-  // 2 - ос
-  auto *osWidget = new SysOsWidget(resHolder, this);
-  prepareSystemTabPage(osWidget);
-  m_tabWidget->addTab(osWidget, "ОС");
+  m_tabWidget->addTab(actionWidget, tr("Log"));
 
   // 3 - ручный выходы
   auto *forceOutWidget = new ForceOutListWidget(
     resHolder, resHolder->states->getSysValue("outputs"), resHolder->settings->settingsMap()["monitor"].toList(), this);
   prepareSystemTabPage(forceOutWidget);
-  m_tabWidget->addTab(forceOutWidget, tr("Ручное управление выходами"));
+  m_tabWidget->addTab(forceOutWidget, tr("Manual output control"));
+  m_outputsTab = forceOutWidget;
 
   // 4 - ПЛК
   auto *cmdWidget = new SysCmdWidget(resHolder, this);
   prepareSystemTabPage(cmdWidget);
-  m_tabWidget->addTab(cmdWidget, tr("Команды ПЛК"));
-
-  auto *aiWidget = new QWidget(this);
-  prepareSystemTabPage(aiWidget);
-  auto *aiLayout = new QHBoxLayout(aiWidget);
-  auto *aiAdvisorToggle = new QCheckBox("AI Advisor", aiWidget);
-  aiAdvisorToggle->setChecked(true);
-  resHolder->aiAdvisorEnabled = aiAdvisorToggle->isChecked();
-  connect(aiAdvisorToggle, &QCheckBox::toggled, this, [resHolder](bool checked) {
-    resHolder->aiAdvisorEnabled = checked;
-  });
-  aiLayout->addWidget(aiAdvisorToggle);
-  aiLayout->addStretch();
-  m_tabWidget->addTab(aiWidget, "AI");
+  m_tabWidget->addTab(cmdWidget, tr("PLC commands"));
+  m_commandsTab = cmdWidget;
 
   connect(resHolder->users, &AccessManager::userSelected, this, &SystemWidget::handleAccessChange);
   handleAccessChange(QString(), resHolder->users->getCurrentAccessLevel());
@@ -212,7 +348,7 @@ SystemWidget::SystemWidget(ResHolder *resHolder, QWidget *parent) : QWidget{pare
   connect(osWidget, &SysOsWidget::switchAppMaximizedClicked, this, &SystemWidget::switchAppMaximizedClicked);
   connect(osWidget, &SysOsWidget::prepareToCloseApp, this, &SystemWidget::prepareToCloseApp);
   connect(osWidget, &SysOsWidget::appearanceChanged, this, [this] {
-    m_tabWidget->setStyleSheet(systemTabStyleSheet());
+    m_tabWidget->setStyleSheet(theme::flatTabStyleSheet());
   });
 }
 
@@ -220,8 +356,9 @@ void SystemWidget::handleAccessChange(QString const &, AccessManager::AccessLeve
   bool const enableTabUser{newLevel >= AccessManager::AccessLevel::SPECTATOR_0};
   bool const enableTabAll{newLevel == AccessManager::AccessLevel::USER_ADMIN_3};
 
-  m_tabWidget->setTabVisible(2, enableTabUser);
-  m_tabWidget->setTabVisible(3, enableTabAll);
-  m_tabWidget->setTabVisible(4, enableTabAll);
+  m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_osTab), enableTabUser);
+  m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_outputsTab), enableTabAll);
+  m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_commandsTab), enableTabAll);
 }
-} // namespace deepvaccontrol
+}
+

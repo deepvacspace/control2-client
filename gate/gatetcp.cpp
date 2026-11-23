@@ -3,6 +3,8 @@
 #include <QAbstractSocket>
 #include <QDataStream>
 #include <QDateTime>
+#include <QHash>
+#include <QElapsedTimer>
 
 #include "messagedialog.h"
 namespace deepvaccontrol {
@@ -103,6 +105,30 @@ void GateTcp::onConnected() {
   setState(ConnectionState::CONNECTED);
 }
 
+void GateTcp::setServer(QHostAddress const &serverIp4Address, quint16 port) {
+  m_logger->stream(Logger::Level::INFO)
+    << QString("Switching the chamber connection from %1 to %2:%3").arg(serverAddress(), serverIp4Address.toString()).arg(port);
+  m_serverIp4Address = serverIp4Address;
+  m_port             = port;
+  // the notices name the new chamber, and start over for it
+  m_connectionDialog->setServerId(serverAddress());
+  m_connectionDialog->reset();
+  m_notifyTimeout = true;
+  emit showRedFlag(false);
+  emit serverChanged();
+  // a fresh start: no "connection lost / restored" notices for the switch itself
+  m_contConnectingTryCount = 0;
+  m_successConnectionCount = 0;
+  m_connectingTimer->stop();
+  setState(ConnectionState::ABORTING);
+  m_socket->abort();
+  setState(ConnectionState::ERROR_CON); // reconnects, now to the new address, and reports the disconnection
+}
+
+QString GateTcp::serverAddress() const {
+  return QStringLiteral("%1:%2").arg(m_serverIp4Address.toString()).arg(m_port);
+}
+
 void GateTcp::onDisconnected() {
   m_logger->stream(Logger::Level::WAR)
     << QString("Disconnected from server %1 somehow.").arg(m_serverIp4Address.toString());
@@ -165,7 +191,7 @@ void GateTcp::setState(ConnectionState const newState) {
       emit showRedFlag(false);
       if ((m_contConnectingTryCount > 1) || (m_successConnectionCount > 0)) {
         auto *msgDialog = new MessageDialog(
-          tr("Уведомление"), QString(tr("Соединение с %1:%2 установлено")).arg(m_serverIp4Address.toString()).arg(m_port));
+          tr("Notification"), QString(tr("Connected to %1:%2")).arg(m_serverIp4Address.toString()).arg(m_port));
         msgDialog->open(3000);
       }
 
@@ -204,7 +230,7 @@ void GateTcp::sendData(QByteArray const &data) {
         << QString("(%1)").arg(packet.size()) << packet.first(maxDisplay).toHex(' ') << "...";
     }
   } else {
-    m_logger->stream(Logger::Level::ERR) << "Попытка записи в неподключенный сокет";
+    m_logger->stream(Logger::Level::ERR) << "Attempt to write to a socket that is not connected";
   }
 }
 
@@ -225,12 +251,31 @@ void GateTcp::sendKeepAlive() {
   sendTextCmd("ka");
 }
 
-void GateTcp::sendTextCmd(QString const &cmd) {
+void GateTcp::sendTextCmd(QString const &command) {
+  // the PLC program spells these commands "confrim_…": the app uses the right spelling, the wire keeps the PLC's
+  static QHash<QString, QString> const plcSpelling{{QStringLiteral("confirm_alarm"), QStringLiteral("confrim_alarm")},
+                                                   {QStringLiteral("confirm_finish"), QStringLiteral("confrim_finish")}};
+  QString const cmd = plcSpelling.value(command.trimmed(), command);
   QByteArray data = utils::makePascalString(cmd);
   // Add code for 'text command' type of message
   data.push_front(static_cast<char>(OutcomeMessageCode::TEXT_CMD));
 
   sendData(data);
+}
+
+bool GateTcp::flush(int timeoutMs) {
+  if (QAbstractSocket::ConnectedState != m_socket->state()) {
+    return false;
+  }
+  QElapsedTimer clock;
+  clock.start();
+  while (m_socket->bytesToWrite() > 0) {
+    int const left = timeoutMs - static_cast<int>(clock.elapsed());
+    if ((left <= 0) || !m_socket->waitForBytesWritten(left)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void GateTcp::sendSettingMap(QMap<QString, float> const &map) {
@@ -301,6 +346,10 @@ void GateTcp::parsePlcMessage(QByteArray const &data) {
       m_logger->stream(Logger::Level::DEB) << "Get job finished";
       emit jobFinishedReceived();
       break;
+    case IncomeMessageCode::COMPONENTS:
+      m_logger->stream(Logger::Level::DEB) << "Get fitted components";
+      parseComponents(data.sliced(cmdCodeSize)); // drop 1-byte code from data
+      break;
     case IncomeMessageCode::USER_MSG:
       m_logger->stream(Logger::Level::DEB) << "Get message from user";
       parseUserMsg(data.sliced(cmdCodeSize)); // drop 1-byte code from data
@@ -308,6 +357,23 @@ void GateTcp::parsePlcMessage(QByteArray const &data) {
     default:
       break;
   }
+}
+
+bool GateTcp::parseComponents(QByteArray data) {
+  if (data.isEmpty()) {
+    return false;
+  }
+  quint8 const count{static_cast<quint8>(data.front())};
+  data.remove(0, 1);
+  QStringList components;
+  while (!data.isEmpty()) {
+    QString const key{utils::fromPascalString(data)};
+    if (!key.isEmpty()) {
+      components << key;
+    }
+  }
+  emit componentsReceived(components);
+  return components.size() == count;
 }
 
 bool GateTcp::parseStateNamesList(QByteArray data) {
@@ -445,4 +511,4 @@ bool GateTcp::parseUserMsg(QByteArray data) {
   return true;
 }
 
-} // namespace deepvaccontrol
+}

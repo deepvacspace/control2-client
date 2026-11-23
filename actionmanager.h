@@ -50,6 +50,6 @@ inline void ActionManager::saveToDisk() {
   StringPathProvider path(m_fileStoragePath, m_logger);
   FileHandler::saveToFile(&path);
 }
-} // namespace deepvaccontrol
+}
 
 #endif // ACTIONMANAGER_H

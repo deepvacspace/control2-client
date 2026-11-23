@@ -26,4 +26,4 @@ ScrollWidget::ScrollWidget(bool useStyle, QWidget *parent) : QWidget{parent} {
 void ScrollWidget::setLayout2(QLayout *layout) {
   m_marginWidget->setLayout(layout);
 }
-} // namespace deepvaccontrol
+}

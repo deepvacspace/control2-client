@@ -19,6 +19,6 @@ private:
 
   QLabel *m_timeLabelCurrent;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // DELAYINFODIALOG_H

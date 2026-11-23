@@ -2,10 +2,11 @@
 #define SETTINGSLISTWIDGET_H
 
 #include "resholder.h"
-#include "scrollwidget.h"
+#include <QWidget>
 
 namespace deepvaccontrol {
-class SettingsListWidget : public ScrollWidget {
+// Settings -> Operating parameters: the PLC parameters as rows (label, PLC name, value with its unit).
+class SettingsListWidget : public QWidget {
   Q_OBJECT
 public:
   explicit SettingsListWidget(ResHolder *resHolder, QWidget *parent = nullptr);
@@ -14,6 +15,6 @@ public:
 private:
   ResHolder *m_resHolder;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSLISTWIDGET_H

@@ -15,6 +15,10 @@
 
 namespace deepvaccontrol {
 
+class ExperimentRecorder;
+class CollabManager;
+class AnalysisServices;
+
 struct ResHolder {
   SystemValueList *states{nullptr};
   GateTcp         *tcpGate{nullptr};
@@ -26,8 +30,11 @@ struct ResHolder {
   ActionManager   *actions{nullptr};
   AccessManager   *users{nullptr};
   HardwareStatus  *hard_status{nullptr};
-  UsbManager      *usb{nullptr};
-  bool             aiAdvisorEnabled{true};
+  UsbManager           *usb{nullptr};
+  ExperimentRecorder   *recorder{nullptr};
+  CollabManager        *collab{nullptr};
+  AnalysisServices     *analysis{nullptr}; // experiment library, notes, reports: shared by the pages
+  bool                  aiAdvisorEnabled{true};
 };
-} // namespace deepvaccontrol
+}
 #endif // RESHOLDER_H

@@ -1,16 +1,18 @@
 #ifndef FORCEOUTSINGLEWIDGET_H
 #define FORCEOUTSINGLEWIDGET_H
 
+#include <QButtonGroup>
+#include <QFrame>
 #include <QLabel>
 #include <QPushButton>
-#include <QSlider>
-#include <QWidget>
 
 #include "lineeditnum.h"
 #include "systemvalue.h"
 
 namespace deepvaccontrol {
-class ForceOutSingleWidget : public QWidget {
+// One output on System -> Manual output control: its state, and how it is forced
+// (Auto = released to the PLC, Off, On, Duty cycle); "Set" sends the choice.
+class ForceOutSingleWidget : public QFrame {
   Q_OBJECT
 public:
   enum class ForceType {
@@ -29,31 +31,27 @@ public:
 signals:
   void generateRaw(int /*always 1 here*/ count, QByteArray data);
 
+protected:
+  void changeEvent(QEvent *event) override;
+
 private:
-  void initGui();
-  int  m_index;
+  void selectMode(int mode);
+  void updateStateBadge();
 
-  QLabel      *m_valueLabel{nullptr};
-  QSlider     *m_slider{nullptr};
-  QPushButton *m_setBtn{nullptr};
+  int m_index;
+  bool m_restyling{false}; // restyling sends a palette change: no recursion
 
-  ForceType    type;
+  SystemValue  *m_sysValue{nullptr};
+  QLabel       *m_stateBadge{nullptr};
+  QButtonGroup *m_modeGroup{nullptr};
+  QPushButton  *m_setBtn{nullptr};
+  QWidget      *m_dutyBox{nullptr};
+
   LineEditNum *duty{nullptr};
   LineEditNum *period{nullptr};
 
-  uint plcType = 0;
+  uint plcType = 0; // 0 auto (released), 1 off, 2 on, 3 duty cycle
 };
-
-inline void ForceOutSingleWidget::resetSelection() {
-  plcType = 0;
-  m_slider->setValue(0);
-  resetSetBtn();
-  m_valueLabel->setText("");
 }
-
-inline void ForceOutSingleWidget::resetSetBtn() {
-  m_setBtn->setVisible(false);
-}
-} // namespace deepvaccontrol
 
 #endif // FORCEOUTSINGLEWIDGET_H

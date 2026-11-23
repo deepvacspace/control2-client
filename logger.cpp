@@ -90,4 +90,4 @@ QString Logger::formatMessage(Level level, QString const &message, std::source_l
 
   return QString("[%1] [%2] %3 %4").arg(timeStr, levelStr, locationInfo, message);
 }
-} // namespace deepvaccontrol
+}

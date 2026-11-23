@@ -18,6 +18,6 @@ public:
 private:
   QString m_predefinedPath;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // STRINGPATHPROVIDER_H

@@ -42,6 +42,6 @@ private:
   AccessLevelWidget *m_levelEdit;
   QPushButton       *m_saveBtn;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // USEREDITDIALOG_H

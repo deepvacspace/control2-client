@@ -6,6 +6,8 @@
 #include <QVector>
 #include <memory>
 
+#include "modelenvelope.h"
+
 namespace deepvaccontrol {
 
 
@@ -21,6 +23,12 @@ public:
   QStringList const  &featureNames() const;
   QString const      &statusMessage() const;
 
+  // Operating range the twin was validated for: the metadata's optional
+  // "valid_range" object (temp_min, temp_max, max_duration_s, kp_min ...
+  // kd_max), otherwise the chamber's validated range (-70 ... 100 degC,
+  // 1 hour horizon, ChamberTwinSim's PID bounds).
+  ai::ModelEnvelope const &envelope() const;
+
   bool predictDeltaT1(QVector<float> const &windowFlat, float &deltaOut);
 
   // Same as predictDeltaT1, for `batchSize` windows laid out back to back in
@@ -33,6 +41,7 @@ private:
   std::unique_ptr<Impl> m_impl;
   QStringList           m_featureNames;
   int                   m_windowSteps{60};
+  ai::ModelEnvelope     m_envelope;
   bool                  m_loaded{false};
   QString               m_status;
 };

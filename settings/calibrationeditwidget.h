@@ -35,6 +35,6 @@ private:
   QPushButton *m_addBtn;
   QPushButton *m_delBtn;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // CALIBRATIONEDITWIDGET_H

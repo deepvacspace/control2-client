@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
 
@@ -33,7 +34,8 @@ public:
   explicit IntervalHelpWindow(QWidget *parent = nullptr);
 };
 
-class TempChangeSelector : public QGroupBox {
+// How the temperature changes over the interval: at maximum rate (and wait) or linear ramp.
+class TempChangeSelector : public QWidget {
   Q_OBJECT
 public:
   explicit TempChangeSelector(QString const &label, QWidget *parent = nullptr);
@@ -46,20 +48,22 @@ public:
   }
 
 private:
-  QRadioButton *ramp;
-  QRadioButton *setpoint;
+  QPushButton *ramp;
+  QPushButton *setpoint;
 };
 
 class IntervalEditDialog : public QDialog {
   Q_OBJECT
 public:
-  explicit IntervalEditDialog(ProgramModel *model, QWidget *parent = nullptr);
+  // labels: the interval labels of the program (one per interval), edited here too; may be null
+  explicit IntervalEditDialog(ProgramModel *model, QStringList *labels, QWidget *parent = nullptr);
   // QDialog interface
 public slots:
   void reject() override;
 
 signals:
   void selectedIndexChanged(int);
+  void labelsChanged();
 
 private:
   void initGui();
@@ -67,6 +71,8 @@ private:
   void localCommit();
 
   ProgramModel      *m_model;
+  QStringList       *m_labels{nullptr};
+  QLineEdit         *labelEdit{nullptr};
   QStringList        paramsOrder;
   QDataWidgetMapper *mapper;
 
@@ -86,6 +92,6 @@ private:
   QPushButton           *closeButton;
   QVector<QPushButton *> buttons;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // INTERVALEDITDIALOG_H

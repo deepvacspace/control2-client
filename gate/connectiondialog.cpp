@@ -1,9 +1,11 @@
 #include "connectiondialog.h"
 
 #include <QEvent>
+#include <QHBoxLayout>
 #include <QVBoxLayout>
 
 #include "constants.h"
+#include "theme.h"
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -15,82 +17,79 @@ ConnectionDialog::ConnectionDialog(QString const &serverId, QWidget *parent) : Q
 }
 
 void ConnectionDialog::initGui() {
-  auto *mainLay = new QVBoxLayout(this);
-
-  m_titleLabel = new QLabel(tr("Ошибка соединения"), this);
-  mainLay->addWidget(m_titleLabel);
-
-  auto *fr = new QFrame();
-  fr->setFrameStyle(QFrame::HLine | QFrame::Plain);
-  fr->setLineWidth(1);
-  fr->setFixedWidth(350 * utils::ssf());
-  mainLay->addWidget(fr);
-  mainLay->addSpacing(15 * utils::ssf());
-
-  m_msgLabel = new QLabel(this);
-  mainLay->addWidget(m_msgLabel);
-  mainLay->addSpacing(30 * utils::ssf());
-  mainLay->addStretch();
-
-  auto *btnLayout = new QVBoxLayout();
-  mainLay->addLayout(btnLayout);
-
-  m_hideBtn = new QPushButton(tr("Скрыть уведомления\n(продолжить попытки подключения)"), this);
-  // m_workOfflineBtn = new QPushButton(tr("Работать офлайн"), this);
-  // m_cancelBtn      = new QPushButton(tr("Завершить работу"), this);
-  btnLayout->addWidget(m_hideBtn);
-  // btnLayout->addWidget(m_workOfflineBtn);
-  // btnLayout->addWidget(m_cancelBtn);
-
-  mainLay->setAlignment(m_titleLabel, Qt::AlignHCenter);
-  mainLay->setAlignment(fr, Qt::AlignHCenter);
-  mainLay->setAlignment(m_msgLabel, Qt::AlignHCenter);
-
-  auto f = m_titleLabel->font();
-  f.setPointSize(20 * utils::ssf());
-  m_titleLabel->setFont(f);
-  f.setPointSize(12 * utils::ssf());
-  m_msgLabel->setFont(f);
-  m_hideBtn->setFont(f);
-  // m_workOfflineBtn->setFont(f);
-  // m_cancelBtn->setFont(f);
-
-  m_hideBtn->setFixedHeight(1.5 * deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-  // m_workOfflineBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-  // m_cancelBtn->setFixedHeight(deepvaccontrol::UI_BTN_HEIGHT * utils::ssf());
-
-  setWindowTitle(m_titleLabel->text());
+  double const ssf{utils::ssf()};
+  setWindowTitle(tr("Connection"));
   setWindowFlag(Qt::WindowStaysOnTopHint);
+  setWindowFlag(Qt::WindowContextHelpButtonHint, false);
 
-  adjustSize();
-  setFixedSize(size());
+  // an icon beside the title and the message; the button at the bottom right
+  auto *mainLay = new QVBoxLayout(this);
+  mainLay->setContentsMargins(theme::dp(40), theme::dp(36), theme::dp(40), theme::dp(32));
+  mainLay->setSpacing(theme::dp(32));
+  auto *top = new QHBoxLayout();
+  top->setSpacing(theme::dp(28));
+  m_iconLabel = new QLabel(this);
+  m_iconLabel->setPixmap(theme::dialogIcon(QStringLiteral("error"), static_cast<int>(40 * ssf)));
+  m_iconLabel->setAlignment(Qt::AlignTop);
+  top->addWidget(m_iconLabel, 0, Qt::AlignTop);
+  auto *text = new QVBoxLayout();
+  text->setSpacing(theme::dp(8));
+  m_titleLabel = new QLabel(this);
+  QFont font   = m_titleLabel->font();
+  font.setBold(true);
+  font.setPointSizeF(font.pointSizeF() * 1.3);
+  m_titleLabel->setFont(font);
+  m_msgLabel = new QLabel(this);
+  m_msgLabel->setWordWrap(true);
+  m_attemptLabel = new QLabel(this);
+  m_attemptLabel->setProperty("muted", true);
+  m_hintLabel = new QLabel(tr("Check that the chamber is switched on and connected to the network, "
+                              "or choose another chamber in Settings → TCP."),
+                           this);
+  m_hintLabel->setProperty("muted", true);
+  m_hintLabel->setWordWrap(true);
+  text->addWidget(m_titleLabel);
+  text->addWidget(m_msgLabel);
+  text->addSpacing(theme::dp(12));
+  text->addWidget(m_attemptLabel);
+  text->addWidget(m_hintLabel);
+  top->addLayout(text, 1);
+  mainLay->addLayout(top);
+
+  auto *buttons = new QHBoxLayout();
+  buttons->addStretch();
+  m_hideBtn = new QPushButton(tr("Hide"), this);
+  m_hideBtn->setObjectName("primaryButton");
+  m_hideBtn->setMinimumSize(theme::dp(206), theme::dp(63));
+  m_hideBtn->setToolTip(tr("The application keeps trying to connect in the background"));
+  buttons->addWidget(m_hideBtn);
+  mainLay->addLayout(buttons);
+
+  setFixedWidth(theme::dp(862));
+  updateContent(1, 0);
 
   // (x) close = done(0)
   connect(m_hideBtn, &QPushButton::clicked, this, [this]() {
     hide();
     done(1);
   });
-  // connect(m_workOfflineBtn, &QPushButton::clicked, this, [this]() {
-  //   done(2);
-  // });
-  // connect(m_cancelBtn, &QPushButton::clicked, this, [this]() {
-  //   done(3);
-  // });
 }
 
 void ConnectionDialog::updateContent(int contTryCount, int successCount) {
-  QString msg;
-  if (0 == successCount) {
-    msg = QString(tr("Не удаётся подключиться к %1.\nПопытка подключения #%2.")).arg(m_serverId).arg(contTryCount);
-  } else {
-    msg = QString(tr("Соединение c %1 было потеряно.\nПопытка переподключения #%2.")).arg(m_serverId).arg(contTryCount);
-  }
-
-  m_msgLabel->setText(msg);
+  bool const lost{successCount > 0};
+  m_titleLabel->setText(lost ? tr("Connection to the chamber lost") : tr("No connection to the chamber"));
+  m_msgLabel->setText(lost ? tr("The connection to %1 was interrupted.").arg(m_serverId)
+                           : tr("%1 cannot be reached.").arg(m_serverId));
+  m_attemptLabel->setText(tr("Trying again… attempt %1").arg(contTryCount));
+  adjustSize();
 }
 
 void ConnectionDialog::reset() {
   hide();
+}
+
+void ConnectionDialog::setServerId(QString const &serverId) {
+  m_serverId = serverId;
 }
 
 // void ConnectionDialog::resetOfflineWork() {
@@ -115,4 +114,4 @@ void ConnectionDialog::reset() {
 void ConnectionDialog::closeEvent(QCloseEvent *) {
   emit finished(0); // QDialog::Rejected == close dialog
 }
-} // namespace deepvaccontrol
+}

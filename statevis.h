@@ -12,6 +12,6 @@ public:
   explicit StateVis(
     QString const &name, SystemValue *x, SystemValue *r, SystemValue *u, double sf = 3, QWidget *parent = nullptr);
 };
-} // namespace deepvaccontrol
+}
 
 #endif // STATEVIS_H

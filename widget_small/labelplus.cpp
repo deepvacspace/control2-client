@@ -72,4 +72,4 @@ void LabelPlus::updateValue() {
     setText(m_dispFnc(floatValue, m_prec));
   }
 }
-} // namespace deepvaccontrol
+}

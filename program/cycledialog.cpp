@@ -7,6 +7,7 @@
 
 #include "lineeditnum.h"
 #include "utils.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 constexpr quint32 const INFINITY_CYCLE_COUNT{65535};
@@ -14,25 +15,25 @@ constexpr quint32 const INFINITY_CYCLE_COUNT{65535};
 CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent)
     : QDialog{parent}, m_cycleParams{cycleParams} {
   auto *mainLay = new QVBoxLayout(this);
-  mainLay->setContentsMargins(5 * utils::ssf(), 5 * utils::ssf(), 5 * utils::ssf(), 5 * utils::ssf());
+  mainLay->setContentsMargins(theme::dp(8), theme::dp(8), theme::dp(8), theme::dp(8));
 
   auto *lay1 = new QHBoxLayout();
   auto *lay2 = new QHBoxLayout();
   auto *lay3 = new QHBoxLayout();
 
-  auto *label1 = new QLabel(tr("Начальный интервал:"));
-  auto *label2 = new QLabel(tr("Конечный интервал:"));
-  auto *label3 = new QLabel(tr("Количество повтореий:"));
+  auto *label1 = new QLabel(tr("Start interval:"));
+  auto *label2 = new QLabel(tr("End interval:"));
+  auto *label3 = new QLabel(tr("Repeat count:"));
 
   auto *startIndexEdit  = new LineEditNum(1, interval, 0, true, this);
   auto *endIndexEdit    = new LineEditNum(1, interval, 0, true, this);
   auto *cycleNumberEdit = new LineEditNum(2, 1000, 0, true, this);
 
-  startIndexEdit->setFixedWidth(70 * utils::ssf());
-  endIndexEdit->setFixedWidth(70 * utils::ssf());
-  cycleNumberEdit->setFixedWidth(70 * utils::ssf());
+  startIndexEdit->setFixedWidth(theme::dp(131));
+  endIndexEdit->setFixedWidth(theme::dp(131));
+  cycleNumberEdit->setFixedWidth(theme::dp(131));
 
-  auto *infinity = new QCheckBox(tr("Бесконечное потоврение"));
+  auto *infinity = new QCheckBox(tr("Infinite repeat"));
   infinity->setChecked(false);
 
   // Fill fields
@@ -64,13 +65,13 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
     cycleNumberEdit->setEnabled(!value);
   });
 
-  auto *cancelBtn = new QPushButton(tr("Отмена"), this);
-  auto *acceptBtn = new QPushButton(tr("Сохранить"), this);
-  auto *delBtn    = new QPushButton(tr("Удалить"), this);
+  auto *cancelBtn = new QPushButton(tr("Cancel"), this);
+  auto *acceptBtn = new QPushButton(tr("Save"), this);
+  auto *delBtn    = new QPushButton(tr("Delete"), this);
 
-  cancelBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
-  acceptBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
-  delBtn->setFixedSize(120 * utils::ssf(), 50 * utils::ssf());
+  cancelBtn->setFixedSize(theme::dp(225), theme::dp(93));
+  acceptBtn->setFixedSize(theme::dp(225), theme::dp(93));
+  delBtn->setFixedSize(theme::dp(225), theme::dp(93));
 
   connect(cancelBtn, &QPushButton::clicked, this, &CycleDialog::reject);
 
@@ -115,11 +116,11 @@ CycleDialog::CycleDialog(QVariantMap &cycleParams, int interval, QWidget *parent
   setStyleSheet(utils::readStyleFromFile(":/styles/checkBoxBig.qss")
                 + QString("QCheckBox::indicator{width: %1px; height: %1px;}").arg(26 * utils::ssf()));
 
-  setMinimumHeight(100 * utils::ssf());
-  setWindowTitle(tr("Изменение цикла"));
+  setMinimumHeight(theme::dp(187));
+  setWindowTitle(tr("Edit cycle"));
   setAttribute(Qt::WA_DeleteOnClose);
   setWindowFlag(Qt::WindowStaysOnTopHint);
   setModal(true);
   adjustSize();
 }
-} // namespace deepvaccontrol
+}

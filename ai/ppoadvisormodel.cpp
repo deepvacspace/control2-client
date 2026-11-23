@@ -16,7 +16,7 @@ namespace {
 double limit(double low, double x, double high) {
   return std::max(low, std::min(x, high));
 }
-} // namespace
+}
 
 PpoAdvisorModel::PpoAdvisorModel() : m_status{QObject::tr("Advisor model not loaded")} {}
 
@@ -156,6 +156,19 @@ std::vector<double> PpoAdvisorModel::forward(std::vector<double> const &input) c
   return activation;
 }
 
+ai::ModelEnvelope PpoAdvisorModel::envelope() const {
+  ai::ModelEnvelope envelope;
+  envelope.tempMin = m_tempMin;
+  envelope.tempMax = m_tempMax;
+  envelope.kpMin   = m_kpMin;
+  envelope.kpMax   = m_kpMax;
+  envelope.kiMin   = m_kiMin;
+  envelope.kiMax   = m_kiMax;
+  envelope.kdMin   = m_kdMin;
+  envelope.kdMax   = m_kdMax;
+  return envelope;
+}
+
 std::array<double, 3> PpoAdvisorModel::decide(std::array<double, 8> const &obs) const {
   if (!m_loaded) {
     return {0.0, 0.0, 0.0};
@@ -177,4 +190,4 @@ std::array<double, 3> PpoAdvisorModel::decide(std::array<double, 8> const &obs) 
   return pid;
 }
 
-} // namespace deepvaccontrol
+}

@@ -24,7 +24,7 @@ class VirtualKeyboard : public QDialog {
 public:
   enum Language {
     EN   = 0,
-    RU   = 1,
+    DE   = 1, // German (QWERTZ)
     NONE = 2
   };
   explicit VirtualKeyboard(QString const &title, Language lang, QWidget *parent = nullptr);
@@ -47,11 +47,11 @@ private:
   void enterPressHandle();
 
   QVBoxLayout        *m_enLayout;
-  QVBoxLayout        *m_ruLayout;
+  QVBoxLayout        *m_deLayout;
   QVBoxLayout        *m_numLayout;
   QHBoxLayout        *m_ctrlLayout;
   QList<VirtKeyBtn *> m_enButtonList;
-  QList<VirtKeyBtn *> m_ruButtonList;
+  QList<VirtKeyBtn *> m_deButtonList;
   QList<VirtKeyBtn *> m_numButtonList;
   QLineEdit          *m_textLine;
   QPushButton        *m_shiftBtn;
@@ -60,6 +60,6 @@ private:
   bool     m_isUpper;
   Language m_currLang;
 };
-} // namespace deepvaccontrol
+}
 
 #endif // VIRTUALKEYBOARD_H

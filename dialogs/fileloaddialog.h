@@ -29,6 +29,6 @@ private:
 inline QString FileLoadDialog::getFilePath() const {
   return m_resultFilePath;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // FILELOADDIALOG_H

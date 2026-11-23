@@ -10,6 +10,7 @@
 #include <array>
 
 #include "advisorexperiment.h"
+#include "advisorsafety.h"
 #include "chambertwinsim.h"
 #include "gruonnxmodel.h"
 #include "ppoadvisormodel.h"
@@ -28,7 +29,7 @@ class LineEditNum;
 //
 // Run experiment starts the chamber itself (a single-interval SETPOINT
 // job targeting the user-entered temperature, the same JOB message
-// Manual/Program control's Start button sends) and stops it (the same
+// Control's Start button sends) and stops it (the same
 // "stop" command their Stop button sends) when the run ends, is stopped,
 // or aborts. Once started, the trained PPO advisor
 // re-decides the PID triplet every mpc_hold_s of real wall-clock time from
@@ -39,8 +40,17 @@ class LineEditNum;
 // uses, without touching general settings/calibrations/alarms. Every
 // decision (sim time + chosen PID) is recorded as it happens. This only
 // runs while the app reports AppState::ONLINE; a Stop button aborts it
-// manually, a dropped connection or an incoming alarm aborts it
-// automatically -- in both cases the last-written PID is simply left as-is.
+// manually, a dropped connection, an alarm, lost telemetry or closing the
+// app aborts it automatically. Whenever the advisor stops being in charge
+// (finish, Stop, abort, interlock) the operator's whole pre-run PID table is
+// put back by ai::ManualPidGuard -- immediately, or as soon as the chamber
+// is reachable again (journaled to disk, so even a crash is undone on the
+// next start).
+//
+// Guard rails before anything reaches the chamber: the user needs
+// ai::ADVISOR_CONTROL_LEVEL (losing it mid-run reverts to manual PID), the
+// scenario must lie inside the policy's trained range (ModelEnvelope), and
+// every decision must be finite and inside the policy's PID bounds.
 //
 // Once that run finishes (or is stopped), a modal asks whether to compare
 // it against purely-simulated curves from the digital twin: Expected (the
@@ -56,7 +66,9 @@ class LineEditNum;
 // reality. The first condition to trip reverts the active gain-scheduled
 // band to its pre-experiment ("manual") PID, raises a persistent warning,
 // and stops trusting further advisor decisions -- the run itself keeps
-// going to completion on that fixed PID.
+// going to completion on that fixed PID. The same happens when the chamber
+// leaves the trained temperature range, the advisor produces an invalid
+// decision or the twin's inference keeps failing.
 class AiAdvisorWidget : public QWidget {
   Q_OBJECT
 public:
@@ -76,12 +88,10 @@ private:
   void onAppStateChanged(StatusManager::AppState state);
   void onGateDisconnected();
   void onAlarmReceived(quint32 alarmCode);
+  void onAccessChanged();
   bool writePidToActiveBand(double kp, double ki, double kd);
   bool startChamberJob(double targetTemp);
-  void stopChamberJob();
   std::array<double, 8> buildObservation(int decisionIdx) const;
-  void captureManualPid();
-  bool lookupManualPidForActiveBand(double &kp, double &ki, double &kd) const;
   void revertToManualPid(QString const &reason);
   void checkOvershootAndOscillation(ai::TrajectoryPoint const &point);
   void onTwinCheckTick();
@@ -127,9 +137,10 @@ private:
 
   bool         m_safetyTripped{false};
   QString      m_safetyReason;
-  QVariantList m_manualPList; // pre-experiment plc_settings.pids[0].p/i/d
-  QVariantList m_manualIList; // captured before the advisor writes anything
-  QVariantList m_manualDList;
+  ai::ManualPidGuard *m_pidGuard{nullptr}; // pre-experiment PID table, put back when the advisor stops
+  ai::ModelEnvelope   m_envelope;          // the policy's trained range, checked before and during the run
+  qint64              m_lastTelemetryMs{0}; // m_runClock time of the last telemetry update
+  int                 m_twinFailures{0};    // consecutive failed twin inferences
 
   int m_setpointCrossings{0};
   int m_lastErrorSign{0}; // sign of the last error outside the deadband, 0 = none yet
@@ -163,6 +174,6 @@ private:
 
   ai::ComparisonWorker *m_comparisonWorker{nullptr};
 };
-} // namespace deepvaccontrol
+}
 
 #endif // AIADVISORWIDGET_H

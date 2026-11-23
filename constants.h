@@ -7,36 +7,47 @@
 #include "qtypes.h"
 namespace deepvaccontrol {
 
-constexpr inline quint8 const  AWAIT_BIT{8U}; // Flag in manual/program job
-constexpr inline quint8 const  RAMP_BIT{9U};  // Flag in manual/program job
+constexpr inline quint8 const  AWAIT_BIT{8U}; // Flag in setpoint/program job
+constexpr inline quint8 const  RAMP_BIT{9U};  // Flag in setpoint/program job
+// an interval's duration that means "held until stopped": the longest the PLC's timer counts (99:59:59)
+constexpr inline quint32 const HOLD_UNTIL_STOPPED{100 * 3600 - 1};
+// App-only flag of a program interval, with RAMP_BIT: the ramp's duration comes from a ramp rate given by the user.
+// The PLC reads bits 1, 2, 8 and 9 only, so to it this is a plain linear ramp.
+constexpr inline quint8 const  CUSTOM_RATE_BIT{10U};
 inline QString const           PROGS_DIR{"data/prog/"};
 inline QString const           INTERVALS_DIR{"data/"};
+// full-day recordings, one Parquet file per day (recordingfile.h); INTERVALS_DIR keeps the older .dat days
+inline QString const           RECORDINGS_DIR{"data/recordings/"};
 inline QString const           EXPORT_DIR{"export/"};
 inline QString const           SETTINGS_FILE("settings.json");
+// copy of settings.json kept each time it loads correctly; restored automatically when settings.json cannot be used
+inline QString const           SETTINGS_BACKUP_FILE("settings_backup.json");
 inline QString const           ACTIONS_FILE("data/event/actions.dat");
+inline QString const           ANALYSIS_NOTES_FILE{"data/analysis/notes.json"};
+inline QString const           AI_DIR{"data/ai/"};
 inline QString const           USER_FILE{"users.dat"};
 constexpr inline quint32 const INTERVAL_DURATION{24 * 60 * 60};
-constexpr inline quint32 const UI_BTN_HEIGHT{40};
+constexpr inline int const UI_BTN_HEIGHT{75}; // design px (theme::dp)
 constexpr inline quint32 const UI_MENU_BTN_HEIGHT{46};
 
 inline static QStringList const APP_STATE_LIST{
   "IDLE", "CONNECTING", "CONNECTED", "ONLINE", "OFFLINE", "DUMMY", "WAIT_IN_DEBUG", "UNKNOWN=ERROR"};
 
 static QStringList hardwareStatusList() {
-  return {QObject::tr("Нет связи"),
-          QObject::tr("Ожидание"),
-          QObject::tr("Работа"),
-          QObject::tr("Завершено"),
-          QObject::tr("Ошибка")};
+  return {QObject::tr("No connection"),
+          QObject::tr("Idle"),
+          QObject::tr("Running"),
+          QObject::tr("Completed"),
+          QObject::tr("Error")};
 }
 
 static QList<QPair<QString, QString>> statusBarStatesList() {
   return {
-    {"temp", QObject::tr("Температура")},
-    { "hum",     QObject::tr("Влажность")},
-    {"pres",       QObject::tr("Давление")}
+    {"temp", QObject::tr("Temperature")},
+    { "hum",     QObject::tr("Humidity")},
+    {"pres",       QObject::tr("Pressure")}
   };
 } // <state name, display text>
 
-} // namespace deepvaccontrol
+}
 #endif // CONSTANTS_H

@@ -1,9 +1,14 @@
 #include "lineeditnum.h"
 
 #include <QEvent>
+#include <QMouseEvent>
+#include <QPointer>
+
+#include "touchsupport.h"
 
 #include "utils.h"
 #include "virtualnumkeyboard.h"
+#include "theme.h"
 
 namespace deepvaccontrol {
 LineEditNum::LineEditNum(double min, double max, int prec, bool weakCkeck, QWidget *parent)
@@ -44,10 +49,16 @@ LineEditNum::~LineEditNum() {
 }
 
 void LineEditNum::callVirtualKBoard() {
-  m_keyboard = new VirtualNumKeyboard(this);
-  connect(m_keyboard, &VirtualNumKeyboard::accepted, this, &LineEditNum::afterCheck);
-  connect(m_keyboard, &VirtualNumKeyboard::rejected, this, &LineEditNum::keyboradClosed);
-  m_keyboard->exec();
+  // one per tap, gone when it closes (not kept until the field goes). The field itself may go while it is open (its
+  // page rebuilt): nothing of the field is touched after exec()
+  QPointer<VirtualNumKeyboard> const keyboard = new VirtualNumKeyboard(this);
+  m_keyboard                                  = keyboard;
+  connect(keyboard, &VirtualNumKeyboard::accepted, this, &LineEditNum::afterCheck);
+  connect(keyboard, &VirtualNumKeyboard::rejected, this, &LineEditNum::keyboradClosed);
+  keyboard->exec();
+  if (keyboard) {
+    keyboard->deleteLater();
+  }
 }
 
 void LineEditNum::setMinMaxPrec(double min, double max, int prec) {
@@ -63,8 +74,8 @@ void LineEditNum::setScreenInputStyle() {
   font.setStyleHint(QFont::TypeWriter);
   font.setPointSize(20 * utils::ssf());
   setFont(font);
-  setFixedWidth(152 * utils::ssf());
-  //    setStyleSheet("selection-background-color: #CCCCCC");
+  setFixedWidth(theme::dp(285));
+  //    setStyleSheet("selection-background-color: #dce6ff");
 }
 
 void LineEditNum::setValue(float value) {
@@ -81,7 +92,10 @@ void LineEditNum::afterCheck() {
 }
 
 void LineEditNum::checkValidator() {
-  double value{text().toDouble()};
+  if (m_allowEmpty && text().trimmed().isEmpty()) {
+    return;
+  }
+  double value{number()};
 
   if (value < m_validator->bottom()) {
     value = m_validator->bottom();
@@ -91,15 +105,24 @@ void LineEditNum::checkValidator() {
     value = m_validator->top();
   }
 
-  if (!m_isScientific) {
-    setText(QString::number(value, 'f', m_validator->decimals()));
-  } else {
-    setText(QString::number(value, 'E', m_validator->decimals()));
-  }
+  setText(formatted(value));
+}
+
+QString LineEditNum::formatted(double value) const {
+  return m_isScientific ? utils::formatSciE(value) : QString::number(value, 'f', m_validator->decimals());
+}
+
+double LineEditNum::number(bool *ok) const {
+  return utils::parseNumber(text(), ok);
 }
 
 bool LineEditNum::eventFilter(QObject *object, QEvent *event) {
-  if (event->type() == QEvent::MouseButtonRelease && this->isEnabled()) {
+  // the keyboard opens on a tap: a finger that moved (scrolling the page) does not open it
+  if (event->type() == QEvent::MouseButtonPress) {
+    m_pressAt = static_cast<QMouseEvent *>(event)->globalPosition().toPoint();
+  }
+  if (event->type() == QEvent::MouseButtonRelease && this->isEnabled()
+      && ((static_cast<QMouseEvent *>(event)->globalPosition().toPoint() - m_pressAt).manhattanLength() <= touch::tapSlop())) {
     callVirtualKBoard();
     return true; // lets the event continue to the edit
   } else {
@@ -117,10 +140,8 @@ void LineEditNum::setIsScientific(bool value) {
 void LineEditNum::updateText() {
   if (!m_sysValue) {
     setText(QString::number(0, 'f', m_validator->decimals())); // FIXME 0 or minValue=m_validator->bottom()
-  } else if (!m_isScientific) {
-    setText(QString::number(m_sysValue->getValue(), 'f', m_validator->decimals()));
   } else {
-    setText(QString::number(m_sysValue->getValue(), 'E', m_validator->decimals()));
+    setText(formatted(m_sysValue->getValue()));
   }
 }
 
@@ -129,7 +150,7 @@ void LineEditNum::updateVarByText() {
     return;
   }
 
-  m_sysValue->setValue(text().toDouble());
+  m_sysValue->setValue(number());
 }
 
-} // namespace deepvaccontrol
+}

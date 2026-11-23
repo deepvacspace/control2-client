@@ -2,6 +2,8 @@
 
 #include <winsock.h>
 
+#include <algorithm>
+
 #include "constants.h"
 #include "utils.h"
 
@@ -45,9 +47,10 @@ bool ProgramModel::setIntervalFromVariantMap(int index, QVariantMap const &param
   QList<QStandardItem *> columnToAdd;
 
   for (int i{0U}; i < m_paramListOrder.size(); ++i) {
-    QString const &paramName = m_paramListOrder[i];
-    float          paramValue{paramVariant[paramName].toFloat()};
+    QString const &paramName        = m_paramListOrder[i];
     auto           paramSettingsMap = m_paramListVariant[i].toMap();
+    // a channel the program was saved without (a pressure added to the chamber): its default, not controlled
+    float paramValue{paramVariant.value(paramName, paramSettingsMap.value("value")).toFloat()};
     if (paramSettingsMap.contains("min")) {
       float const paramMin{paramSettingsMap["min"].toFloat()};
       float const paramMax{paramSettingsMap["max"].toFloat()};
@@ -127,7 +130,7 @@ void ProgramModel::printToDebug() const {
   debug.noquote();
 
   debug << "vvv PROG vvv \n";
-  debug << "Program type:" << (ProgType::SETPOINT == m_progType ? "MANUAL" : "PROG") << "\n";
+  debug << "Program type:" << (ProgType::SETPOINT == m_progType ? "SETPOINT" : "PROG") << "\n";
   debug << "Cycle count:" << m_cycle_count << "\n";
   debug << "Cycle start:" << m_cycle_start << "\n";
   debug << "Cycle end:" << m_cycle_end << "\n";
@@ -212,11 +215,8 @@ QByteArray ProgramModel::makeSendData() const {
   return data;
 }
 
-bool ProgramModel::writeData(QFile &file) {
+QVariantMap ProgramModel::programVariant() const {
   QVariantList intervals;
-  if (m_standardModel.columnCount() < 1) {
-    return false;
-  }
   for (int i{0U}; i < m_standardModel.columnCount(); ++i) {
     intervals << intervalToVariantMap(i);
   }
@@ -229,14 +229,26 @@ bool ProgramModel::writeData(QFile &file) {
   QVariantMap outMap;
   outMap["intervals"] = intervals;
   outMap["cycle"]     = cycle;
+  return outMap;
+}
 
-  file.write(QJsonDocument::fromVariant(outMap).toJson());
+bool ProgramModel::writeData(QFile &file) {
+  if (m_standardModel.columnCount() < 1) {
+    return false;
+  }
+  file.write(QJsonDocument::fromVariant(programVariant()).toJson());
   return true;
 }
 
 bool ProgramModel::readData(QFile &file) {
-  QVariantMap loadedProgramVariant = utils::parseJsonToVariant(file.readAll(), file.fileName());
+  bool const result{setProgramVariant(utils::parseJsonToVariant(file.readAll(), file.fileName()))};
+  if (!result) {
+    qWarning() << "Error on loading program from" << file.fileName();
+  }
+  return result;
+}
 
+bool ProgramModel::setProgramVariant(QVariantMap const &loadedProgramVariant) {
   // Integrity checks
   if (loadedProgramVariant.empty()) {
     return false;
@@ -246,19 +258,23 @@ bool ProgramModel::readData(QFile &file) {
                      && loadedProgramVariant["cycle"].toMap().contains("end")
                      && loadedProgramVariant["cycle"].toMap().contains("count")};
 
+  if (loadedProgramVariant["intervals"].toList().isEmpty()) {
+    return false;
+  }
   QVariantMap fileParamMap = loadedProgramVariant["intervals"].toList()[0].toMap();
   if (fileParamMap.empty()) {
     return false;
   }
 
   {
-    QStringList fileParamList{fileParamMap.keys()};
-    QStringList settingsParamList{m_paramListOrder};
-    fileParamList.sort();
-    settingsParamList.sort();
-    if (fileParamList != settingsParamList) {
-      qWarning() << "file interval params: " << fileParamMap.keys();
-      qWarning() << "settings interval params: " << settingsParamList;
+    // the program's channels must be this chamber's: some of them may be missing (saved before the chamber had them,
+    // given their defaults), none other. The flag bits are the PLC's (temperature 1, pressure 2) either way.
+    QStringList const fileParamList{fileParamMap.keys()};
+    bool const        known{std::all_of(fileParamList.cbegin(), fileParamList.cend(),
+                                        [this](QString const &name) { return m_paramListOrder.contains(name); })};
+    if (!known || !fileParamMap.contains("duration") || !fileParamMap.contains("flags")) {
+      qWarning() << "file interval params: " << fileParamList;
+      qWarning() << "settings interval params: " << m_paramListOrder;
       return false;
     }
   }
@@ -284,7 +300,7 @@ bool ProgramModel::readData(QFile &file) {
     auto const fileIntervalMap = intervalListVariant[i].toMap();
     result                     = setIntervalFromVariantMap(i, fileIntervalMap);
     if (!result) {
-      qWarning() << "Error on adding" << i << "interval from" << file.fileName();
+      qWarning() << "Error on adding interval" << i;
       break;
     }
   }
@@ -293,7 +309,8 @@ bool ProgramModel::readData(QFile &file) {
   // Because the settings are read asynchronously, it is necessary to transmit the cycle parameters asynchronously via
   // the signal as well.
   emit cycleParamsUpdated(getCycleParams());
+  emit numberOfIntervalChanged(m_standardModel.columnCount());
 
   return result;
 }
-} // namespace deepvaccontrol
+}

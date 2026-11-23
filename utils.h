@@ -6,8 +6,6 @@
 #include <QStringList>
 #include <limits>
 
-class QWidget;
-
 namespace deepvaccontrol::utils {
 
 constexpr inline float const floatNan{std::numeric_limits<float>::quiet_NaN()};
@@ -35,15 +33,18 @@ QString     fromPascalString(QByteArray &pstr);
 QByteArray  makePascalStringPair(QString const &str, float value);
 QString     binaryString(char const *adr, int size, bool isLittleEndian);
 double      calculateKey(quint64 epochSecTime);
-QString     calculateFileName(quint64 epochSecTime);
-void        showAiAdvisorStartPromptAndRun(QWidget *parent);
-
 QString toSuperscript(int exp); // Convert integer exponent to superscript string like "⁻¹²"
 QString formatScientific(double v, int frac, bool fixedWhenReadable);
 QString formatScientific(float v, int frac, bool fixedWhenReadable);
 QString formatScientific(double v, int frac = 3);
 QString formatScientific(float v, int frac = 3);
 QString formatScientificRef(float v, int frac = 3);
+// fixed width: one decimal and a two-digit exponent ("1.0·E-02"), whatever the value; editable (parseNumber reads it)
+QString formatSciE(double v);
+// the same value as shown, not typed: one decimal in base 10 ("1.0×10⁻²")
+QString formatSci10(double v);
+// a number as typed or shown: "1.0·E-02", "−5,2"
+double  parseNumber(QString text, bool *ok = nullptr);
 
 template<typename t_type> concept CharSized = (sizeof(t_type) == sizeof(char));
 
@@ -71,5 +72,5 @@ template<typename CharSized> quint16 crc16(CharSized const *data, size_t length)
   return crc;
 }
 
-} // namespace deepvaccontrol::utils
+}
 #endif // UTILS_H

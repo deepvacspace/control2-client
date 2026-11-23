@@ -24,11 +24,24 @@ public:
   SettingsManager(Logger *logger, QString const &filePath, QObject *parent = nullptr);
   bool                          saveToSettingsFile();   // use FileHandler interface inside
   bool                          loadFromSettingsFile(); // use FileHandler interface inside
+  bool                          loadFrom(QString const &path); // another file (a backup); saving still goes to settings.json
+  // why a settings file cannot be used (missing, empty, invalid JSON at line / column, no value list), empty if it can
+  static QString                fileProblem(QString const &path);
   QVariantMap                   settingsMap() const;
   SystemValueList              &plcSettingsSystemValueList();
   QVariantList                  commitSystemValues(); // returns SystemValues as VariantList
+  // the fields of a job's interval as this chamber's PLC reads them ("control_params"): the pressure only when the
+  // chamber reports one (an older PLC, without "pres" in its values, takes intervals without the pressure field)
+  [[nodiscard]] QVariantList    controlParams() const;
   void                          setPlcSettings(QVariantMap const &plcSettings);
   void                          setStatesSettings(QVariantList const &statesSettings);
+  // Connections tab (app-only settings, not sent to the PLC)
+  bool                          setOpcSettings(bool enabled, QVariantMap const &opcSettings);
+  bool                          setTcpServer(QString const &address, quint16 port);
+  bool                          setChambers(QVariantList const &chambers);
+  bool                          setSection(QString const &key, QVariantMap const &section); // app-only section
+  // several top-level entries at once (Settings -> Application), one write of the file
+  bool                          setEntries(QVariantMap const &entries);
   QMap<QString, float>          getSettingPairs() const;
   void                          applySettingsFromPairs(QMap<QString, float> const &plcPairs);
   QMap<quint32, QString> const &getAlarmsMap() const;
@@ -40,12 +53,18 @@ signals:
   // Set of general settings updates its widget automatically, but another (pid, calibration)
   // need be informed.
   void settingsPulled();
+  // plc_settings (PID table, calibration, general settings) replaced, by the user, the AI or the PLC echo
+  void plcSettingsChanged();
+  void opcSettingsChanged();
+  void appSettingsChanged(); // setEntries()
 
 private:
   // Creates new items or update existing in m_settingValueList from general settings.
   void                   pullSystemValues();
   void                   makeAlarmsMap();
   void                   getUiLanguage();
+  // temperature, pressure, their setpoints and control outputs get the same short names on every chamber
+  void                   standardChannelNames();
   Logger                *m_logger;
   QString                m_filePath;
   QVariantMap            m_settingsMap;      // static settings
@@ -81,6 +100,6 @@ inline SystemValueList &SettingsManager::plcSettingsSystemValueList() {
 inline QMap<quint32, QString> const &SettingsManager::getAlarmsMap() const {
   return m_alarmsMap;
 }
-} // namespace deepvaccontrol
+}
 
 #endif // SETTINGSMANAGER_H

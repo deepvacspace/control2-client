@@ -13,5 +13,5 @@ public:
   ~AlarmListWidget() override = default;
 
 };
-} // namespace deepvaccontrol
+}
 #endif // ALARMLISTWIDGET_H

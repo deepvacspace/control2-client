@@ -1,5 +1,7 @@
 #include "virtualkeyboard.h"
 
+#include "theme.h"
+
 #include "utils.h"
 
 namespace deepvaccontrol {
@@ -17,15 +19,15 @@ VirtualKeyboard::VirtualKeyboard(QString const &title, Language lang, QWidget *p
   font.setPointSize(20 * utils::ssf());
   m_textLine = new QLineEdit(this);
   m_textLine->setFont(font);
-  m_textLine->setStyleSheet("QLabel {border: 1px solid black;"
-                            "background-color: white;}");
+  m_textLine->setStyleSheet("QLabel {border: 1px solid #1e2633;"
+                            "background-color: " + theme::colors().panelAlt.name() + ";}");
 
   auto *mainLay = new QVBoxLayout(this);
 
   mainLay->addWidget(m_textLine);
   mainLay->addLayout(m_numLayout);
   mainLay->addLayout(m_enLayout);
-  mainLay->addLayout(m_ruLayout);
+  mainLay->addLayout(m_deLayout);
   mainLay->addLayout(m_ctrlLayout);
 
   QLineEdit *parentLine{qobject_cast<QLineEdit *>(this->parent())};
@@ -37,21 +39,21 @@ VirtualKeyboard::VirtualKeyboard(QString const &title, Language lang, QWidget *p
 
 void VirtualKeyboard::initLangLayouts() {
   m_enLayout  = new QVBoxLayout();
-  m_ruLayout  = new QVBoxLayout();
+  m_deLayout  = new QVBoxLayout();
   m_numLayout = new QVBoxLayout();
 
   QStringList enLetters = {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "-", "a", "s", "d", "f",
                            "g", "h", "j", "k", "l", "_", "z", "x", "c", "v", "b", "n", "m", "(", ")"};
-  QStringList ruLetters = {"й", "ц", "у", "к", "е", "н", "г", "ш", "щ", "з", "х", "ъ", "ф", "ы", "в", "а", "п",
-                           "р", "о", "л", "д", "ж", "э", "я", "ч", "с", "м", "и", "т", "ь", "б", "ю", "."};
+  QStringList deLetters = {"q", "w", "e", "r", "t", "z", "u", "i", "o", "p", "ü", "-", "a", "s", "d", "f", "g",
+                           "h", "j", "k", "l", "ö", "ä", "y", "x", "c", "v", "b", "n", "m", "ß", "_", "."};
   QStringList numLetters = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "del"};
 
   QList<int> enLetterPerLine  = {11, 10, 9};
-  QList<int> ruLetterPerLine  = {12, 11, 10};
+  QList<int> deLetterPerLine  = {12, 11, 10};
   QList<int> numLetterPerLine = {11};
 
   populateLayout(m_enLayout, &m_enButtonList, enLetters, enLetterPerLine);
-  populateLayout(m_ruLayout, &m_ruButtonList, ruLetters, ruLetterPerLine);
+  populateLayout(m_deLayout, &m_deButtonList, deLetters, deLetterPerLine);
   populateLayout(m_numLayout, &m_numButtonList, numLetters, numLetterPerLine);
 }
 
@@ -66,12 +68,14 @@ void VirtualKeyboard::populateLayout(
       auto upperText = letter.toUpper();
       if ('.' == letter) {
         upperText = ",";
+      } else if (QStringLiteral("ß") == letter) {
+        upperText = letter; // no capital in use
       }
       if ("del" == letter) {
         auto *btn = new QPushButton(this);
         btn->setIcon(QIcon(":/imgs/backspace.png"));
-        btn->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));
-        btn->setFixedSize(2 * 50 * utils::ssf(), 50 * utils::ssf());
+        btn->setIconSize(QSize(theme::dp(75), theme::dp(75)));
+        btn->setFixedSize(2 * theme::dp(93), theme::dp(93));
         connect(btn, &QPushButton::clicked, this, &VirtualKeyboard::delPressHandle);
         rowLay->addWidget(btn);
       } else {
@@ -88,23 +92,29 @@ void VirtualKeyboard::populateLayout(
 }
 
 void VirtualKeyboard::initCtrlLayout() {
-  auto *rejectBtn = new VirtKeyBtn(tr("Отмена"), "", this);
-  auto *enterBtn  = new VirtKeyBtn(tr("Ввод"), "", this);
-  rejectBtn->setFixedSize(QSize(120 * utils::ssf(), 50 * utils::ssf()));
-  enterBtn->setFixedSize(QSize(120 * utils::ssf(), 50 * utils::ssf()));
+  auto *rejectBtn = new VirtKeyBtn(tr("Cancel"), "", this);
+  auto *enterBtn  = new VirtKeyBtn(tr("Enter"), "", this);
+  rejectBtn->setFixedSize(QSize(theme::dp(225), theme::dp(93)));
+  enterBtn->setFixedSize(QSize(theme::dp(225), theme::dp(93)));
 
   m_shiftBtn = new QPushButton(this);
   m_shiftBtn->setIcon(QIcon(":/imgs/shift.png"));
-  m_shiftBtn->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));
-  m_shiftBtn->setFixedSize(QSize(60 * utils::ssf(), 50 * utils::ssf()));
+  m_shiftBtn->setIconSize(QSize(theme::dp(75), theme::dp(75)));
+  m_shiftBtn->setFixedSize(QSize(theme::dp(112), theme::dp(93)));
 
   auto *spaceBtn = new VirtKeyBtn(" ", " ", this);
-  spaceBtn->setFixedWidth(200 * utils::ssf());
+  spaceBtn->setFixedWidth(theme::dp(375));
 
-  m_langBtn = new QPushButton(this);
-  m_langBtn->setIcon(QIcon(":imgs/lang.png"));
-  m_langBtn->setIconSize(QSize(40 * utils::ssf(), 40 * utils::ssf()));
-  m_langBtn->setFixedSize(QSize(60 * utils::ssf(), 50 * utils::ssf()));
+  // German / English layouts
+  m_langBtn = new QPushButton(QStringLiteral("DE\nEN"), this);
+  m_langBtn->setToolTip(tr("Switch between the German and English keyboard"));
+  {
+    QFont font = m_langBtn->font();
+    font.setBold(true);
+    font.setPointSize(11 * utils::ssf());
+    m_langBtn->setFont(font);
+  }
+  m_langBtn->setFixedSize(QSize(theme::dp(112), theme::dp(93)));
 
   m_ctrlLayout = new QHBoxLayout();
   m_ctrlLayout->addWidget(rejectBtn);
@@ -119,7 +129,7 @@ void VirtualKeyboard::initCtrlLayout() {
     this->setUpper(!m_isUpper);
   });
   connect(m_langBtn, &QPushButton::clicked, this, [this] {
-    this->setLangLayout((m_currLang == RU) ? EN : RU);
+    this->setLangLayout((m_currLang == DE) ? EN : DE);
   });
   connect(spaceBtn, &QPushButton::clicked, this, &VirtualKeyboard::letterBtnPressHandle);
 
@@ -136,12 +146,12 @@ void VirtualKeyboard::setLangLayout(Language lang) {
   m_currLang = lang;
 
   switch (m_currLang) {
-    case RU:
+    case DE:
       setButtonsVisible(&m_enButtonList, false);
-      setButtonsVisible(&m_ruButtonList, true);
+      setButtonsVisible(&m_deButtonList, true);
       break;
     case EN:
-      setButtonsVisible(&m_ruButtonList, false);
+      setButtonsVisible(&m_deButtonList, false);
       setButtonsVisible(&m_enButtonList, true);
       break;
     case NONE:
@@ -150,15 +160,11 @@ void VirtualKeyboard::setLangLayout(Language lang) {
 }
 
 void VirtualKeyboard::setUpper(bool isUpper) {
-  if (isUpper == isUpper) {
-    return;
-  }
-
-  isUpper = isUpper;
+  m_isUpper = isUpper;
 
   m_shiftBtn->setIcon(QIcon((isUpper ? ":/imgs/shift_on.png" : ":/imgs/shift.png")));
 
-  for (auto list : {&m_enButtonList, &m_ruButtonList, &m_numButtonList}) {
+  for (auto list : {&m_enButtonList, &m_deButtonList, &m_numButtonList}) {
     for (auto btn : *list) {
       btn->enableAltText(isUpper);
     }
@@ -205,10 +211,10 @@ VirtKeyBtn::VirtKeyBtn(QString const &text, QString const &textAlt, QWidget *par
   this->setFont(font);
 
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-  setFixedSize(50 * utils::ssf(), 50 * utils::ssf());
+  setFixedSize(theme::dp(93), theme::dp(93));
 }
 
 void VirtKeyBtn::enableAltText(bool enable) {
   setText(enable ? m_textAlt : m_text);
 }
-} // namespace deepvaccontrol
+}

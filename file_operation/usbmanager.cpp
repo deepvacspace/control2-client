@@ -28,4 +28,4 @@ void UsbManager::updateDriveList() {
   }
 }
 
-} // namespace deepvaccontrol
+}
